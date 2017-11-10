@@ -39,7 +39,6 @@ desync -s ssh://192.168.1.1/path/to/casync.store/ -c /tmp/store somefile.tar.cai
 ## TODOs
 - Write tests
 - Pre-allocate the output file to avoid fragmentation
-- Write output to tempfile then rename atomically
 - Check output file size, compare to expected size
 - Support retrieval of index files from the chunk store
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.

@@ -42,7 +42,7 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 	if err := os.MkdirAll(d, 0755); err != nil {
 		return err
 	}
-	tmpfile, err := ioutil.TempFile(d, "tmp-cacnk")
+	tmpfile, err := ioutil.TempFile(d, ".tmp-cacnk")
 	if err != nil {
 		return err
 	}
