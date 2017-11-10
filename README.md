@@ -23,11 +23,14 @@ Basic client to read casync blob index files (caibx) and reassemble a blob from 
 #### Options
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store
 - `-c <store>` Location of a *local* chunk store to be used as cache. Needs to be writable.
-- `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store
+- `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 
 #### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
+
+#### Caching
+The `-c <store>` option can be used to either specify an existing local store to act as cache or to build a new one. Whenever a cache is requested, it is first looked up in the local cache before routing the request to the main (likely remote store). Any chunks downloaded from the main store are added to the local store (cache). In addition, when a chunk is read from the cache, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache directory as well as the chunks in it are expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), blob assembly will fail. Invalid chunks are not skipped or removed from the cache automatically.
 
 #### Examples:
 
@@ -44,4 +47,3 @@ desync -s ssh://192.168.1.1/path/to/casync.store/ -c /tmp/store somefile.tar.cai
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
 - When using the remote store, multiple SSH sessions and csync processes are started, there's nothing to stop them yet (relies on process shutdown/cleanup)
 - Code cleanup and reorg
-- When using a local cache, touch each chunk when used to allow for age-based cache cleanup

@@ -76,6 +76,7 @@ func main() {
 		if err != nil {
 			die(err)
 		}
+		cache.UpdateTimes = true
 		s = casync.NewCache(s, cache)
 	}
 
