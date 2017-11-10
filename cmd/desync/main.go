@@ -95,7 +95,7 @@ func main() {
 	tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	// Build the (temp) blob from the chunks
+	// Build the blob from the chunks, writing everything into the tempfile
 	errs := assembleBlob(tmpfile.Name(), c.Chunks, s, n)
 	if len(errs) != 0 {
 		for _, e := range errs {
@@ -106,6 +106,13 @@ func main() {
 
 	// Rename the tempfile to the output file
 	if err := os.Rename(tmpfile.Name(), outFile); err != nil {
+		die(err)
+	}
+
+	// FIXME Unfortunately, tempfiles are created with 0600 perms and there doesn't
+	// appear a way to influence that, short of writing another function that
+	// generates a tempfile name. Set 0644 perms here after rename (ignoring umask)
+	if err := os.Chmod(outFile, 0644); err != nil {
 		die(err)
 	}
 }
