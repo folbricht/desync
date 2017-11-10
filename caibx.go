@@ -1,9 +1,8 @@
-package caibx
+package casync
 
 import (
 	"fmt"
 
-	casync "github.com/folbricht/go-casync"
 	"github.com/pkg/errors"
 
 	"io"
@@ -14,7 +13,7 @@ import (
 type Caibx struct {
 	Index  Index
 	Header Header
-	Chunks []Chunk
+	Chunks []BlobIndexChunk
 }
 
 // Index at the start of the caibx file
@@ -33,16 +32,17 @@ type Header struct {
 	Type uint64
 }
 
-// Chunk is a table entry in a caibx file containing the chunk ID (SHA256)
+// BlobIndexChunk is a table entry in a caibx file containing the chunk ID (SHA256)
 // as well as the offset within the blob after appending this chunk
-type Chunk struct {
-	Offset uint64
-	ID     casync.ChunkID
+type BlobIndexChunk struct {
+	Start uint64
+	Size  uint64
+	ID    ChunkID
 }
 
-// New parses a caibx structure (from a reader) and returns a populated Caibx
+// CaibxFromReader parses a caibx structure (from a reader) and returns a populated Caibx
 // object
-func New(r io.Reader) (c Caibx, err error) {
+func CaibxFromReader(r io.Reader) (c Caibx, err error) {
 	cr := reader{r}
 
 	// Read the index
@@ -51,7 +51,7 @@ func New(r io.Reader) (c Caibx, err error) {
 		return c, errors.Wrap(err, "reading index")
 	}
 
-	if c.Index.Type != casync.CaFormatIndex {
+	if c.Index.Type != CaFormatIndex {
 		return c, errors.New("Only blob indexes are supported")
 	}
 
@@ -60,7 +60,7 @@ func New(r io.Reader) (c Caibx, err error) {
 	if err != nil {
 		return c, errors.Wrap(err, "reading header")
 	}
-	if c.Header.Type != casync.CaFormatHeader {
+	if c.Header.Type != CaFormatHeader {
 		return c, errors.New("Expected table header")
 	}
 	if c.Header.Size != math.MaxUint64 {
@@ -109,29 +109,33 @@ func readHeader(r reader) (h Header, err error) {
 	return
 }
 
-func readChunks(r reader, min, max uint64) (chunks []Chunk, err error) {
+func readChunks(r reader, min, max uint64) (chunks []BlobIndexChunk, err error) {
 	var lastOffset uint64
 	for {
-		var c Chunk
-		c.Offset, err = r.ReadUint64()
+		var (
+			c      BlobIndexChunk
+			offset uint64
+		)
+		offset, err = r.ReadUint64()
 		if err != nil {
 			return
 		}
-		if c.Offset == 0 { // Last chunk?
+		if offset == 0 { // Last chunk?
 			break
 		}
-		size := c.Offset - lastOffset
-		if size < min {
-			return chunks, fmt.Errorf("chunk size %d is smaller than minimum %d", size, min)
+		c.Start = lastOffset
+		c.Size = offset - lastOffset
+		if c.Size < min {
+			return chunks, fmt.Errorf("chunk size %d is smaller than minimum %d", c.Size, min)
 		}
-		if size > max {
-			return chunks, fmt.Errorf("chunk size %d is larger than maximum %d", size, max)
+		if c.Size > max {
+			return chunks, fmt.Errorf("chunk size %d is larger than maximum %d", c.Size, max)
 		}
 		c.ID, err = r.ReadID()
 		if err != nil {
 			return
 		}
-		lastOffset = c.Offset
+		lastOffset = offset
 		chunks = append(chunks, c)
 	}
 	return

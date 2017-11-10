@@ -45,3 +45,4 @@ desync -s ssh://192.168.1.1/path/to/casync.store/ -c /tmp/store somefile.tar.cai
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
 - When using the remote store, multiple SSH sessions and csync processes are started, there's nothing to stop them yet (relies on process shutdown/cleanup)
 - Code cleanup and reorg
+- When using a local cache, touch each chunk when used to allow for age-based cache cleanup

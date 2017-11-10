@@ -12,7 +12,6 @@ import (
 	"sync"
 
 	casync "github.com/folbricht/go-casync"
-	"github.com/folbricht/go-casync/caibx"
 )
 
 const usage = `desync [options] <caibx> <output>`
@@ -117,7 +116,7 @@ type ChunkProcessResult struct {
 // store for the chunks. It uses a bit of fancy concurrency to load N-chunks ahead
 // while putting them back together in the right order. TODO: Should probably
 // break this up a bit and move some useful bits out of main into the casync package.
-func assembleBlob(w io.Writer, chunks []caibx.Chunk, s casync.Store, n int) []error {
+func assembleBlob(w io.Writer, chunks []casync.BlobIndexChunk, s casync.Store, n int) []error {
 	downloadQ := make(chan ChunkProcessJob)
 	assembleQ := make(chan ChunkProcessJob, n)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -200,13 +199,13 @@ func assembleBlob(w io.Writer, chunks []caibx.Chunk, s casync.Store, n int) []er
 	return errs
 }
 
-func readCaibxFile(name string) (c caibx.Caibx, err error) {
+func readCaibxFile(name string) (c casync.Caibx, err error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	return caibx.New(f)
+	return casync.CaibxFromReader(f)
 }
 
 func die(err error) {
