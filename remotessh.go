@@ -15,12 +15,13 @@ import (
 // RemoteSSH is a remote casync store accessed via SSH. Supports running
 // multiple sessions to improve throughput.
 type RemoteSSH struct {
-	pool chan Session // use a buffered channel as session "pool"
+	location *url.URL
+	pool     chan Session // use a buffered channel as session "pool"
 }
 
 // NewRemoteSSHStore establishes up to n connections with a casync chunk server
 func NewRemoteSSHStore(location *url.URL, n int) (*RemoteSSH, error) {
-	remote := RemoteSSH{pool: make(chan Session, n)}
+	remote := RemoteSSH{location: location, pool: make(chan Session, n)}
 	// Start n sessions and put them into the pool (buffered channel)
 	for i := 0; i < n; i++ {
 		s, err := StartSession(location.Host, location.Path)
@@ -40,6 +41,10 @@ func (s *RemoteSSH) GetChunk(id ChunkID) ([]byte, error) {
 	b, err := session.RequestChunk(id)
 	s.pool <- session
 	return b, err
+}
+
+func (r *RemoteSSH) String() string {
+	return r.location.String()
 }
 
 // Session represents one instance of a local SSH client and a remote casync

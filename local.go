@@ -163,3 +163,7 @@ func (s LocalStore) verifyChunk(id ChunkID) error {
 	}
 	return nil
 }
+
+func (s LocalStore) String() string {
+	return s.Base
+}

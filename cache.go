@@ -1,6 +1,8 @@
 package casync
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 )
 
@@ -40,4 +42,8 @@ func (c Cache) GetChunk(id ChunkID) ([]byte, error) {
 		return nil, errors.Wrap(err, "failed to store in local cache")
 	}
 	return b, nil
+}
+
+func (c Cache) String() string {
+	return fmt.Sprintf("store:%s with cache %s", c.s, c.l)
 }

@@ -21,7 +21,7 @@ Among the distinguishing factors:
 Basic client to read casync blob index files (caibx) and reassemble a blob from chunks read from a chunk store (local or remove via SSH).
 
 #### Options
-- `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store
+- `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order.
 - `-c <store>` Location of a *local* chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 
@@ -37,6 +37,11 @@ The `-c <store>` option can be used to either specify an existing local store to
 Re-assemble somefile.tar using a remote chunk store and a blob index file.
 ```
 desync -s ssh://192.168.1.1/path/to/casync.store/ -c /tmp/store somefile.tar.caibx somefile.tar
+```
+
+Use multiple stores, specify the local one first to improve performance.
+```
+desync -s /some/local/store -s ssh://192.168.1.1/path/to/casync.store/ somefile.tar.caibx somefile.tar
 ```
 
 ### verify-store
@@ -64,4 +69,3 @@ verify-store -n 5 /path/to/cache
 - When using the remote store, multiple SSH sessions and csync processes are started, there's nothing to stop them yet (relies on process shutdown/cleanup)
 - Code cleanup and reorg
 - Support HTTP for remote stores
-- Support multiple stores as source

@@ -18,18 +18,30 @@ import (
 
 const usage = `desync [options] <caibx> <output>`
 
+type multiArg struct {
+	list []string
+}
+
+func (a *multiArg) Set(v string) error {
+	a.list = append(a.list, v)
+	return nil
+}
+
+func (a *multiArg) String() string { return "" }
+
 func main() {
 	var (
-		storeLocation string
-		cacheLocation string
-		n             int
-		err           error
+		cacheLocation  string
+		n              int
+		err            error
+		storeLocations = new(multiArg)
+		stores         []casync.Store
 	)
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, usage)
 		flag.PrintDefaults()
 	}
-	flag.StringVar(&storeLocation, "s", "", "casync store location")
+	flag.Var(storeLocations, "s", "casync store location, can be multiples")
 	flag.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flag.IntVar(&n, "n", 10, "number of goroutines")
 	flag.Parse()
@@ -48,29 +60,40 @@ func main() {
 	}
 
 	// Checkout the store
-	if storeLocation == "" {
+	if len(storeLocations.list) == 0 {
 		die(errors.New("No casync store provided. See -h for help."))
 	}
-	loc, err := url.Parse(storeLocation)
-	if err != nil {
-		die(fmt.Errorf("Unable to parse store location: %s", err))
-	}
-	var s casync.Store
-	switch loc.Scheme {
-	case "ssh":
-		s, err = casync.NewRemoteSSHStore(loc, n)
+
+	// Go through each stored passed in the command line, initialize them, and
+	// build a list
+	for _, location := range storeLocations.list {
+		loc, err := url.Parse(location)
 		if err != nil {
-			die(err)
+			die(fmt.Errorf("Unable to parse store location %s : %s", location, err))
 		}
-	case "":
-		s, err = casync.NewLocalStore(loc.Path)
-		if err != nil {
-			die(err)
+		var s casync.Store
+		switch loc.Scheme {
+		case "ssh":
+			s, err = casync.NewRemoteSSHStore(loc, n)
+			if err != nil {
+				die(err)
+			}
+		case "":
+			s, err = casync.NewLocalStore(loc.Path)
+			if err != nil {
+				die(err)
+			}
+		default:
+			die(fmt.Errorf("Unsupported store access scheme %s", loc.Scheme))
 		}
-	default:
+		stores = append(stores, s)
 	}
 
-	// See if we want to use a local store as cache.
+	// Combine all stores into one router
+	var s casync.Store = casync.NewStoreRouter(stores...)
+
+	// See if we want to use a local store as cache, if so, attach a cache to
+	// the router
 	if cacheLocation != "" {
 		cache, err := casync.NewLocalStore(cacheLocation)
 		if err != nil {
@@ -86,36 +109,44 @@ func main() {
 		die(err)
 	}
 
-	// Prepare a tempfile that'll hold the output during processing. Close it, we
-	// just need the name here since it'll be opened multiple times during write.
-	// Also make sure it gets removed regardless of any errors below.
-	tmpfile, err := ioutil.TempFile(filepath.Dir(outFile), ".desync")
-	if err != nil {
-		die(err)
-	}
-	tmpfile.Close()
-	defer os.Remove(tmpfile.Name())
-
-	// Build the blob from the chunks, writing everything into the tempfile
-	errs := assembleBlob(tmpfile.Name(), c.Chunks, s, n)
-	if len(errs) != 0 {
+	// Write the output
+	if errs := writeOutput(outFile, c.Chunks, s, n); len(errs) != 0 {
 		for _, e := range errs {
 			fmt.Fprintln(os.Stderr, e)
 		}
 		os.Exit(1)
 	}
+}
+
+func writeOutput(name string, chunks []casync.BlobIndexChunk, s casync.Store, n int) []error {
+	// Prepare a tempfile that'll hold the output during processing. Close it, we
+	// just need the name here since it'll be opened multiple times during write.
+	// Also make sure it gets removed regardless of any errors below.
+	tmpfile, err := ioutil.TempFile(filepath.Dir(name), ".desync")
+	if err != nil {
+		return []error{err}
+	}
+	tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+
+	// Build the blob from the chunks, writing everything into the tempfile
+	errs := assembleBlob(tmpfile.Name(), chunks, s, n)
+	if len(errs) != 0 {
+		return errs
+	}
 
 	// Rename the tempfile to the output file
-	if err := os.Rename(tmpfile.Name(), outFile); err != nil {
-		die(err)
+	if err := os.Rename(tmpfile.Name(), name); err != nil {
+		return []error{err}
 	}
 
 	// FIXME Unfortunately, tempfiles are created with 0600 perms and there doesn't
 	// appear a way to influence that, short of writing another function that
 	// generates a tempfile name. Set 0644 perms here after rename (ignoring umask)
-	if err := os.Chmod(outFile, 0644); err != nil {
-		die(err)
+	if err := os.Chmod(name, 0644); err != nil {
+		return []error{err}
 	}
+	return nil
 }
 
 // Opens n goroutines, creating one filehandle for the file "name" per goroutine
