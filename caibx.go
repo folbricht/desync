@@ -68,7 +68,7 @@ func CaibxFromReader(r io.Reader) (c Caibx, err error) {
 	}
 
 	// And the chunks
-	c.Chunks, err = readChunks(cr, c.Index.ChunkSizeMin, c.Index.ChunkSizeMax)
+	c.Chunks, err = readChunks(cr, c.Index.ChunkSizeMax)
 	if err != nil {
 		return c, errors.Wrap(err, "reading table")
 	}
@@ -109,7 +109,7 @@ func readHeader(r reader) (h Header, err error) {
 	return
 }
 
-func readChunks(r reader, min, max uint64) (chunks []BlobIndexChunk, err error) {
+func readChunks(r reader, max uint64) (chunks []BlobIndexChunk, err error) {
 	var lastOffset uint64
 	for {
 		var (
@@ -125,9 +125,8 @@ func readChunks(r reader, min, max uint64) (chunks []BlobIndexChunk, err error) 
 		}
 		c.Start = lastOffset
 		c.Size = offset - lastOffset
-		if c.Size < min {
-			return chunks, fmt.Errorf("chunk size %d is smaller than minimum %d", c.Size, min)
-		}
+		// Check the max size of the chunk only. The min apperently doesn't apply
+		// to the last chunk.
 		if c.Size > max {
 			return chunks, fmt.Errorf("chunk size %d is larger than maximum %d", c.Size, max)
 		}
