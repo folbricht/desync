@@ -39,6 +39,22 @@ Re-assemble somefile.tar using a remote chunk store and a blob index file.
 desync -s ssh://192.168.1.1/path/to/casync.store/ -c /tmp/store somefile.tar.caibx somefile.tar
 ```
 
+### verify-store
+
+This tool is mainly used to clean a local cache store that may have bad chunks in it. It goes through all chunks in the store and compares the checksums to the expected ones. By default, it only reports bad chunks. If the `-r` is provided, bad chunks are removed from the store.
+
+#### Options
+
+- `-r` Remove any chunks that contain data not matching the chunk ID. Use with caution.
+- `-n <int>` Number of concurrent verification jobs. Higher numbers increase CPU and disk I/O. Default 10.
+
+#### Examples:
+
+Report any invalid chunks in a local cache. Use 5 goroutines.
+```
+verify-store -n 5 /path/to/cache
+```
+
 ## TODOs
 - Write tests
 - Pre-allocate the output file to avoid fragmentation
@@ -47,3 +63,5 @@ desync -s ssh://192.168.1.1/path/to/casync.store/ -c /tmp/store somefile.tar.cai
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
 - When using the remote store, multiple SSH sessions and csync processes are started, there's nothing to stop them yet (relies on process shutdown/cleanup)
 - Code cleanup and reorg
+- Support HTTP for remote stores
+- Support multiple stores as source
