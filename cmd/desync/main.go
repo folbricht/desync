@@ -78,6 +78,11 @@ func main() {
 			if err != nil {
 				die(err)
 			}
+		case "http", "https":
+			s, err = casync.NewRemoteHTTPStore(loc)
+			if err != nil {
+				die(err)
+			}
 		case "":
 			s, err = casync.NewLocalStore(loc.Path)
 			if err != nil {

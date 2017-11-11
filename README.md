@@ -44,6 +44,14 @@ Use multiple stores, specify the local one first to improve performance.
 desync -s /some/local/store -s ssh://192.168.1.1/path/to/casync.store/ somefile.tar.caibx somefile.tar
 ```
 
+Mix and match remote stores and use a local cache store to improve performance.
+```
+desync -s ssh://192.168.1.1/path/to/casync.store/ \
+       -s http://192.168.1.2/casync.store/ \
+       -c /path/to/cache \
+       somefile.tar.caibx somefile.tar
+```
+
 ### verify-store
 
 This tool is mainly used to clean a local cache store that may have bad chunks in it. It goes through all chunks in the store and compares the checksums to the expected ones. By default, it only reports bad chunks. If the `-r` is provided, bad chunks are removed from the store.
@@ -68,4 +76,3 @@ verify-store -n 5 /path/to/cache
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
 - When using the remote store, multiple SSH sessions and csync processes are started, there's nothing to stop them yet (relies on process shutdown/cleanup)
 - Code cleanup and reorg
-- Support HTTP for remote stores
