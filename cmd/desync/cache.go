@@ -9,7 +9,7 @@ import (
 	"os"
 	"sync"
 
-	casync "github.com/folbricht/go-casync"
+	"github.com/folbricht/desync"
 )
 
 const cacheUsage = `desync cache [options] <caibx>
@@ -23,7 +23,7 @@ func cache(args []string) {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
-		stores         []casync.Store
+		stores         []desync.Store
 	)
 	flags := flag.NewFlagSet("cache", flag.ExitOnError)
 	flags.Usage = func() {
@@ -57,20 +57,20 @@ func cache(args []string) {
 		if err != nil {
 			die(fmt.Errorf("Unable to parse store location %s : %s", location, err))
 		}
-		var s casync.Store
+		var s desync.Store
 		switch loc.Scheme {
 		case "ssh":
-			s, err = casync.NewRemoteSSHStore(loc, n)
+			s, err = desync.NewRemoteSSHStore(loc, n)
 			if err != nil {
 				die(err)
 			}
 		case "http", "https":
-			s, err = casync.NewRemoteHTTPStore(loc)
+			s, err = desync.NewRemoteHTTPStore(loc)
 			if err != nil {
 				die(err)
 			}
 		case "":
-			s, err = casync.NewLocalStore(loc.Path)
+			s, err = desync.NewLocalStore(loc.Path)
 			if err != nil {
 				die(err)
 			}
@@ -81,17 +81,17 @@ func cache(args []string) {
 	}
 
 	// Combine all stores into one router
-	var s casync.Store = casync.NewStoreRouter(stores...)
+	var s desync.Store = desync.NewStoreRouter(stores...)
 
 	// See if we want to use a local store as cache, if so, attach a cache to
 	// the router
 	if cacheLocation != "" {
-		cache, err := casync.NewLocalStore(cacheLocation)
+		cache, err := desync.NewLocalStore(cacheLocation)
 		if err != nil {
 			die(err)
 		}
 		cache.UpdateTimes = true
-		s = casync.NewCache(s, cache)
+		s = desync.NewCache(s, cache)
 	}
 
 	// Read the input
@@ -102,7 +102,7 @@ func cache(args []string) {
 
 	var (
 		wg   sync.WaitGroup
-		in   = make(chan casync.ChunkID)
+		in   = make(chan desync.ChunkID)
 		mu   sync.Mutex
 		errs []error
 	)

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	casync "github.com/folbricht/go-casync"
+	"github.com/folbricht/desync"
 )
 
 const usage = `desync <command> [options]
@@ -49,13 +49,13 @@ func main() {
 	}
 }
 
-func readCaibxFile(name string) (c casync.Caibx, err error) {
+func readCaibxFile(name string) (c desync.Caibx, err error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	return casync.CaibxFromReader(f)
+	return desync.CaibxFromReader(f)
 }
 
 func die(err error) {

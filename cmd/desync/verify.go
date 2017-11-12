@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	casync "github.com/folbricht/go-casync"
+	"github.com/folbricht/desync"
 )
 
 const verifyUsage = `desync verify -s <store> [-rn]
@@ -39,7 +39,7 @@ func verify(args []string) {
 		die(errors.New("No store provided."))
 	}
 
-	s, err := casync.NewLocalStore(storeLocation)
+	s, err := desync.NewLocalStore(storeLocation)
 	if err != nil {
 		die(err)
 	}

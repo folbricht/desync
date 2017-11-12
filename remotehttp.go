@@ -1,4 +1,4 @@
-package casync
+package desync
 
 import (
 	"fmt"

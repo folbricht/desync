@@ -1,4 +1,4 @@
-package casync
+package desync
 
 const (
 	// Format identifiers

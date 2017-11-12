@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	casync "github.com/folbricht/go-casync"
+	"github.com/folbricht/desync"
 )
 
 const extractUsage = `desync extract [options] <caibx> <output>
@@ -26,7 +26,7 @@ func extract(args []string) {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
-		stores         []casync.Store
+		stores         []desync.Store
 	)
 	flags := flag.NewFlagSet("extract", flag.ExitOnError)
 	flags.Usage = func() {
@@ -64,20 +64,20 @@ func extract(args []string) {
 		if err != nil {
 			die(fmt.Errorf("Unable to parse store location %s : %s", location, err))
 		}
-		var s casync.Store
+		var s desync.Store
 		switch loc.Scheme {
 		case "ssh":
-			s, err = casync.NewRemoteSSHStore(loc, n)
+			s, err = desync.NewRemoteSSHStore(loc, n)
 			if err != nil {
 				die(err)
 			}
 		case "http", "https":
-			s, err = casync.NewRemoteHTTPStore(loc)
+			s, err = desync.NewRemoteHTTPStore(loc)
 			if err != nil {
 				die(err)
 			}
 		case "":
-			s, err = casync.NewLocalStore(loc.Path)
+			s, err = desync.NewLocalStore(loc.Path)
 			if err != nil {
 				die(err)
 			}
@@ -88,17 +88,17 @@ func extract(args []string) {
 	}
 
 	// Combine all stores into one router
-	var s casync.Store = casync.NewStoreRouter(stores...)
+	var s desync.Store = desync.NewStoreRouter(stores...)
 
 	// See if we want to use a local store as cache, if so, attach a cache to
 	// the router
 	if cacheLocation != "" {
-		cache, err := casync.NewLocalStore(cacheLocation)
+		cache, err := desync.NewLocalStore(cacheLocation)
 		if err != nil {
 			die(err)
 		}
 		cache.UpdateTimes = true
-		s = casync.NewCache(s, cache)
+		s = desync.NewCache(s, cache)
 	}
 
 	// Read the input
@@ -116,7 +116,7 @@ func extract(args []string) {
 	}
 }
 
-func writeOutput(name string, chunks []casync.BlobIndexChunk, s casync.Store, n int) []error {
+func writeOutput(name string, chunks []desync.BlobIndexChunk, s desync.Store, n int) []error {
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
@@ -149,12 +149,12 @@ func writeOutput(name string, chunks []casync.BlobIndexChunk, s casync.Store, n 
 
 // Opens n goroutines, creating one filehandle for the file "name" per goroutine
 // and writes to the file simultaneously
-func assembleBlob(name string, chunks []casync.BlobIndexChunk, s casync.Store, n int) []error {
+func assembleBlob(name string, chunks []desync.BlobIndexChunk, s desync.Store, n int) []error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		errs []error
-		in   = make(chan casync.BlobIndexChunk)
+		in   = make(chan desync.BlobIndexChunk)
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -193,11 +193,11 @@ func assembleBlob(name string, chunks []casync.BlobIndexChunk, s casync.Store, n
 				// while at the same time calculate the SHA512/256 so we can compare it.
 				h := sha512.New512_256()
 				mw := io.MultiWriter(h, f)
-				if _, err = casync.DecompressInto(mw, b); err != nil {
+				if _, err = desync.DecompressInto(mw, b); err != nil {
 					recordError(err)
 					continue
 				}
-				sum, err := casync.ChunkIDFromSlice(h.Sum(nil))
+				sum, err := desync.ChunkIDFromSlice(h.Sum(nil))
 				if err != nil {
 					recordError(err)
 					continue
