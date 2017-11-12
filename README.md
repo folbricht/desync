@@ -1,7 +1,7 @@
 desync
 ======
 
-This project doesn't seek to be a full reimplementation of upstream casync, but is a collection of tools that utilize certain aspects of casync for very specific use cases.
+This project doesn't seek to be a full reimplementation of upstream casync, but is a client that operates on casync chunk stores as well as blob index files to address specific use cases.
 
 ## Goals And Non-Goals
 
@@ -14,10 +14,6 @@ Among the distinguishing factors:
 - SHA512/256 is currently the only supported hash function.
 - Only chunk store using zstd compression are supported at this point.
 - Supports local stores as well as remote stores over SSH and HTTP
-
-## desync
-
-Client to operate on casync chunk stores as well as blob index files.
 
 ### Subcommands
 - extract     - build a blob from a caibx file
