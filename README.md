@@ -19,7 +19,7 @@ Among the distinguishing factors:
 - extract     - build a blob from a caibx file
 - verify      - verify the integrity of a local store
 - list-chunks - list all chunk IDs contained in a caibx
-- cache       - populate a cache without writing to a blob
+- cache       - populate a cache from index files without writing to a blob
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify` command only supports one, local store.
@@ -60,9 +60,9 @@ Verify a local cache. Errors will be reported to STDOUT, since `-r` is not given
 desync verify -s /some/local/store
 ```
 
-Cache the chunks used in a caibx in a local store without actually writing the blob.
+Cache the chunks used in a couple of index files in a local store without actually writing the blob.
 ```
-desync cache -s ssh://192.168.1.1/path/to/casync.store/ -c /local/cache somefile.tar.caibx
+desync cache -s ssh://192.168.1.1/path/to/casync.store/ -c /local/cache somefile.tar.caibx other.file.caibx
 ```
 
 List the chunks referenced in a caibx.

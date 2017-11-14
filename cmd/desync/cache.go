@@ -12,16 +12,15 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const cacheUsage = `desync cache [options] <caibx>
+const cacheUsage = `desync cache [options] <caibx> [<caibx>..]
 
-Read a caibx from one or more stores without creating a blob. Can be used to
-pre-populate a local cache.`
+Read chunk IDs in caibx files from one or more stores without creating a blob.
+Can be used to pre-populate a local cache.`
 
 func cache(args []string) {
 	var (
 		cacheLocation  string
 		n              int
-		err            error
 		storeLocations = new(multiArg)
 		stores         []desync.Store
 	)
@@ -39,15 +38,22 @@ func cache(args []string) {
 	if flags.NArg() < 1 {
 		die(errors.New("Not enough arguments. See -h for help."))
 	}
-	if flags.NArg() > 1 {
-		die(errors.New("Too many arguments. See -h for help."))
-	}
-
-	inFile := flags.Arg(0)
 
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
 		die(errors.New("No casync store provided. See -h for help."))
+	}
+
+	// Read the input files and merge all chunk IDs in a map to de-dup them
+	ids := make(map[desync.ChunkID]struct{})
+	for _, name := range flags.Args() {
+		c, err := readCaibxFile(name)
+		if err != nil {
+			die(err)
+		}
+		for _, c := range c.Chunks {
+			ids[c.ID] = struct{}{}
+		}
 	}
 
 	// Go through each stored passed in the command line, initialize them, and
@@ -94,12 +100,6 @@ func cache(args []string) {
 		s = desync.NewCache(s, cache)
 	}
 
-	// Read the input
-	c, err := readCaibxFile(inFile)
-	if err != nil {
-		die(err)
-	}
-
 	var (
 		wg   sync.WaitGroup
 		in   = make(chan desync.ChunkID)
@@ -130,16 +130,15 @@ func cache(args []string) {
 		}()
 	}
 
-	// Write the list of chunk IDs to STDOUT
-	for _, chunk := range c.Chunks {
+	// Feed the workers, stop on any errors
+	for id := range ids {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
 			break
 		default:
 		}
-
-		in <- chunk.ID
+		in <- id
 	}
 	close(in)
 	wg.Wait()
