@@ -118,7 +118,7 @@ func chopFile(name string, chunks []desync.BlobIndexChunk, s desync.LocalStore, 
 				}
 
 				// Compress the chunk
-				cb, err := zstd.Compress(nil, b)
+				cb, err := zstd.CompressLevel(nil, b, 3)
 				if err != nil {
 					recordError(err)
 					continue
