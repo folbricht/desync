@@ -20,6 +20,7 @@ Among the distinguishing factors:
 - verify      - verify the integrity of a local store
 - list-chunks - list all chunk IDs contained in a caibx
 - cache       - populate a cache from index files without writing to a blob
+- chop        - split a blob according to an existing caibx and store the chunks
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify` command only supports one, local store.
@@ -70,6 +71,12 @@ List the chunks referenced in a caibx.
 desync list-chunks somefile.tar.caibx
 ```
 
+Chop an existing file according to an existing caibx and store the chunks in a local store. This can be used
+to populate a local cache from a possibly large blob that already exists on the target system.
+```
+desync chop -s /some/local/store somefile.tar.caibx somefile.tar
+```
+
 ## TODOs
 - Write tests
 - Pre-allocate the output file to avoid fragmentation
@@ -77,4 +84,3 @@ desync list-chunks somefile.tar.caibx
 - Support retrieval of index files from the chunk store
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
 - When using the remote store, multiple SSH sessions and casync processes are started, there's nothing to stop them yet (relies on process shutdown/cleanup)
-- Code cleanup and reorg

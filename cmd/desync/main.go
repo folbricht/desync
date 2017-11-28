@@ -17,6 +17,7 @@ extract     - build a blob from a caibx file
 verify      - verify the integrity of a local store
 list-chunks - list all chunk IDs contained in a caibx
 cache       - populate a cache without writing to a blob
+chop        - split a blob based on existing caibx and store the chunks
 `
 
 func main() {
@@ -44,6 +45,8 @@ func main() {
 		cache(args)
 	case "list-chunks":
 		list(args)
+	case "chop":
+		chop(args)
 	default:
 		die(fmt.Errorf("Unknown command %s", cmd))
 	}
