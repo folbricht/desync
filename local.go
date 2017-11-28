@@ -164,6 +164,16 @@ func (s LocalStore) verifyChunk(id ChunkID) error {
 	return nil
 }
 
+// HasChunk returns true if the chunk is in the store
+func (s LocalStore) HasChunk(id ChunkID) bool {
+	sID := id.String()
+	p := filepath.Join(s.Base, sID[0:4], sID) + chunkFileExt
+	if _, err := os.Stat(p); err == nil {
+		return true
+	}
+	return false
+}
+
 func (s LocalStore) String() string {
 	return s.Base
 }

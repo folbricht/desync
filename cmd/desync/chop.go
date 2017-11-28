@@ -80,7 +80,7 @@ func chopFile(name string, chunks []desync.BlobIndexChunk, s desync.LocalStore, 
 		cancel()
 	}
 
-	// Start the workers, each having its own filehandle to write concurrently
+	// Start the workers, each having its own filehandle to read concurrently
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		f, err := os.Open(name)
@@ -90,6 +90,11 @@ func chopFile(name string, chunks []desync.BlobIndexChunk, s desync.LocalStore, 
 		defer f.Close()
 		go func() {
 			for c := range in {
+				// Skip this chunk if the store already has it
+				if s.HasChunk(c.ID) {
+					continue
+				}
+
 				// Position the filehandle to the place where the chunk is meant to come
 				// from within the file
 				if _, err = f.Seek(int64(c.Start), io.SeekStart); err != nil {
