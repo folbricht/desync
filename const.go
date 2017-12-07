@@ -36,4 +36,7 @@ const (
 
 	// Protocol request flags
 	CaProtocolRequestHighPriority = 1
+
+	// Chunk properties
+	CaProtocolChunkCompressed = 1
 )

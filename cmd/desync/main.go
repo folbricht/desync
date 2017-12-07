@@ -18,6 +18,7 @@ verify      - verify the integrity of a local store
 list-chunks - list all chunk IDs contained in a caibx
 cache       - populate a cache without writing to a blob
 chop        - split a blob based on existing caibx and store the chunks
+pull        - serve chunks using the casync protocol over stdin/stdout
 `
 
 func main() {
@@ -47,6 +48,8 @@ func main() {
 		list(args)
 	case "chop":
 		chop(args)
+	case "pull":
+		pull(args)
 	default:
 		die(fmt.Errorf("Unknown command %s", cmd))
 	}

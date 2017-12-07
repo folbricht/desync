@@ -14,6 +14,7 @@ Among the distinguishing factors:
 - SHA512/256 is currently the only supported hash function.
 - Only chunk store using zstd compression are supported at this point.
 - Supports local stores as well as remote stores over SSH and HTTP
+- Drop-in replacement for casync on SSH servers when serving chunks read-only
 
 ### Subcommands
 - extract     - build a blob from a caibx file
@@ -21,6 +22,7 @@ Among the distinguishing factors:
 - list-chunks - list all chunk IDs contained in a caibx
 - cache       - populate a cache from index files without writing to a blob
 - chop        - split a blob according to an existing caibx and store the chunks
+- pull        - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify` command only supports one, local store.
@@ -78,7 +80,6 @@ desync chop -s /some/local/store somefile.tar.caibx somefile.tar
 ```
 
 ## TODOs
-- Write tests
 - Pre-allocate the output file to avoid fragmentation
 - Check output file size, compare to expected size
 - Support retrieval of index files from the chunk store
