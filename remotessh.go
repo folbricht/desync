@@ -14,16 +14,17 @@ import (
 type RemoteSSH struct {
 	location *url.URL
 	pool     chan *Protocol // use a buffered channel as session "pool"
+	n        int
 }
 
 // NewRemoteSSHStore establishes up to n connections with a casync chunk server
 func NewRemoteSSHStore(location *url.URL, n int) (*RemoteSSH, error) {
-	remote := RemoteSSH{location: location, pool: make(chan *Protocol, n)}
+	remote := RemoteSSH{location: location, pool: make(chan *Protocol, n), n: n}
 	// Start n sessions and put them into the pool (buffered channel)
 	for i := 0; i < n; i++ {
 		s, err := StartProtocol(location.Host, location.Path)
 		if err != nil {
-			return &remote, errors.Wrap(err, "failed to start casync session")
+			return &remote, errors.Wrap(err, "failed to start chunk server command")
 		}
 		remote.pool <- s
 	}
@@ -33,11 +34,21 @@ func NewRemoteSSHStore(location *url.URL, n int) (*RemoteSSH, error) {
 // GetChunk requests a chunk from the server and returns a (compressed) one.
 // It uses any of the n sessions this store maintains in its pool. Blocks until
 // one session becomes available
-func (s *RemoteSSH) GetChunk(id ChunkID) ([]byte, error) {
-	session := <-s.pool
-	b, err := session.RequestChunk(id)
-	s.pool <- session
+func (r *RemoteSSH) GetChunk(id ChunkID) ([]byte, error) {
+	client := <-r.pool
+	b, err := client.RequestChunk(id)
+	r.pool <- client
 	return b, err
+}
+
+// Close terminates all client connections
+func (r *RemoteSSH) Close() error {
+	var err error
+	for i := 0; i < r.n; i++ {
+		client := <-r.pool
+		err = client.SendGoodbye()
+	}
+	return err
 }
 
 func (r *RemoteSSH) String() string {

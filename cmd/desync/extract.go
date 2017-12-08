@@ -67,10 +67,12 @@ func extract(args []string) {
 		var s desync.Store
 		switch loc.Scheme {
 		case "ssh":
-			s, err = desync.NewRemoteSSHStore(loc, n)
+			r, err := desync.NewRemoteSSHStore(loc, n)
 			if err != nil {
 				die(err)
 			}
+			defer r.Close()
+			s = r
 		case "http", "https":
 			s, err = desync.NewRemoteHTTPStore(loc)
 			if err != nil {

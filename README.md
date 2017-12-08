@@ -84,4 +84,7 @@ desync chop -s /some/local/store somefile.tar.caibx somefile.tar
 - Check output file size, compare to expected size
 - Support retrieval of index files from the chunk store
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
-- When using the remote store, multiple SSH sessions and casync processes are started, there's nothing to stop them yet (relies on process shutdown/cleanup)
+- Implement 'make' command splitting blobs into chunks using the same method for finding chunk boundaries as casync does
+- Add 'chunk-server' command to bring up an HTTP server for chunks, perhaps with write (POST) support. This could support chaining stores with local caches, like a proxy
+- Add 'prune' command to clean out a local store except for what's in provided index files
+- Support extracting catar files

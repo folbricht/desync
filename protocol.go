@@ -122,6 +122,15 @@ func (p *Protocol) SendMissing(id ChunkID) error {
 	return p.WriteMessage(m)
 }
 
+// SendGoodbye tells the other side to terminate gracefully
+func (p *Protocol) SendGoodbye() error {
+	if !p.initialized {
+		return errors.New("protocol not initialized")
+	}
+	m := Message{Type: CaProtocolGoodbye, Body: nil}
+	return p.WriteMessage(m)
+}
+
 // RequestChunk sends a request for a specific chunk to the server, waits for
 // the response and returns the bytes in the chunk. Returns an error if the
 // server reports the chunk as missing
