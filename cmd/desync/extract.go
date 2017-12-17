@@ -118,7 +118,7 @@ func extract(args []string) {
 	}
 }
 
-func writeOutput(name string, chunks []desync.BlobIndexChunk, s desync.Store, n int) []error {
+func writeOutput(name string, chunks []desync.IndexChunk, s desync.Store, n int) []error {
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
@@ -151,12 +151,12 @@ func writeOutput(name string, chunks []desync.BlobIndexChunk, s desync.Store, n 
 
 // Opens n goroutines, creating one filehandle for the file "name" per goroutine
 // and writes to the file simultaneously
-func assembleBlob(name string, chunks []desync.BlobIndexChunk, s desync.Store, n int) []error {
+func assembleBlob(name string, chunks []desync.IndexChunk, s desync.Store, n int) []error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		errs []error
-		in   = make(chan desync.BlobIndexChunk)
+		in   = make(chan desync.IndexChunk)
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -62,12 +62,12 @@ func chop(args []string) {
 	}
 }
 
-func chopFile(name string, chunks []desync.BlobIndexChunk, s desync.LocalStore, n int) []error {
+func chopFile(name string, chunks []desync.IndexChunk, s desync.LocalStore, n int) []error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		errs []error
-		in   = make(chan desync.BlobIndexChunk)
+		in   = make(chan desync.IndexChunk)
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -19,6 +19,7 @@ list-chunks - list all chunk IDs contained in a caibx
 cache       - populate a cache without writing to a blob
 chop        - split a blob based on existing caibx and store the chunks
 pull        - serve chunks using the casync protocol over stdin/stdout
+untar       - extract directory tree from a catar file
 `
 
 func main() {
@@ -50,18 +51,20 @@ func main() {
 		chop(args)
 	case "pull":
 		pull(args)
+	case "untar":
+		untar(args)
 	default:
 		die(fmt.Errorf("Unknown command %s", cmd))
 	}
 }
 
-func readCaibxFile(name string) (c desync.Caibx, err error) {
+func readCaibxFile(name string) (c desync.Index, err error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	return desync.CaibxFromReader(f)
+	return desync.IndexFromReader(f)
 }
 
 func die(err error) {

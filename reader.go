@@ -37,3 +37,14 @@ func (r reader) ReadID() (ChunkID, error) {
 	}
 	return ChunkIDFromSlice(b)
 }
+
+// ReadHeader returns the size and type of the element or an error if there
+// aren't enough bytes left in the stream
+func (r reader) ReadHeader() (h FormatHeader, err error) {
+	h.Size, err = r.ReadUint64()
+	if err != nil {
+		return
+	}
+	h.Type, err = r.ReadUint64()
+	return
+}
