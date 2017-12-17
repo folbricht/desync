@@ -10,7 +10,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/datadog/zstd"
 	"github.com/folbricht/desync"
 )
 
@@ -118,7 +117,7 @@ func chopFile(name string, chunks []desync.IndexChunk, s desync.LocalStore, n in
 				}
 
 				// Compress the chunk
-				cb, err := zstd.CompressLevel(nil, b, 3)
+				cb, err := desync.Compress(b)
 				if err != nil {
 					recordError(err)
 					continue

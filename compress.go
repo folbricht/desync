@@ -1,16 +1,17 @@
 package desync
 
 import (
-	"bytes"
-	"io"
-
 	"github.com/datadog/zstd"
 )
 
-// DecompressInto takes a raw (compressed) chunk as returned by the store and
-// unpacks it into a provided writer. Returns the number of bytes written.
-func DecompressInto(w io.Writer, b []byte) (int64, error) {
-	r := zstd.NewReader(bytes.NewReader(b))
-	defer r.Close()
-	return io.Copy(w, r)
+// Compress a block using the only (currently) supported algorithm
+func Compress(b []byte) ([]byte, error) {
+	return zstd.CompressLevel(nil, b, 3)
+}
+
+// Decompress a block using the only supported algorithm. If you already have
+// a buffer it can be passed into out and will be used. If out=nil, a buffer
+// will be allocated.
+func Decompress(out, in []byte) ([]byte, error) {
+	return zstd.Decompress(out, in)
 }

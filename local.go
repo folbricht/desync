@@ -150,14 +150,13 @@ func (s LocalStore) verifyChunk(id ChunkID) error {
 	if err != nil {
 		return err
 	}
-	h := sha512.New512_256()
-	if _, err = DecompressInto(h, b); err != nil {
-		return err
-	}
-	sum, err := ChunkIDFromSlice(h.Sum(nil))
+	// The the chunk is compressed. Decompress it here
+	db, err := Decompress(nil, b)
 	if err != nil {
 		return err
 	}
+	// Verify the checksum of the chunk matches the ID
+	sum := sha512.Sum512_256(db)
 	if sum != id {
 		return ChunkInvalid{ID: id, Sum: sum}
 	}

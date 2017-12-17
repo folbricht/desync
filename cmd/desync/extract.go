@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -198,27 +197,29 @@ func assembleBlob(name string, chunks []desync.IndexChunk, s desync.Store, n int
 					recordError(err)
 					continue
 				}
-				// Position the filehandle to the place where the chunk is meant to go
-				// inside the file
-				if _, err = f.Seek(int64(c.Start), io.SeekStart); err != nil {
-					recordError(err)
-					continue
-				}
-				// The the chunk is compressed. Decompress it into the output stream
-				// while at the same time calculate the SHA512/256 so we can compare it.
-				h := sha512.New512_256()
-				mw := io.MultiWriter(h, f)
-				if _, err = desync.DecompressInto(mw, b); err != nil {
-					recordError(err)
-					continue
-				}
-				sum, err := desync.ChunkIDFromSlice(h.Sum(nil))
+				// Since we know how big the chunk is supposed to be, pre-allocate a
+				// slice to decompress into
+				db := make([]byte, c.Size)
+				// The the chunk is compressed. Decompress it here
+				db, err = desync.Decompress(db, b)
 				if err != nil {
 					recordError(err)
 					continue
 				}
+				// Verify the checksum of the chunk matches the ID
+				sum := sha512.Sum512_256(db)
 				if sum != c.ID {
-					recordError(fmt.Errorf("unexpected sha256 %s for chunk id %s", sum, c.ID))
+					recordError(fmt.Errorf("unexpected sha512/256 %s for chunk id %s", sum, c.ID))
+					continue
+				}
+				// Might as well verify the chunk size while we're at it
+				if c.Size != uint64(len(db)) {
+					recordError(fmt.Errorf("unexpected size for chunk %s", c.ID))
+					continue
+				}
+				// Write the decompressed chunk into the file at the right position
+				if _, err = f.WriteAt(db, int64(c.Start)); err != nil {
+					recordError(err)
 					continue
 				}
 			}
