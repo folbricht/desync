@@ -10,8 +10,10 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/folbricht/desync"
 )
@@ -122,12 +124,23 @@ func writeOutput(name string, chunks []desync.IndexChunk, s desync.Store, n int)
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
-	tmpfile, err := ioutil.TempFile(filepath.Dir(name), ".desync")
+	tmpfile, err := ioutil.TempFile(filepath.Dir(name), "."+name)
 	if err != nil {
 		return []error{err}
 	}
 	tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
+
+	// Install a signal handler to make really sure the file is deleted even
+	// on Ctrl+C or SIGTERM
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		fmt.Fprintln(os.Stderr, "Interrupted")
+		os.Remove(tmpfile.Name())
+		os.Exit(1)
+	}()
 
 	// Build the blob from the chunks, writing everything into the tempfile
 	errs := assembleBlob(tmpfile.Name(), chunks, s, n)
