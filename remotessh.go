@@ -22,7 +22,7 @@ func NewRemoteSSHStore(location *url.URL, n int) (*RemoteSSH, error) {
 	remote := RemoteSSH{location: location, pool: make(chan *Protocol, n), n: n}
 	// Start n sessions and put them into the pool (buffered channel)
 	for i := 0; i < n; i++ {
-		s, err := StartProtocol(location.Host, location.Path)
+		s, err := StartProtocol(location)
 		if err != nil {
 			return &remote, errors.Wrap(err, "failed to start chunk server command")
 		}
@@ -59,7 +59,7 @@ func (r *RemoteSSH) String() string {
 // the value in CASYNC_SSH_PATH (default "ssh"), and executes the command in
 // CASYNC_REMOTE_PATH (default "casync"). It then performs the HELLO handshake
 // to initialze the connection
-func StartProtocol(host string, path string) (*Protocol, error) {
+func StartProtocol(u *url.URL) (*Protocol, error) {
 	sshCmd := os.Getenv("CASYNC_SSH_PATH")
 	if sshCmd == "" {
 		sshCmd = "ssh"
@@ -67,6 +67,13 @@ func StartProtocol(host string, path string) (*Protocol, error) {
 	remoteCmd := os.Getenv("CASYNC_REMOTE_PATH")
 	if remoteCmd == "" {
 		remoteCmd = "casync"
+	}
+
+	host := u.Host
+	path := u.Path
+	// If a username was given in the URL, prefix the host
+	if u.User != nil {
+		host = u.User.Username() + "@" + u.Host
 	}
 
 	c := exec.Command(sshCmd, host, fmt.Sprintf("%s pull - - - '%s'", remoteCmd, path))
