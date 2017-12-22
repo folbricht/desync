@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestArchiveDecoder(t *testing.T) {
+func TestFormatDecoder(t *testing.T) {
 	f, err := os.Open("testdata/flat.catar")
 	if err != nil {
 		t.Fatal(err)

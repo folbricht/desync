@@ -5,6 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"os"
+	"time"
 )
 
 type FormatHeader struct {
@@ -15,11 +17,11 @@ type FormatHeader struct {
 type FormatEntry struct {
 	FormatHeader
 	FeatureFlags uint64
-	Mode         uint64
+	Mode         os.FileMode
 	Flags        uint64
-	UID          uint64
-	GID          uint64
-	MTime        uint64
+	UID          int
+	GID          int
+	MTime        time.Time
 }
 
 type FormatUser struct {
@@ -162,26 +164,30 @@ func (d *FormatDecoder) Next() (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		e.Mode, err = d.r.ReadUint64()
+		mode, err := d.r.ReadUint64()
 		if err != nil {
 			return nil, err
 		}
+		e.Mode = os.FileMode(mode)
 		e.Flags, err = d.r.ReadUint64()
 		if err != nil {
 			return nil, err
 		}
-		e.UID, err = d.r.ReadUint64()
+		uid, err := d.r.ReadUint64()
 		if err != nil {
 			return nil, err
 		}
-		e.GID, err = d.r.ReadUint64()
+		e.UID = int(uid)
+		gid, err := d.r.ReadUint64()
 		if err != nil {
 			return nil, err
 		}
-		e.MTime, err = d.r.ReadUint64()
+		e.GID = int(gid)
+		mtime, err := d.r.ReadUint64()
 		if err != nil {
 			return nil, err
 		}
+		e.MTime = time.Unix(0, int64(mtime))
 		return e, nil
 
 	case CaFormatUser:

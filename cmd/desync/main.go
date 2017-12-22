@@ -34,7 +34,7 @@ func main() {
 
 	cmd := os.Args[1]
 	args := os.Args[2:]
-
+	var err error
 	switch cmd {
 	case "-h":
 		flag.Usage()
@@ -52,9 +52,12 @@ func main() {
 	case "pull":
 		pull(args)
 	case "untar":
-		untar(args)
+		err = untar(args)
 	default:
-		die(fmt.Errorf("Unknown command %s", cmd))
+		err = fmt.Errorf("Unknown command %s", cmd)
+	}
+	if err != nil {
+		die(err)
 	}
 }
 

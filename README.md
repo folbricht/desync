@@ -1,7 +1,7 @@
 desync
 ======
 
-This project doesn't seek to be a full reimplementation of upstream casync, but is a client that operates on casync chunk stores as well as blob index files to address specific use cases.
+This project doesn't seek to be a full reimplementation of upstream [casync](https://github.com/systemd/casync), but is a client that operates on casync chunk stores, index files, and archives to address specific use cases.
 
 ## Goals And Non-Goals
 
@@ -10,19 +10,20 @@ Among the distinguishing factors:
 - Where the upstream command has chosen to optimize for storage efficiency (f/e, being able to use local files as "seeds", building temporary indexes into them), this command chooses to optimize for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at cost to storage efficiency.
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
 
-- Supporting the .catar archive format (whether or not packaged in a .caidx) is not presently a goal.
 - SHA512/256 is currently the only supported hash function.
 - Only chunk store using zstd compression are supported at this point.
 - Supports local stores as well as remote stores over SSH and HTTP
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
+- Support for catar file (unpack) exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present
 
 ### Subcommands
-- extract     - build a blob from a caibx file
-- verify      - verify the integrity of a local store
-- list-chunks - list all chunk IDs contained in a caibx
-- cache       - populate a cache from index files without writing to a blob
-- chop        - split a blob according to an existing caibx and store the chunks
-- pull        - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
+- `extract`     - build a blob from an index file
+- `verify`      - verify the integrity of a local store
+- `list-chunks` - list all chunk IDs contained in an index file
+- `cache`       - populate a cache from index files without writing to a blob
+- `chop`        - split a blob according to an existing caibx and store the chunks in a local store
+- `pull`        - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
+- `untar`       - unpack a catar file
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify` command only supports one, local store.
@@ -79,6 +80,11 @@ to populate a local cache from a possibly large blob that already exists on the 
 desync chop -s /some/local/store somefile.tar.caibx somefile.tar
 ```
 
+Unpack a catar file.
+```
+desync untar archive.catar /some/dir
+```
+
 ## TODOs
 - Pre-allocate the output file to avoid fragmentation
 - Check output file size, compare to expected size
@@ -87,4 +93,3 @@ desync chop -s /some/local/store somefile.tar.caibx somefile.tar
 - Implement 'make' command splitting blobs into chunks using the same method for finding chunk boundaries as casync does
 - Add 'chunk-server' command to bring up an HTTP server for chunks, perhaps with write (POST) support. This could support chaining stores with local caches, like a proxy
 - Add 'prune' command to clean out a local store except for what's in provided index files
-- Support extracting catar files
