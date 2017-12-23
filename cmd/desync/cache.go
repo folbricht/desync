@@ -56,7 +56,7 @@ func cache(ctx context.Context, args []string) error {
 		}
 	}
 
-	// Go through each stored passed in the command line, initialize them, and
+	// Go through each store passed in the command line, initialize them, and
 	// build a list
 	for _, location := range storeLocations.list {
 		loc, err := url.Parse(location)

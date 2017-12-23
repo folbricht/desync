@@ -23,6 +23,7 @@ cache       - populate a cache without writing to a blob
 chop        - split a blob based on existing caibx and store the chunks
 pull        - serve chunks using the casync protocol over stdin/stdout
 untar       - extract directory tree from a catar file
+prune       - remove all unreferenced chunks from a local store
 `
 
 func main() {
@@ -48,31 +49,32 @@ func main() {
 
 	cmd := os.Args[1]
 	args := os.Args[2:]
-	var err error
-	switch cmd {
-	case "-h":
-		flag.Usage()
-		os.Exit(1)
-	case "extract":
-		err = extract(ctx, args)
-	case "verify":
-		err = verify(ctx, args)
-	case "cache":
-		err = cache(ctx, args)
-	case "list-chunks":
-		err = list(ctx, args)
-	case "chop":
-		err = chop(ctx, args)
-	case "pull":
-		err = pull(ctx, args)
-	case "untar":
-		err = untar(ctx, args)
-	default:
-		err = fmt.Errorf("Unknown command %s", cmd)
+
+	handlers := map[string]func(context.Context, []string) error{
+		"-h":          help,
+		"extract":     extract,
+		"verify":      verify,
+		"cache":       cache,
+		"list-chunks": list,
+		"chop":        chop,
+		"pull":        pull,
+		"untar":       untar,
+		"prune":       prune,
 	}
-	if err != nil {
+	h, ok := handlers[cmd]
+	if !ok {
+		die(fmt.Errorf("Unknown command %s", cmd))
+	}
+
+	if err := h(ctx, args); err != nil {
 		die(err)
 	}
+}
+
+func help(ctx context.Context, args []string) error {
+	flag.Usage()
+	os.Exit(1)
+	return nil
 }
 
 func readCaibxFile(name string) (c desync.Index, err error) {

@@ -24,6 +24,7 @@ Among the distinguishing factors:
 - `chop`        - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`        - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 - `untar`       - unpack a catar file
+- `prune`       - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify` command only supports one, local store.
@@ -85,6 +86,11 @@ Unpack a catar file.
 desync untar archive.catar /some/dir
 ```
 
+Prune a store to only contain chunks that are referenced in the provided index files. Possible data loss.
+```
+desync prune -s /some/local/store index1.caibx index2.caibx
+```
+
 ## TODOs
 - Pre-allocate the output file to avoid fragmentation
 - Check output file size, compare to expected size
@@ -92,4 +98,3 @@ desync untar archive.catar /some/dir
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
 - Implement 'make' command splitting blobs into chunks using the same method for finding chunk boundaries as casync does
 - Add 'chunk-server' command to bring up an HTTP server for chunks, perhaps with write (POST) support. This could support chaining stores with local caches, like a proxy
-- Add 'prune' command to clean out a local store except for what's in provided index files

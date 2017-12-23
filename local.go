@@ -151,6 +151,44 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
 	return err
 }
 
+// Prune removes any chunks from the store that are not contained in a list
+// of chunks
+func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
+	// Go trough all chunks underneath Base, filtering out other directories and files
+	err := filepath.Walk(s.Base, func(path string, info os.FileInfo, err error) error {
+		// See if we're meant to stop
+		select {
+		case <-ctx.Done():
+			return errors.New("interrupted")
+		default:
+		}
+		if err != nil { // failed to walk? => fail
+			return err
+		}
+		if info.IsDir() { // Skip dirs
+			return nil
+		}
+		if !strings.HasSuffix(path, chunkFileExt) { // Skip files without chunk extension
+			return nil
+		}
+		// Convert the name into a checksum, if that fails we're probably not looking
+		// at a chunk file and should skip it.
+		id, err := ChunkIDFromString(strings.TrimSuffix(filepath.Base(path), ".cacnk"))
+		if err != nil {
+			return nil
+		}
+		// See if the chunk we're looking at is in the list we want to keep, if not
+		// remove it.
+		if _, ok := ids[id]; !ok {
+			if err = s.RemoveChunk(id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}
+
 // Unpack a chunk, calculate the checksum of its content and return nil if
 // they match.
 func (s LocalStore) verifyChunk(id ChunkID) error {
