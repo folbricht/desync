@@ -124,10 +124,7 @@ func makeSymlink(base string, d desync.NodeSymlink) error {
 	// set them here. But they do matter somewhat on Mac, so should probably
 	// add some Mac-specific logic for that here.
 	// fchmodat() with flag AT_SYMLINK_NOFOLLOW
-	if err := os.Lchown(dst, d.UID, d.GID); err != nil {
-		return err
-	}
-	return os.Chtimes(dst, d.MTime, d.MTime)
+	return os.Lchown(dst, d.UID, d.GID)
 }
 
 func makeDevice(base string, d desync.NodeDevice) error {
