@@ -17,20 +17,23 @@ Among the distinguishing factors:
 - Support for catar file (unpack) exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present
 
 ### Subcommands
-- `extract`     - build a blob from an index file
-- `verify`      - verify the integrity of a local store
-- `list-chunks` - list all chunk IDs contained in an index file
-- `cache`       - populate a cache from index files without writing to a blob
-- `chop`        - split a blob according to an existing caibx and store the chunks in a local store
-- `pull`        - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
-- `untar`       - unpack a catar file
-- `prune`       - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
+- `extract`      - build a blob from an index file
+- `verify`       - verify the integrity of a local store
+- `list-chunks`  - list all chunk IDs contained in an index file
+- `cache`        - populate a cache from index files without writing to a blob
+- `chop`         - split a blob according to an existing caibx and store the chunks in a local store
+- `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
+- `untar`        - unpack a catar file
+- `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
+- `chunk-server` - start a chunk server that serves chunks via HTTP
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify` command only supports one, local store.
 - `-c <store>` Location of a *local* chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
+- `-y` Answer with `yes` when asked for confirmation. Only supported by the `prune` command.
+- `-l` Listening address for the HTTP chunk server. Only supported by the `chunk-server` command.
 
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
@@ -91,10 +94,19 @@ Prune a store to only contain chunks that are referenced in the provided index f
 desync prune -s /some/local/store index1.caibx index2.caibx
 ```
 
+Start a chunk server serving up a local store via port 80.
+```
+desync chunk-server -s /some/local/store
+```
+
+Start a chunk server on port 8080 acting as proxy for other remote HTTP and SSH stores and populate a local cache.
+```
+desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -l :8080
+```
+
 ## TODOs
 - Pre-allocate the output file to avoid fragmentation
 - Check output file size, compare to expected size
 - Support retrieval of index files from the chunk store
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
 - Implement 'make' command splitting blobs into chunks using the same method for finding chunk boundaries as casync does
-- Add 'chunk-server' command to bring up an HTTP server for chunks, perhaps with write (POST) support. This could support chaining stores with local caches, like a proxy

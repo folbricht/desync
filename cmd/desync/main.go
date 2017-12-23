@@ -16,14 +16,15 @@ const usage = `desync <command> [options]
 desync <command> -h
 
 Commands:
-extract     - build a blob from a caibx file
-verify      - verify the integrity of a local store
-list-chunks - list all chunk IDs contained in a caibx
-cache       - populate a cache without writing to a blob
-chop        - split a blob based on existing caibx and store the chunks
-pull        - serve chunks using the casync protocol over stdin/stdout
-untar       - extract directory tree from a catar file
-prune       - remove all unreferenced chunks from a local store
+extract      - build a blob from a caibx file
+verify       - verify the integrity of a local store
+list-chunks  - list all chunk IDs contained in a caibx
+cache        - populate a cache without writing to a blob
+chop         - split a blob based on existing caibx and store the chunks
+pull         - serve chunks using the casync protocol over stdin/stdout
+untar        - extract directory tree from a catar file
+prune        - remove all unreferenced chunks from a local store
+chunk-server - start a HTTP chunk server
 `
 
 func main() {
@@ -51,15 +52,16 @@ func main() {
 	args := os.Args[2:]
 
 	handlers := map[string]func(context.Context, []string) error{
-		"-h":          help,
-		"extract":     extract,
-		"verify":      verify,
-		"cache":       cache,
-		"list-chunks": list,
-		"chop":        chop,
-		"pull":        pull,
-		"untar":       untar,
-		"prune":       prune,
+		"-h":           help,
+		"extract":      extract,
+		"verify":       verify,
+		"cache":        cache,
+		"list-chunks":  list,
+		"chop":         chop,
+		"pull":         pull,
+		"untar":        untar,
+		"prune":        prune,
+		"chunk-server": server,
 	}
 	h, ok := handlers[cmd]
 	if !ok {
