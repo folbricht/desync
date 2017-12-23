@@ -17,7 +17,7 @@ const chopUsage = `desync chop [options] <caibx> <file>
 
 Reads the index file and extracts all referenced chunks from the file into a local store.`
 
-func chop(args []string) error {
+func chop(ctx context.Context, args []string) error {
 	var (
 		storeLocation string
 		n             int
@@ -53,7 +53,7 @@ func chop(args []string) error {
 	}
 
 	// Chop up the file into chunks and store them in the target store
-	if errs := chopFile(dataFile, c.Chunks, s, n); len(errs) != 0 {
+	if errs := chopFile(ctx, dataFile, c.Chunks, s, n); len(errs) != 0 {
 		for _, e := range errs {
 			fmt.Fprintln(os.Stderr, e)
 		}
@@ -62,14 +62,14 @@ func chop(args []string) error {
 	return nil
 }
 
-func chopFile(name string, chunks []desync.IndexChunk, s desync.LocalStore, n int) []error {
+func chopFile(ctx context.Context, name string, chunks []desync.IndexChunk, s desync.LocalStore, n int) []error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		errs []error
 		in   = make(chan desync.IndexChunk)
 	)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Helper function to record and deal with any errors in the goroutines

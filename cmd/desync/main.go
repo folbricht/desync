@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/folbricht/desync"
 )
@@ -32,6 +35,17 @@ func main() {
 		die(errors.New("No command given. See -h for help."))
 	}
 
+	// Install a signal handler for SIGINT or SIGTERM to cancel a context in
+	// order to clean up and shut down gracefully if Ctrl+C is hit.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		cancel()
+	}()
+
 	cmd := os.Args[1]
 	args := os.Args[2:]
 	var err error
@@ -40,19 +54,19 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	case "extract":
-		err = extract(args)
+		err = extract(ctx, args)
 	case "verify":
-		err = verify(args)
+		err = verify(ctx, args)
 	case "cache":
-		err = cache(args)
+		err = cache(ctx, args)
 	case "list-chunks":
-		err = list(args)
+		err = list(ctx, args)
 	case "chop":
-		err = chop(args)
+		err = chop(ctx, args)
 	case "pull":
-		err = pull(args)
+		err = pull(ctx, args)
 	case "untar":
-		err = untar(args)
+		err = untar(ctx, args)
 	default:
 		err = fmt.Errorf("Unknown command %s", cmd)
 	}

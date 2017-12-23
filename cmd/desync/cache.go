@@ -17,7 +17,7 @@ const cacheUsage = `desync cache [options] <caibx> [<caibx>..]
 Read chunk IDs in caibx files from one or more stores without creating a blob.
 Can be used to pre-populate a local cache.`
 
-func cache(args []string) error {
+func cache(ctx context.Context, args []string) error {
 	var (
 		cacheLocation  string
 		n              int
@@ -108,7 +108,7 @@ func cache(args []string) error {
 		mu   sync.Mutex
 		errs []error
 	)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Helper function to record and deal with any errors in the goroutines

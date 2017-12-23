@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,7 +16,7 @@ Serves up chunks (read-only) from a local store using the casync protocol
 via Stdin/Stdout. Functions as a drop-in replacement for casync on remote
 stores accessed with SSH. See CASYNC_REMOTE_PATH environment variable.`
 
-func pull(args []string) error {
+func pull(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("pull", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Fprintln(os.Stderr, pullUsage)
@@ -36,5 +37,5 @@ func pull(args []string) error {
 	}
 
 	// Start the server
-	return desync.NewProtocolServer(os.Stdin, os.Stdout, s).Serve()
+	return desync.NewProtocolServer(os.Stdin, os.Stdout, s).Serve(ctx)
 }

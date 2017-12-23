@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,7 +18,7 @@ const untarUsage = `desync untar <catar> <target>
 
 Extracts a directory tree from a catar file.`
 
-func untar(args []string) error {
+func untar(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("untar", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Fprintln(os.Stderr, untarUsage)
@@ -44,6 +45,12 @@ func untar(args []string) error {
 	d := desync.NewArchiveDecoder(f)
 loop:
 	for {
+		// See if we're meant to stop
+		select {
+		case <-ctx.Done():
+			break
+		default:
+		}
 		c, err := d.Next()
 		if err != nil {
 			return err

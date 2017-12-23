@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -23,7 +24,7 @@ func NewProtocolServer(r io.Reader, w io.Writer, s Store) *ProtocolServer {
 }
 
 // Serve starts the protocol server. Blocks unless an error is encountered
-func (s *ProtocolServer) Serve() error {
+func (s *ProtocolServer) Serve(ctx context.Context) error {
 	flags, err := s.p.Initialize(CaProtocolReadableStore)
 	if err != nil {
 		return errors.Wrap(err, "failed to perform protocol handshake")
@@ -32,6 +33,12 @@ func (s *ProtocolServer) Serve() error {
 		return fmt.Errorf("client is not requesting chunks, provided flags %x", flags)
 	}
 	for {
+		// See if we're meant to stop
+		select {
+		case <-ctx.Done():
+			break
+		default:
+		}
 		m, err := s.p.ReadMessage()
 		if err != nil {
 			return errors.Wrap(err, "failed to read protocol message from client")

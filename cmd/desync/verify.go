@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,7 +15,7 @@ const verifyUsage = `desync verify -s <store> [-rn]
 Reads all chunks in a local store and verifies their integrity. If -r is used,
 invalid chunks are deleted from the store.`
 
-func verify(args []string) error {
+func verify(ctx context.Context, args []string) error {
 	var (
 		repair        bool
 		n             int
@@ -43,5 +44,5 @@ func verify(args []string) error {
 	if err != nil {
 		return err
 	}
-	return s.Verify(n, repair)
+	return s.Verify(ctx, n, repair)
 }

@@ -2,6 +2,7 @@ package desync
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"testing"
 )
@@ -18,7 +19,7 @@ func TestProtocolServer(t *testing.T) {
 	}
 	ps := NewProtocolServer(r2, w1, store)
 
-	go ps.Serve()
+	go ps.Serve(context.Background())
 
 	// Client
 	flags, err := server.Initialize(CaProtocolPullChunks)

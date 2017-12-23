@@ -9,10 +9,8 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	"github.com/folbricht/desync"
 )
@@ -21,7 +19,7 @@ const extractUsage = `desync extract [options] <caibx> <output>
 
 Read a caibx and build a blob reading chunks from one or more casync stores.`
 
-func extract(args []string) error {
+func extract(ctx context.Context, args []string) error {
 	var (
 		cacheLocation  string
 		n              int
@@ -111,7 +109,7 @@ func extract(args []string) error {
 	}
 
 	// Write the output
-	if errs := writeOutput(outFile, c.Chunks, s, n); len(errs) != 0 {
+	if errs := writeOutput(ctx, outFile, c.Chunks, s, n); len(errs) != 0 {
 		for _, e := range errs {
 			fmt.Fprintln(os.Stderr, e)
 		}
@@ -120,7 +118,7 @@ func extract(args []string) error {
 	return nil
 }
 
-func writeOutput(name string, chunks []desync.IndexChunk, s desync.Store, n int) []error {
+func writeOutput(ctx context.Context, name string, chunks []desync.IndexChunk, s desync.Store, n int) []error {
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
@@ -131,19 +129,8 @@ func writeOutput(name string, chunks []desync.IndexChunk, s desync.Store, n int)
 	tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	// Install a signal handler to make really sure the file is deleted even
-	// on Ctrl+C or SIGTERM
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		fmt.Fprintln(os.Stderr, "Interrupted")
-		os.Remove(tmpfile.Name())
-		os.Exit(1)
-	}()
-
 	// Build the blob from the chunks, writing everything into the tempfile
-	errs := assembleBlob(tmpfile.Name(), chunks, s, n)
+	errs := assembleBlob(ctx, tmpfile.Name(), chunks, s, n)
 	if len(errs) != 0 {
 		return errs
 	}
@@ -164,14 +151,14 @@ func writeOutput(name string, chunks []desync.IndexChunk, s desync.Store, n int)
 
 // Opens n goroutines, creating one filehandle for the file "name" per goroutine
 // and writes to the file simultaneously
-func assembleBlob(name string, chunks []desync.IndexChunk, s desync.Store, n int) []error {
+func assembleBlob(ctx context.Context, name string, chunks []desync.IndexChunk, s desync.Store, n int) []error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		errs []error
 		in   = make(chan desync.IndexChunk)
 	)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Helper function to record and deal with any errors in the goroutines

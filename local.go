@@ -1,7 +1,9 @@
 package desync
 
 import (
+	"context"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -86,7 +88,7 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 
 // Verify all chunks in the store. If repair is set true, bad chunks are deleted.
 // n determines the number of concurrent operations.
-func (s LocalStore) Verify(n int, repair bool) error {
+func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
 	var wg sync.WaitGroup
 	ids := make(chan ChunkID)
 
@@ -119,6 +121,12 @@ func (s LocalStore) Verify(n int, repair bool) error {
 	// Go trough all chunks underneath Base, filtering out other files, then feed
 	// the IDs to the workers
 	err := filepath.Walk(s.Base, func(path string, info os.FileInfo, err error) error {
+		// See if we're meant to stop
+		select {
+		case <-ctx.Done():
+			return errors.New("interrupted")
+		default:
+		}
 		if err != nil { // failed to walk? => fail
 			return err
 		}
