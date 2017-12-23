@@ -40,17 +40,17 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	case "extract":
-		extract(args)
+		err = extract(args)
 	case "verify":
-		verify(args)
+		err = verify(args)
 	case "cache":
-		cache(args)
+		err = cache(args)
 	case "list-chunks":
-		list(args)
+		err = list(args)
 	case "chop":
-		chop(args)
+		err = chop(args)
 	case "pull":
-		pull(args)
+		err = pull(args)
 	case "untar":
 		err = untar(args)
 	default:

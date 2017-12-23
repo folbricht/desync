@@ -17,7 +17,7 @@ const chopUsage = `desync chop [options] <caibx> <file>
 
 Reads the index file and extracts all referenced chunks from the file into a local store.`
 
-func chop(args []string) {
+func chop(args []string) error {
 	var (
 		storeLocation string
 		n             int
@@ -32,10 +32,10 @@ func chop(args []string) {
 	flags.Parse(args)
 
 	if flags.NArg() < 2 {
-		die(errors.New("Not enough arguments. See -h for help."))
+		return errors.New("Not enough arguments. See -h for help.")
 	}
 	if flags.NArg() > 2 {
-		die(errors.New("Too many arguments. See -h for help."))
+		return errors.New("Too many arguments. See -h for help.")
 	}
 	indexFile := flags.Arg(0)
 	dataFile := flags.Arg(1)
@@ -43,13 +43,13 @@ func chop(args []string) {
 	// Open the target store
 	s, err := desync.NewLocalStore(storeLocation)
 	if err != nil {
-		die(err)
+		return err
 	}
 
 	// Read the input
 	c, err := readCaibxFile(indexFile)
 	if err != nil {
-		die(err)
+		return err
 	}
 
 	// Chop up the file into chunks and store them in the target store
@@ -59,6 +59,7 @@ func chop(args []string) {
 		}
 		os.Exit(1)
 	}
+	return nil
 }
 
 func chopFile(name string, chunks []desync.IndexChunk, s desync.LocalStore, n int) []error {
@@ -148,5 +149,4 @@ func chopFile(name string, chunks []desync.IndexChunk, s desync.LocalStore, n in
 	wg.Wait()
 
 	return errs
-
 }

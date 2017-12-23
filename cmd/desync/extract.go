@@ -21,7 +21,7 @@ const extractUsage = `desync extract [options] <caibx> <output>
 
 Read a caibx and build a blob reading chunks from one or more casync stores.`
 
-func extract(args []string) {
+func extract(args []string) error {
 	var (
 		cacheLocation  string
 		n              int
@@ -41,21 +41,21 @@ func extract(args []string) {
 	flags.Parse(args)
 
 	if flags.NArg() < 2 {
-		die(errors.New("Not enough arguments. See -h for help."))
+		return errors.New("Not enough arguments. See -h for help.")
 	}
 	if flags.NArg() > 2 {
-		die(errors.New("Too many arguments. See -h for help."))
+		return errors.New("Too many arguments. See -h for help.")
 	}
 
 	inFile := flags.Arg(0)
 	outFile := flags.Arg(1)
 	if inFile == outFile {
-		die(errors.New("Input and output filenames match."))
+		return errors.New("Input and output filenames match.")
 	}
 
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
-		die(errors.New("No casync store provided. See -h for help."))
+		return errors.New("No casync store provided. See -h for help.")
 	}
 
 	// Go through each stored passed in the command line, initialize them, and
@@ -63,29 +63,29 @@ func extract(args []string) {
 	for _, location := range storeLocations.list {
 		loc, err := url.Parse(location)
 		if err != nil {
-			die(fmt.Errorf("Unable to parse store location %s : %s", location, err))
+			return fmt.Errorf("Unable to parse store location %s : %s", location, err)
 		}
 		var s desync.Store
 		switch loc.Scheme {
 		case "ssh":
 			r, err := desync.NewRemoteSSHStore(loc, n)
 			if err != nil {
-				die(err)
+				return err
 			}
 			defer r.Close()
 			s = r
 		case "http", "https":
 			s, err = desync.NewRemoteHTTPStore(loc)
 			if err != nil {
-				die(err)
+				return err
 			}
 		case "":
 			s, err = desync.NewLocalStore(loc.Path)
 			if err != nil {
-				die(err)
+				return err
 			}
 		default:
-			die(fmt.Errorf("Unsupported store access scheme %s", loc.Scheme))
+			return fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
 		}
 		stores = append(stores, s)
 	}
@@ -98,7 +98,7 @@ func extract(args []string) {
 	if cacheLocation != "" {
 		cache, err := desync.NewLocalStore(cacheLocation)
 		if err != nil {
-			die(err)
+			return err
 		}
 		cache.UpdateTimes = true
 		s = desync.NewCache(s, cache)
@@ -107,7 +107,7 @@ func extract(args []string) {
 	// Read the input
 	c, err := readCaibxFile(inFile)
 	if err != nil {
-		die(err)
+		return err
 	}
 
 	// Write the output
@@ -117,6 +117,7 @@ func extract(args []string) {
 		}
 		os.Exit(1)
 	}
+	return nil
 }
 
 func writeOutput(name string, chunks []desync.IndexChunk, s desync.Store, n int) []error {

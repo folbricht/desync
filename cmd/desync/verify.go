@@ -14,7 +14,7 @@ const verifyUsage = `desync verify -s <store> [-rn]
 Reads all chunks in a local store and verifies their integrity. If -r is used,
 invalid chunks are deleted from the store.`
 
-func verify(args []string) {
+func verify(args []string) error {
 	var (
 		repair        bool
 		n             int
@@ -32,18 +32,16 @@ func verify(args []string) {
 	flags.Parse(args)
 
 	if flags.NArg() > 0 {
-		die(errors.New("Too many arguments. See -h for help."))
+		return errors.New("Too many arguments. See -h for help.")
 	}
 
 	if storeLocation == "" {
-		die(errors.New("No store provided."))
+		return errors.New("No store provided.")
 	}
 
 	s, err := desync.NewLocalStore(storeLocation)
 	if err != nil {
-		die(err)
+		return err
 	}
-	if err := s.Verify(n, repair); err != nil {
-		die(err)
-	}
+	return s.Verify(n, repair)
 }

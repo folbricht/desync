@@ -17,7 +17,7 @@ const cacheUsage = `desync cache [options] <caibx> [<caibx>..]
 Read chunk IDs in caibx files from one or more stores without creating a blob.
 Can be used to pre-populate a local cache.`
 
-func cache(args []string) {
+func cache(args []string) error {
 	var (
 		cacheLocation  string
 		n              int
@@ -36,12 +36,12 @@ func cache(args []string) {
 	flags.Parse(args)
 
 	if flags.NArg() < 1 {
-		die(errors.New("Not enough arguments. See -h for help."))
+		return errors.New("Not enough arguments. See -h for help.")
 	}
 
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
-		die(errors.New("No casync store provided. See -h for help."))
+		return errors.New("No casync store provided. See -h for help.")
 	}
 
 	// Read the input files and merge all chunk IDs in a map to de-dup them
@@ -49,7 +49,7 @@ func cache(args []string) {
 	for _, name := range flags.Args() {
 		c, err := readCaibxFile(name)
 		if err != nil {
-			die(err)
+			return err
 		}
 		for _, c := range c.Chunks {
 			ids[c.ID] = struct{}{}
@@ -61,29 +61,29 @@ func cache(args []string) {
 	for _, location := range storeLocations.list {
 		loc, err := url.Parse(location)
 		if err != nil {
-			die(fmt.Errorf("Unable to parse store location %s : %s", location, err))
+			return fmt.Errorf("Unable to parse store location %s : %s", location, err)
 		}
 		var s desync.Store
 		switch loc.Scheme {
 		case "ssh":
 			r, err := desync.NewRemoteSSHStore(loc, n)
 			if err != nil {
-				die(err)
+				return err
 			}
 			defer r.Close()
 			s = r
 		case "http", "https":
 			s, err = desync.NewRemoteHTTPStore(loc)
 			if err != nil {
-				die(err)
+				return err
 			}
 		case "":
 			s, err = desync.NewLocalStore(loc.Path)
 			if err != nil {
-				die(err)
+				return err
 			}
 		default:
-			die(fmt.Errorf("Unsupported store access scheme %s", loc.Scheme))
+			return fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
 		}
 		stores = append(stores, s)
 	}
@@ -96,7 +96,7 @@ func cache(args []string) {
 	if cacheLocation != "" {
 		cache, err := desync.NewLocalStore(cacheLocation)
 		if err != nil {
-			die(err)
+			return err
 		}
 		cache.UpdateTimes = true
 		s = desync.NewCache(s, cache)
@@ -144,4 +144,12 @@ func cache(args []string) {
 	}
 	close(in)
 	wg.Wait()
+
+	if len(errs) != 0 {
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, e)
+		}
+		os.Exit(1)
+	}
+	return nil
 }
