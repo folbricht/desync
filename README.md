@@ -26,6 +26,7 @@ Among the distinguishing factors:
 - `untar`        - unpack a catar file
 - `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
 - `chunk-server` - start a chunk server that serves chunks via HTTP
+- `make`         - split a blob into chunks and create an index file
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify` command only supports one, local store.
@@ -34,6 +35,7 @@ Among the distinguishing factors:
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
 - `-y` Answer with `yes` when asked for confirmation. Only supported by the `prune` command.
 - `-l` Listening address for the HTTP chunk server. Only supported by the `chunk-server` command.
+- `-m` Specify the min/avg/max chunk sizes in kb. Only applicable to the `make` command. Defaults to 16:64:256 and for best results the min should be avg/4 and the max should be 4*avg.
 
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
@@ -104,9 +106,13 @@ Start a chunk server on port 8080 acting as proxy for other remote HTTP and SSH 
 desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -l :8080
 ```
 
+Split a blob, store the chunks and create an index file.
+```
+desync make -s /some/local/store index.caibx /some/blob
+```
+
 ## TODOs
-- Pre-allocate the output file to avoid fragmentation
+- Pre-allocate the output file to avoid fragmentation when using extract command
 - Check output file size, compare to expected size
 - Support retrieval of index files from the chunk store
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
-- Implement 'make' command splitting blobs into chunks using the same method for finding chunk boundaries as casync does

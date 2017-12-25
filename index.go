@@ -2,13 +2,14 @@ package desync
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/pkg/errors"
 
 	"io"
 )
 
-// Index represents the content of a caibx file
+// Index represents the content of an index file
 type Index struct {
 	Index  FormatIndex
 	Chunks []IndexChunk
@@ -68,4 +69,35 @@ func IndexFromReader(r io.Reader) (c Index, err error) {
 		}
 	}
 	return
+}
+
+// WriteTo writes the index and chunk table into a stream
+func (i *Index) WriteTo(w io.Writer) (int64, error) {
+	index := FormatIndex{
+		FormatHeader: FormatHeader{Size: 48, Type: CaFormatIndex},
+		FeatureFlags: i.Index.FeatureFlags,
+		ChunkSizeMin: i.Index.ChunkSizeMin,
+		ChunkSizeAvg: i.Index.ChunkSizeAvg,
+		ChunkSizeMax: i.Index.ChunkSizeMax,
+	}
+	d := NewFormatEncoder(w)
+	n, err := d.Encode(index)
+	if err != nil {
+		return n, err
+	}
+
+	// Convert the chunk list back into the format used in index files (with offset
+	// instead of start+size)
+	var offset uint64
+	fChunks := make([]FormatTableItem, len(i.Chunks))
+	for p, c := range i.Chunks {
+		offset += c.Size
+		fChunks[p] = FormatTableItem{Chunk: c.ID, Offset: offset}
+	}
+	table := FormatTable{
+		FormatHeader: FormatHeader{Size: math.MaxUint64, Type: CaFormatTable},
+		Items:        fChunks,
+	}
+	n1, err := d.Encode(table)
+	return n + n1, err
 }

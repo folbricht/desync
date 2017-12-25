@@ -1,6 +1,9 @@
 package desync
 
 import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -17,6 +20,11 @@ func TestIndexLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	fmt.Println("min", index.Index.ChunkSizeMin)
+	fmt.Println("avg", index.Index.ChunkSizeAvg)
+	fmt.Println("max", index.Index.ChunkSizeMax)
+	fmt.Printf("flags %x", index.Index.FeatureFlags)
 
 	type chunk struct {
 		chunk string
@@ -35,5 +43,31 @@ func TestIndexLoad(t *testing.T) {
 		if !reflect.DeepEqual(exp, got) {
 			t.Fatalf("expected %v, got %v", exp, got)
 		}
+	}
+}
+
+func TestIndexWrite(t *testing.T) {
+	in, err := ioutil.ReadFile("testdata/index.caibx")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := IndexFromReader(bytes.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := new(bytes.Buffer)
+	n, err := idx.WriteTo(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// in/out should match
+	if !bytes.Equal(in, out.Bytes()) {
+		t.Fatalf("decoded/encoded don't match")
+	}
+	if n != int64(out.Len()) {
+		t.Fatalf("unexpected length")
 	}
 }

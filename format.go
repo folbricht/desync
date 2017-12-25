@@ -1,11 +1,14 @@
 package desync
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
 	"os"
+	"reflect"
+	"strings"
 	"time"
 )
 
@@ -433,5 +436,191 @@ func (d *FormatDecoder) Next() (interface{}, error) {
 
 	default:
 		return nil, fmt.Errorf("unsupported header type %x", hdr.Type)
+	}
+}
+
+// FormatEncoder takes casync format elements and encodes them into a stream.
+type FormatEncoder struct {
+	w writer
+}
+
+func NewFormatEncoder(w io.Writer) FormatEncoder {
+	return FormatEncoder{w: writer{w}}
+}
+
+func (e *FormatEncoder) Encode(v interface{}) (int64, error) {
+
+	switch t := v.(type) {
+	case FormatEntry:
+		return e.w.WriteUint64(
+			t.Size,
+			t.Type,
+			t.FeatureFlags,
+			uint64(t.Mode),
+			t.Flags,
+			uint64(t.UID),
+			uint64(t.GID),
+			uint64(t.MTime.UnixNano()),
+		)
+
+	case FormatUser:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.Name+"\x00"))
+		return n + n1, err
+
+	case FormatGroup:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.Name+"\x00"))
+		return n + n1, err
+
+	case FormatXAttr:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.NameAndValue+"\x00"))
+		return n + n1, err
+
+	case FormatSELinux:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.Label+"\x00"))
+		return n + n1, err
+
+	case FormatFilename:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.Name+"\x00"))
+		return n + n1, err
+
+	case FormatSymlink:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.Target+"\x00"))
+		return n + n1, err
+
+	case FormatDevice:
+		return e.w.WriteUint64(
+			t.Size,
+			t.Type,
+			t.Major,
+			t.Minor,
+		)
+
+	case FormatPayload:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, t.Data)
+		return n + n1, err
+
+	case FormatFCaps:
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, bytes.NewReader(t.Data))
+		return n + n1, err
+
+	case FormatACLUser:
+		n, err := e.w.WriteUint64(t.Size, t.Type, t.UID, t.Permissions)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.Name+"\x00"))
+		return n + n1, err
+
+	case FormatACLGroup:
+		n, err := e.w.WriteUint64(t.Size, t.Type, t.GID, t.Permissions)
+		if err != nil {
+			return n, err
+		}
+		n1, err := io.Copy(e.w, strings.NewReader(t.Name+"\x00"))
+		return n + n1, err
+
+	case FormatACLGroupObj:
+		return e.w.WriteUint64(t.Size, t.Type, t.Permissions)
+
+	case FormatACLDefault:
+		return e.w.WriteUint64(
+			t.Size,
+			t.Type,
+			t.UserObjPermissions,
+			t.GroupObjPermissions,
+			t.OtherPermissions,
+			t.MaskPermissions,
+		)
+
+	case FormatGoodbye:
+		// Write the header first
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		// Now the goodbye entries, needs to contain a tail marker
+		for _, item := range t.Items {
+			n1, err := e.w.WriteUint64(item.Offset, item.Size, item.Hash)
+			if err != nil {
+				return n + n1, err
+			}
+			n += n1
+		}
+		return n, nil
+
+	case FormatIndex:
+		return e.w.WriteUint64(
+			t.Size,
+			t.Type,
+			t.FeatureFlags,
+			t.ChunkSizeMin,
+			t.ChunkSizeAvg,
+			t.ChunkSizeMax,
+		)
+
+	case FormatTable:
+		// Write the header first
+		n, err := e.w.WriteUint64(t.Size, t.Type)
+		if err != nil {
+			return n, err
+		}
+		// Now the table items
+		for _, item := range t.Items {
+			n1, err := e.w.WriteUint64(item.Offset)
+			if err != nil {
+				return n + n1, err
+			}
+			n += n1
+			n2, err := e.w.WriteID(item.Chunk)
+			if err != nil {
+				return n + n2, err
+			}
+			n += n2
+		}
+		// Add a tail record, the decoder strips that off, so best we add this here
+		// to keep it consistent
+		n3, err := e.w.WriteUint64(
+			0,            // zero fill1
+			0,            // zero fill2
+			uint64(48),   // index offset
+			uint64(n+40), // table size, without index
+			CaFormatTableTailMarker,
+		)
+		return n + n3, err
+
+	default:
+		return 0, fmt.Errorf("unsupported format element '%s'", reflect.TypeOf(v))
 	}
 }

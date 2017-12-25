@@ -1,6 +1,8 @@
 package desync
 
 import (
+	"bytes"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -104,6 +106,53 @@ func TestIndexDecoder(t *testing.T) {
 		id, _ := ChunkIDFromString(expected[i])
 		if table.Items[i].Chunk != id {
 			t.Fatalf("expected chunk %s, got %s", id, table.Items[i].Chunk)
+		}
+	}
+}
+
+// Decode and then encode index/archive files to test the encode produces the
+// exact same output.
+func TestEncoder(t *testing.T) {
+	files := []string{
+		"testdata/index.caibx",
+		"testdata/nested.catar",
+	}
+	for _, name := range files {
+		in, err := ioutil.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Decoder
+		d := NewFormatDecoder(bytes.NewReader(in))
+
+		// Encoder
+		out := new(bytes.Buffer)
+		e := NewFormatEncoder(out)
+
+		// Decode each element, then encode it again
+		var total int64
+		for {
+			v, err := d.Next()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v == nil {
+				break
+			}
+			n, err := e.Encode(v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			total += n
+		}
+
+		// in/out should match
+		if !bytes.Equal(in, out.Bytes()) {
+			t.Fatalf("decoded/encoded don't match for file '%s'", name)
+		}
+		if total != int64(out.Len()) {
+			t.Fatalf("unexpected length for encoding of '%s'", name)
 		}
 	}
 }
