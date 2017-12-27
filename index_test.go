@@ -2,7 +2,6 @@ package desync
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -20,11 +19,6 @@ func TestIndexLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	fmt.Println("min", index.Index.ChunkSizeMin)
-	fmt.Println("avg", index.Index.ChunkSizeAvg)
-	fmt.Println("max", index.Index.ChunkSizeMax)
-	fmt.Printf("flags %x", index.Index.FeatureFlags)
 
 	type chunk struct {
 		chunk string

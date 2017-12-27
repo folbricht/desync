@@ -135,3 +135,43 @@ func TestChunkerNoBoundary(t *testing.T) {
 		t.Fatalf("unexpected start position %d, expected 0", start)
 	}
 }
+
+// Global vars used for results during the benchmark to prevent optimizer
+// from optimizing away some operations
+var (
+	chunkStart uint64
+	chunkBuf   []byte
+)
+
+func BenchmarkChunker(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		if err := chunkFile("testdata/chunker.input"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func chunkFile(name string) error {
+	f, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	if err != nil {
+		return err
+	}
+	for {
+		start, buf, err := c.Next()
+		if err != nil {
+			return err
+		}
+		if len(buf) == 0 {
+			break
+		}
+		chunkStart = start
+		chunkBuf = buf
+	}
+	return err
+}
