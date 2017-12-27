@@ -141,8 +141,8 @@ func IndexFromBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, 
 		results[num] = r
 	}
 
-	// Start the workers responsible for compression and storage of the chunks
-	// produced by the feeder
+	// Start the workers responsible for checksum calculation, compression and
+	// storage (if required). Each job comes with a chunk number for sorting later
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func() {

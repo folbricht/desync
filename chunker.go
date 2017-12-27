@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -122,29 +121,39 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	// the hash calculation.
 	c.cBuf = make([]byte, int(c.max))
 	n := copy(c.cBuf, c.pBuf)
-	buf := bytes.NewBuffer(c.cBuf[:n])
-	io.CopyN(buf, c.r, int64(int(c.max)-n))
-	c.cBuf = buf.Bytes()
-	m := buf.Len()
-
-	// No need to carry on if we don't have enough bytes to even fill the min
-	if uint64(m) < c.min {
-		return c.split(m, nil)
+	for { // read until the buffer is at max or we get an EOF
+		nn, err := c.r.Read(c.cBuf[n:])
+		n += nn
+		c.cBuf = c.cBuf[:n]
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return c.split(n, err)
+		}
+		if n == len(c.cBuf) {
+			break
+		}
 	}
 
-	// Position the pointer WindowSize before the min chunk size to have the
-	// rolling hash fully populated by the time we reach the min size
-	var pos = int(c.min) - ChunkerWindowSize
+	// No need to carry on if we don't have enough bytes left to even fill the min chunk
+	if uint64(len(c.cBuf)) < c.min {
+		return c.split(n, nil)
+	}
+
+	c.hash.Initialize(c.cBuf[c.min-ChunkerWindowSize : c.min])
+
+	// Position the pointer at the minimum size
+	var pos = int(c.min)
 
 	for {
-		b := c.cBuf[pos]
+		// Add a byte to the hash
+		c.hash.Roll(c.cBuf[pos])
+
 		pos++
 
-		// Add a byte to the hash
-		c.hash.Add(b)
-
 		// didn't find a boundry before reaching the max?
-		if pos >= m {
+		if pos >= n {
 			return c.split(pos, nil)
 		}
 
@@ -180,7 +189,6 @@ type Hash struct {
 	window        []byte
 	size          int
 	idx           int
-	initialized   bool
 	discriminator uint32
 }
 
@@ -188,42 +196,41 @@ type Hash struct {
 // hash window used and the discriminator is used to find the boundary.
 func NewHash(size int, discriminator uint32) Hash {
 	return Hash{
-		window:        make([]byte, 0, size),
+		window:        make([]byte, size),
 		size:          size,
 		discriminator: discriminator,
 	}
 }
 
-// Add a new byte to the hash calculation. No useful value is returned until
+// Roll adds a new byte to the hash calculation. No useful value is returned until
 // the hash window has been populated.
-func (h *Hash) Add(b byte) {
-	if !h.initialized { // The buffer hasn't been filled yet
-		h.value ^= bits.RotateLeft32(hashTable[b], h.size-len(h.window)-1)
-		h.window = append(h.window, b)
-		if len(h.window) == h.size {
-			h.initialized = true
-		}
-		return
-	}
+func (h *Hash) Roll(b byte) {
 	ob := h.window[h.idx]
 	h.window[h.idx] = b
 	h.idx = (h.idx + 1) % h.size
 
 	h.value = bits.RotateLeft32(h.value, 1) ^
 		bits.RotateLeft32(hashTable[ob], len(h.window)) ^
-		hashTable[int(b)]
+		hashTable[b]
+}
+
+// Initialize the window used for the rolling hash calculation. The size of the
+// slice must match the window size
+func (h *Hash) Initialize(b []byte) {
+	for i, c := range b {
+		h.value ^= bits.RotateLeft32(hashTable[c], h.size-i-1)
+	}
+	copy(h.window, b)
 }
 
 // IsBoundary returns true if the discriminator and hash match to signal a
 // chunk boundary has been reached
 func (h *Hash) IsBoundary() bool {
-	return h.initialized && ((h.value % h.discriminator) == (h.discriminator - 1))
+	return h.value%h.discriminator == h.discriminator-1
 }
 
 // Reset the hash window and value
 func (h *Hash) Reset() {
-	h.window = make([]byte, 0, h.size)
 	h.idx = 0
 	h.value = 0
-	h.initialized = false
 }
