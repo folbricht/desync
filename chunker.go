@@ -86,9 +86,14 @@ type Chunker struct {
 	min, avg, max uint64
 
 	start uint64
-	hash  Hash
 
 	pBuf, cBuf []byte
+
+	// rolling hash values
+	hValue         uint32
+	hWindow        [ChunkerWindowSize]byte
+	hIdx           int
+	hDiscriminator uint32
 }
 
 func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
@@ -105,11 +110,11 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 		return Chunker{}, errors.New("avg chunk size must not be greater than max")
 	}
 	return Chunker{
-		r:    r,
-		min:  min,
-		avg:  avg,
-		max:  max,
-		hash: NewHash(ChunkerWindowSize, discriminatorFromAvg(avg)),
+		r:              r,
+		min:            min,
+		avg:            avg,
+		max:            max,
+		hDiscriminator: discriminatorFromAvg(avg),
 	}, nil
 }
 
@@ -141,14 +146,27 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 		return c.split(n, nil)
 	}
 
-	c.hash.Initialize(c.cBuf[c.min-ChunkerWindowSize : c.min])
+	// Initialize the rolling hash window with the ChunkerWindowSize bytes
+	// immediately prior to min size
+	window := c.cBuf[c.min-ChunkerWindowSize : c.min]
+	for i, b := range window {
+		c.hValue ^= bits.RotateLeft32(hashTable[b], ChunkerWindowSize-i-1)
+	}
+	copy(c.hWindow[:], window)
 
 	// Position the pointer at the minimum size
 	var pos = int(c.min)
 
+	var out, in byte
 	for {
 		// Add a byte to the hash
-		c.hash.Roll(c.cBuf[pos])
+		in = c.cBuf[pos]
+		out = c.hWindow[c.hIdx]
+		c.hWindow[c.hIdx] = in
+		c.hIdx = (c.hIdx + 1) % ChunkerWindowSize
+		c.hValue = bits.RotateLeft32(c.hValue, 1) ^
+			bits.RotateLeft32(hashTable[out], ChunkerWindowSize) ^
+			hashTable[in]
 
 		pos++
 
@@ -158,18 +176,22 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 		}
 
 		// Did we find a boundry?
-		if c.hash.IsBoundary() {
+		if c.hValue%c.hDiscriminator == c.hDiscriminator-1 {
 			return c.split(pos, nil)
 		}
 	}
 }
 
 func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
+	// save the remaining bytes (after the split position) for the next round
 	start := c.start
 	b := c.cBuf[:i]
 	c.pBuf = c.cBuf[i:]
 	c.start += uint64(i)
-	c.hash.Reset()
+
+	// reset the hash
+	c.hIdx = 0
+	c.hValue = 0
 	return start, b, err
 }
 
