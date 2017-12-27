@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -84,7 +83,7 @@ var hashTable = []uint32{
 }
 
 type Chunker struct {
-	r             *bufio.Reader
+	r             io.Reader
 	min, avg, max uint64
 
 	start uint64
@@ -107,7 +106,7 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 		return Chunker{}, errors.New("avg chunk size must not be greater than max")
 	}
 	return Chunker{
-		r:    bufio.NewReaderSize(r, int(avg)),
+		r:    r,
 		min:  min,
 		avg:  avg,
 		max:  max,
