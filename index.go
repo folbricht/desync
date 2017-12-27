@@ -1,8 +1,11 @@
 package desync
 
 import (
+	"context"
+	"crypto/sha512"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -100,4 +103,131 @@ func (i *Index) WriteTo(w io.Writer) (int64, error) {
 	}
 	n1, err := d.Encode(table)
 	return n + n1, err
+}
+
+// IndexFromBlob splits up a blob into chunks using the provided chunker,
+// populates a store with the chunks and returns an index of the chunks.
+func IndexFromBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, []error) {
+	type chunkJob struct {
+		num   int
+		start uint64
+		b     []byte
+	}
+	var (
+		stop    bool
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		errs    []error
+		in      = make(chan chunkJob)
+		results = make(map[int]IndexChunk)
+	)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Helper function to record and deal with any errors in the goroutines
+	recordError := func(err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		errs = append(errs, err)
+		cancel()
+	}
+
+	// All the chunks are processed in parallel, but we need to preserve the
+	// order for later. So add the chunking results to a map, indexed by
+	// the chunk number so we can rebuild it in the right order when done
+	recordResult := func(num int, r IndexChunk) {
+		mu.Lock()
+		defer mu.Unlock()
+		results[num] = r
+	}
+
+	// Start the workers responsible for compression and storage of the chunks
+	// produced by the feeder
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			for c := range in {
+				// Calculate the chunk ID
+				id := sha512.Sum512_256(c.b)
+
+				// Record the index row
+				chunk := IndexChunk{Start: c.start, Size: uint64(len(c.b)), ID: id}
+				recordResult(c.num, chunk)
+
+				// Skip this chunk if the store already has it
+				if s.HasChunk(id) {
+					continue
+				}
+
+				// Compress the chunk
+				cb, err := Compress(c.b)
+				if err != nil {
+					recordError(err)
+					continue
+				}
+
+				// And store it
+				if err = s.StoreChunk(id, cb); err != nil {
+					recordError(err)
+					continue
+				}
+			}
+			wg.Done()
+		}()
+	}
+
+	// Feed the workers, stop if there are any errors. To keep the index list in
+	// order, we calculate the checksum here before handing	them over to the
+	// workers for compression and storage. That could probablybe optimized further
+	var num int // chunk #, so we can re-assemble the index in the right order later
+	for {
+		// See if we're meant to stop
+		select {
+		case <-ctx.Done():
+			stop = true
+			break
+		default:
+		}
+		start, b, err := c.Next()
+		if err != nil {
+			return Index{}, []error{err}
+		}
+		if len(b) == 0 {
+			break
+		}
+
+		// Send it off for compression and storage
+		in <- chunkJob{num: num, start: start, b: b}
+
+		num++
+	}
+	close(in)
+	wg.Wait()
+
+	// Everything has settled, now see if something happend that would invalidate
+	// the results. Either an error or an interrupt by the user. We don't just
+	// want to bail out when it happens and abandon any running goroutines that
+	// might still be writing/processing chunks. Only stop here it's safe like here.
+	if stop {
+		return Index{}, errs
+	}
+
+	// All the chunks have been processed and are stored in a map. Now build a
+	// list in the correct order to be used in the index below
+	chunks := make([]IndexChunk, len(results))
+	for i := 0; i < len(results); i++ {
+		chunks[i] = results[i]
+	}
+
+	// Build and return the index
+	index := Index{
+		Index: FormatIndex{
+			FeatureFlags: CaFormatExcludeNoDump | CaFormatSHA512256,
+			ChunkSizeMin: c.Min(),
+			ChunkSizeAvg: c.Avg(),
+			ChunkSizeMax: c.Max(),
+		},
+		Chunks: chunks,
+	}
+	return index, errs
 }

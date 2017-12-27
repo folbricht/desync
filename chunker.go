@@ -164,6 +164,15 @@ func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
 	return start, b, err
 }
 
+// Min returns the minimum chunk size
+func (c *Chunker) Min() uint64 { return c.min }
+
+// Avg returns the average chunk size
+func (c *Chunker) Avg() uint64 { return c.avg }
+
+// Max returns the maximum chunk size
+func (c *Chunker) Max() uint64 { return c.max }
+
 // Hash implements the rolling hash algorithm used to find chunk bounaries
 // in a stream of bytes.
 type Hash struct {

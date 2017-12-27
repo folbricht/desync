@@ -152,13 +152,14 @@ var (
 
 func BenchmarkChunker(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		if err := chunkFile("testdata/chunker.input"); err != nil {
+		if err := chunkFile(b, "testdata/chunker.input"); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func chunkFile(name string) error {
+func chunkFile(b *testing.B, name string) error {
+	b.StopTimer()
 	f, err := os.Open(name)
 	if err != nil {
 		return err
@@ -169,6 +170,7 @@ func chunkFile(name string) error {
 	if err != nil {
 		return err
 	}
+	b.StartTimer()
 	for {
 		start, buf, err := c.Next()
 		if err != nil {
