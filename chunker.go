@@ -89,6 +89,8 @@ type Chunker struct {
 
 	start uint64
 	hash  Hash
+
+	pBuf, cBuf []byte
 }
 
 func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
@@ -116,51 +118,49 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 // Next returns the starting position as well as the chunk data. Returns
 // an empty byte slice when complete
 func (c *Chunker) Next() (uint64, []byte, error) {
-	buf := new(bytes.Buffer)
-	buf.Grow(int(c.max))
+	// Make a new buffer (cBuf) with max bytes and copy anything that may be leftover
+	// from before (pBuf) into it, then fill it up to max with new bytes before starting
+	// the hash calculation.
+	c.cBuf = make([]byte, int(c.max))
+	n := copy(c.cBuf, c.pBuf)
+	buf := bytes.NewBuffer(c.cBuf[:n])
+	io.CopyN(buf, c.r, int64(int(c.max)-n))
+	c.cBuf = buf.Bytes()
+	m := buf.Len()
 
-	// Copy the min chunk size, no need to compute the hash until we reach the min
-	_, err := io.CopyN(buf, c.r, int64(c.min-ChunkerWindowSize))
-	if err != nil {
-		if err == io.EOF { // reached the end of the file, return what we have
-			return c.chunk(buf.Bytes(), nil)
-		}
-		return c.chunk(buf.Bytes(), err)
+	// No need to carry on if we don't have enough bytes to even fill the min
+	if uint64(m) < c.min {
+		return c.split(m, nil)
 	}
 
+	// Position the pointer WindowSize before the min chunk size to have the
+	// rolling hash fully populated by the time we reach the min size
+	var pos = int(c.min) - ChunkerWindowSize
+
 	for {
-		b, err := c.r.ReadByte()
-		if err != nil {
-			if err == io.EOF { // reached the end of the file, return what we have
-				return c.chunk(buf.Bytes(), nil)
-			}
-			return c.chunk(buf.Bytes(), err)
-		}
-		buf.WriteByte(b)
+		b := c.cBuf[pos]
+		pos++
 
 		// Add a byte to the hash
 		c.hash.Add(b)
 
 		// didn't find a boundry before reaching the max?
-		if uint64(buf.Len()) >= c.max {
-			return c.chunk(buf.Bytes(), nil)
-		}
-
-		// not yet over the minimum? Keep going
-		if uint64(buf.Len()) < c.min {
-			continue
+		if pos >= m {
+			return c.split(pos, nil)
 		}
 
 		// Did we find a boundry?
 		if c.hash.IsBoundary() {
-			return c.chunk(buf.Bytes(), nil)
+			return c.split(pos, nil)
 		}
 	}
 }
 
-func (c *Chunker) chunk(b []byte, err error) (uint64, []byte, error) {
+func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
 	start := c.start
-	c.start += uint64(len(b))
+	b := c.cBuf[:i]
+	c.pBuf = c.cBuf[i:]
+	c.start += uint64(i)
 	c.hash.Reset()
 	return start, b, err
 }
