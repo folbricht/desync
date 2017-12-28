@@ -87,7 +87,8 @@ type Chunker struct {
 
 	start uint64
 
-	pBuf, cBuf []byte
+	buf    []byte
+	hitEOF bool // true once the reader returned EOF
 
 	// rolling hash values
 	hValue         uint32
@@ -118,37 +119,53 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 	}, nil
 }
 
+// Make a new buffer with 10*max bytes and copy anything that may be leftover
+// from before into it, then fill it up with new bytes. Don't fail on EOF.
+func (c *Chunker) fillBuffer() (n int, err error) {
+	if c.hitEOF { // We won't get anymore here, no need for more allocations
+		return
+	}
+	size := 10 * c.max
+	buf := make([]byte, int(size))       // Make a new slice large enough
+	n = copy(buf, c.buf)                 // copy the remaining bytes from the old buffer
+	for uint64(n) < size && err == nil { // read until the buffer is at max or we get an EOF
+		var nn int
+		nn, err = c.r.Read(buf[n:])
+		n += nn
+	}
+	c.buf = buf[:n] // we are not going to get any more, resize the buffer
+	if err == io.EOF {
+		c.hitEOF = true
+		err = nil
+	}
+	return
+}
+
 // Next returns the starting position as well as the chunk data. Returns
 // an empty byte slice when complete
 func (c *Chunker) Next() (uint64, []byte, error) {
-	// Make a new buffer (cBuf) with max bytes and copy anything that may be leftover
-	// from before (pBuf) into it, then fill it up to max with new bytes before starting
-	// the hash calculation.
-	c.cBuf = make([]byte, int(c.max))
-	n := copy(c.cBuf, c.pBuf)
-	for { // read until the buffer is at max or we get an EOF
-		nn, err := c.r.Read(c.cBuf[n:])
-		n += nn
-		c.cBuf = c.cBuf[:n]
+	if len(c.buf) < int(c.max) {
+		n, err := c.fillBuffer()
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
 			return c.split(n, err)
-		}
-		if n == len(c.cBuf) {
-			break
 		}
 	}
 
 	// No need to carry on if we don't have enough bytes left to even fill the min chunk
-	if uint64(len(c.cBuf)) < c.min {
-		return c.split(n, nil)
+	if len(c.buf) < int(c.min) {
+		return c.split(len(c.buf), nil)
+	}
+
+	// m is the upper boundary for the current chunk. It's either c.max if we have
+	// enough bytes in the buffer, or len(c.buf)
+	m := int(c.max)
+	if len(c.buf) < int(c.max) {
+		m = len(c.buf)
 	}
 
 	// Initialize the rolling hash window with the ChunkerWindowSize bytes
 	// immediately prior to min size
-	window := c.cBuf[c.min-ChunkerWindowSize : c.min]
+	window := c.buf[c.min-ChunkerWindowSize : c.min]
 	for i, b := range window {
 		c.hValue ^= bits.RotateLeft32(hashTable[b], ChunkerWindowSize-i-1)
 	}
@@ -160,7 +177,7 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	var out, in byte
 	for {
 		// Add a byte to the hash
-		in = c.cBuf[pos]
+		in = c.buf[pos]
 		out = c.hWindow[c.hIdx]
 		c.hWindow[c.hIdx] = in
 		c.hIdx = (c.hIdx + 1) % ChunkerWindowSize
@@ -171,7 +188,7 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 		pos++
 
 		// didn't find a boundry before reaching the max?
-		if pos >= n {
+		if pos >= m {
 			return c.split(pos, nil)
 		}
 
@@ -185,8 +202,8 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
 	// save the remaining bytes (after the split position) for the next round
 	start := c.start
-	b := c.cBuf[:i]
-	c.pBuf = c.cBuf[i:]
+	b := c.buf[:i]
+	c.buf = c.buf[i:]
 	c.start += uint64(i)
 
 	// reset the hash

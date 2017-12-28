@@ -15,6 +15,8 @@ Among the distinguishing factors:
 - Supports local stores as well as remote stores over SSH and HTTP
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
 - Support for catar file (unpack) exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present
+- Supports chunking with the same algorithm used by casync (see `make` command). Results are identical to what casync produces, same chunks and index files, but with significantly better performance.
+- While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 
 ### Subcommands
 - `extract`      - build a blob from an index file
