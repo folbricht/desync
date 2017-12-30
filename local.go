@@ -1,12 +1,10 @@
 package desync
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha512"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -77,11 +75,9 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 	if err != nil {
 		return err
 	}
+	tmpfile.Close()
 	defer os.Remove(tmpfile.Name()) // in case we don't get to the rename, clean up
-	if _, err := io.Copy(tmpfile, bytes.NewReader(b)); err != nil {
-		return err
-	}
-	if err := tmpfile.Close(); err != nil {
+	if err = ioutil.WriteFile(tmpfile.Name(), b, 0644); err != nil {
 		return err
 	}
 	p := filepath.Join(d, sID) + chunkFileExt
