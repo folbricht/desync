@@ -25,7 +25,7 @@ func makeCmd(ctx context.Context, args []string) error {
 	)
 	flags := flag.NewFlagSet("make", flag.ExitOnError)
 	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, chopUsage)
+		fmt.Fprintln(os.Stderr, makeUsage)
 		flags.PrintDefaults()
 	}
 	flags.StringVar(&storeLocation, "s", "", "Local casync store location")
