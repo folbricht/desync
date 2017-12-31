@@ -19,7 +19,7 @@ loop:
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			break
+			return Interrupted{}
 		default:
 		}
 		c, err := dec.Next()

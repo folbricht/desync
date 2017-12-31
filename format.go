@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/dchest/siphash"
 )
 
 type FormatHeader struct {
@@ -362,7 +364,7 @@ func (d *FormatDecoder) Next() (interface{}, error) {
 			}
 		}
 		// Ensure we have the tail marker in the last item
-		if items[len(items)-1].Hash != CaFormatGoodbyeTailMarker {
+		if len(items) < 1 || items[len(items)-1].Hash != CaFormatGoodbyeTailMarker {
 			return nil, InvalidFormat{"tail marker not found"}
 		}
 		return e, nil
@@ -449,7 +451,6 @@ func NewFormatEncoder(w io.Writer) FormatEncoder {
 }
 
 func (e *FormatEncoder) Encode(v interface{}) (int64, error) {
-
 	switch t := v.(type) {
 	case FormatEntry:
 		return e.w.WriteUint64(
@@ -623,4 +624,10 @@ func (e *FormatEncoder) Encode(v interface{}) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported format element '%s'", reflect.TypeOf(v))
 	}
+}
+
+// SipHash is used to calculate the hash in Goodbye element items, hashing the
+// filename.
+func SipHash(b []byte) uint64 {
+	return siphash.Hash(CaFormatGoodbyeHashKey0, CaFormatGoodbyeHashKey1, b)
 }

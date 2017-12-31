@@ -24,6 +24,11 @@ const (
 	CaFormatTable             = 0xe75b9e112f17417d
 	CaFormatTableTailMarker   = 0x4b4f050e5549ecd1
 
+	// SipHash key used in Goodbye elements to hash the filename. It's 16 bytes,
+	// split into 2x64bit values, upper and lower part of the key
+	CaFormatGoodbyeHashKey0 = 0x8574442b0f1d84b3
+	CaFormatGoodbyeHashKey1 = 0x2736ed30d1c22ec1
+
 	// Format feature flags
 	CaFormatWith16BitUIDs   = 0x1
 	CaFormatWith32BitUIDs   = 0x2

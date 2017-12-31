@@ -23,6 +23,7 @@ list-chunks  - list all chunk IDs contained in a caibx
 cache        - populate a cache without writing to a blob
 chop         - split a blob based on existing caibx and store the chunks
 pull         - serve chunks using the casync protocol over stdin/stdout
+tar          - pack a directory tree into a catar file
 untar        - extract directory tree from a catar file
 prune        - remove all unreferenced chunks from a local store
 chunk-server - start a HTTP chunk server
@@ -60,6 +61,7 @@ func main() {
 		"list-chunks":  list,
 		"chop":         chop,
 		"pull":         pull,
+		"tar":          tar,
 		"untar":        untar,
 		"prune":        prune,
 		"chunk-server": server,

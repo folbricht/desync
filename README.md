@@ -14,7 +14,7 @@ Among the distinguishing factors:
 - Only chunk store using zstd compression are supported at this point.
 - Supports local stores as well as remote stores over SSH and HTTP
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
-- Support for catar file (unpack) exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present
+- Support for catar files exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present in exising catar files and those won't be present when creating a new catar with the `tar command`
 - Supports chunking with the same algorithm used by casync (see `make` command). Results are identical to what casync produces, same chunks and index files, but with significantly better performance.
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 
@@ -25,6 +25,7 @@ Among the distinguishing factors:
 - `cache`        - populate a cache from index files without writing to a blob
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
+- `tar`          - pack a catar file
 - `untar`        - unpack a catar file
 - `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
 - `chunk-server` - start a chunk server that serves chunks via HTTP
@@ -86,6 +87,11 @@ Chop an existing file according to an existing caibx and store the chunks in a l
 to populate a local cache from a possibly large blob that already exists on the target system.
 ```
 desync chop -s /some/local/store somefile.tar.caibx somefile.tar
+```
+
+Pack a directory tree into a catar file.
+```
+desync tar archive.catar /some/dir
 ```
 
 Unpack a catar file.

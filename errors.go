@@ -29,3 +29,9 @@ type InvalidFormat struct {
 func (e InvalidFormat) Error() string {
 	return fmt.Sprintf("invalid archive format : %s", e.Msg)
 }
+
+// Interrupted is returned when a user interrupted a long-running operation, for
+// example by pressing Ctrl+C
+type Interrupted struct{}
+
+func (e Interrupted) Error() string { return "interrupted" }
