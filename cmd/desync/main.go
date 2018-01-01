@@ -16,6 +16,7 @@ const usage = `desync <command> [options]
 desync <command> -h
 
 Commands:
+chunk        - list the chunks that would be created if splitting a file
 make         - split a blob into chunks and create an index file
 extract      - build a blob from a caibx file
 verify       - verify the integrity of a local store
@@ -65,6 +66,7 @@ func main() {
 		"untar":        untar,
 		"prune":        prune,
 		"chunk-server": server,
+		"chunk":        chunkCmd,
 		"make":         makeCmd,
 	}
 	h, ok := handlers[cmd]

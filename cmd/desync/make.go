@@ -62,7 +62,7 @@ func makeCmd(ctx context.Context, args []string) error {
 	defer f.Close()
 
 	// Prepare the chunker
-	c, err := desync.NewChunker(f, min, avg, max)
+	c, err := desync.NewChunker(f, min, avg, max, 0)
 	if err != nil {
 		return err
 	}
