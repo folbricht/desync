@@ -133,11 +133,12 @@ func cache(ctx context.Context, args []string) error {
 	}
 
 	// Feed the workers, stop on any errors
+loop:
 	for id := range ids {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			break
+			break loop
 		default:
 		}
 		in <- id

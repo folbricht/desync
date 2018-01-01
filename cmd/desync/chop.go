@@ -135,11 +135,12 @@ func chopFile(ctx context.Context, name string, chunks []desync.IndexChunk, s de
 	}
 
 	// Feed the workers, stop if there are any errors
+loop:
 	for _, c := range chunks {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			break
+			break loop
 		default:
 		}
 		in <- c

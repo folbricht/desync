@@ -38,7 +38,7 @@ func list(ctx context.Context, args []string) error {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			break
+			return nil
 		default:
 		}
 	}

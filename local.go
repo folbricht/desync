@@ -3,7 +3,6 @@ package desync
 import (
 	"context"
 	"crypto/sha512"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -122,7 +121,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			return errors.New("interrupted")
+			return Interrupted{}
 		default:
 		}
 		if err != nil { // failed to walk? => fail
@@ -157,7 +156,7 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			return errors.New("interrupted")
+			return Interrupted{}
 		default:
 		}
 		if err != nil { // failed to walk? => fail

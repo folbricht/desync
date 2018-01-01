@@ -36,7 +36,7 @@ func (s *ProtocolServer) Serve(ctx context.Context) error {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			break
+			return nil
 		default:
 		}
 		m, err := s.p.ReadMessage()
