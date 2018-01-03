@@ -32,14 +32,19 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 	}
 
 	// Get the UID/GID and major/minor for devices from the low-level stat structure
-	var uid, gid int
-	var major, minor uint64
+	var (
+		uid, gid     int
+		major, minor uint64
+		mode         uint16
+	)
+
 	switch sys := info.Sys().(type) {
 	case *syscall.Stat_t:
 		uid = int(sys.Uid)
 		gid = int(sys.Gid)
 		major = uint64(sys.Rdev / 256)
 		minor = uint64(sys.Rdev % 256)
+		mode = sys.Mode
 	default:
 		// TODO What should be done here on platforms that don't support this (Windows)?
 		// Default UID/GID to 0 and move on or error?
@@ -64,7 +69,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 		FeatureFlags: featureFlags,
 		UID:          uid,
 		GID:          gid,
-		Mode:         info.Mode(),
+		Mode:         os.FileMode(mode),
 		MTime:        info.ModTime(),
 	}
 	nn, err := enc.Encode(entry)

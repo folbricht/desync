@@ -10,8 +10,6 @@ import (
 	"reflect"
 	"strings"
 	"time"
-
-	"github.com/dchest/siphash"
 )
 
 type FormatHeader struct {
@@ -624,10 +622,4 @@ func (e *FormatEncoder) Encode(v interface{}) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported format element '%s'", reflect.TypeOf(v))
 	}
-}
-
-// SipHash is used to calculate the hash in Goodbye element items, hashing the
-// filename.
-func SipHash(b []byte) uint64 {
-	return siphash.Hash(CaFormatGoodbyeHashKey0, CaFormatGoodbyeHashKey1, b)
 }

@@ -47,7 +47,7 @@ func TestChunkerLargeFile(t *testing.T) {
 		{Start: 982644, Size: 65932, ID: "a8bfdadaecbee1ed16ce23d8bf771d1b3fbca2e631fc71b5adb3846c1bb2d542"},
 	}
 
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestChunkerLargeFile(t *testing.T) {
 
 func TestChunkerEmptyFile(t *testing.T) {
 	r := bytes.NewReader([]byte{})
-	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestChunkerEmptyFile(t *testing.T) {
 func TestChunkerSmallFile(t *testing.T) {
 	b := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	r := bytes.NewReader(b)
-	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestChunkerSmallFile(t *testing.T) {
 func TestChunkerNoBoundary(t *testing.T) {
 	b := make([]byte, 1024*1024)
 	r := bytes.NewReader(b)
-	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func chunkFile(b *testing.B, name string) error {
 	}
 	defer f.Close()
 
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
 	if err != nil {
 		return err
 	}

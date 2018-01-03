@@ -76,7 +76,7 @@ func TestIndexChunking(t *testing.T) {
 	defer f.Close()
 
 	// Create a chunker
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func splitBlob(b *testing.B) {
 	defer f.Close()
 
 	// Create a chunker
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
