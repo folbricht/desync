@@ -35,7 +35,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 	var (
 		uid, gid     int
 		major, minor uint64
-		mode         uint16
+		mode         uint32
 	)
 
 	switch sys := info.Sys().(type) {
@@ -44,7 +44,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 		gid = int(sys.Gid)
 		major = uint64(sys.Rdev / 256)
 		minor = uint64(sys.Rdev % 256)
-		mode = sys.Mode
+		mode = uint32(sys.Mode)
 	default:
 		// TODO What should be done here on platforms that don't support this (Windows)?
 		// Default UID/GID to 0 and move on or error?
