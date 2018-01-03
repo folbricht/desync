@@ -25,9 +25,9 @@ func server(ctx context.Context, args []string) error {
 		stores         []desync.Store
 		listenInt      string
 	)
-	flags := flag.NewFlagSet("cache", flag.ExitOnError)
+	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, cacheUsage)
+		fmt.Fprintln(os.Stderr, serverUsage)
 		flags.PrintDefaults()
 	}
 

@@ -17,10 +17,10 @@ Write start/length/hash pairs for each chunk a file is split into.`
 
 func chunkCmd(ctx context.Context, args []string) error {
 	var (
-		chunkSize     string
-		startPos      uint64
+		chunkSize string
+		startPos  uint64
 	)
-	flags := flag.NewFlagSet("make", flag.ExitOnError)
+	flags := flag.NewFlagSet("chunk", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Fprintln(os.Stderr, chunkUsage)
 		flags.PrintDefaults()

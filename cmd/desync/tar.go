@@ -17,7 +17,7 @@ Encodes a directory tree into a catar archive.`
 func tar(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("tar", flag.ExitOnError)
 	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, untarUsage)
+		fmt.Fprintln(os.Stderr, tarUsage)
 		flags.PrintDefaults()
 	}
 	flags.Parse(args)

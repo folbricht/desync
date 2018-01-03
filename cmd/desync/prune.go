@@ -22,7 +22,7 @@ func prune(ctx context.Context, args []string) error {
 	)
 	flags := flag.NewFlagSet("prune", flag.ExitOnError)
 	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, cacheUsage)
+		fmt.Fprintln(os.Stderr, pruneUsage)
 		flags.PrintDefaults()
 	}
 
