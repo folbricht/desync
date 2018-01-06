@@ -9,13 +9,12 @@ import (
 
 // IndexFromFile chunks a file in parallel and returns an index. It does not
 // store chunks! Each concurrent chunker starts filesize/n bytes apart and
-// splits independently. The main goroutine then starts with the first chunker
-// and attempts to align the produced chunks with the 2nd one, at which point
-// the 1st chunker is stopped and the 2nd attempts to sync with the chunks
-// produced by the 3rd and so on. If they do not sync (perhaps because no
-// boundaries are found by the rolling hash algorithm), the first one will just
-// keep going. In that case some CPU and I/O will be wasted, but the resulting
-// index will still be correct.
+// splits independently. Each chunk worker tries to sync with it's next
+// neighbor and if successful stops processing letting the next one continue.
+// The main routine reads and assembles a list of (confirmed) chunks from the
+// workers, starting with the first worker.
+// This algorithm wastes some CPU and I/O if the data doesn't contain chunk
+// boundaries, for example if the whole file contains nil bytes.
 func IndexFromFile(ctx context.Context,
 	name string,
 	n int,
@@ -43,10 +42,10 @@ func IndexFromFile(ctx context.Context,
 	size := uint64(info.Size())
 	span := size / uint64(n) // intial spacing between chunkers
 
-	// Create and start the workers
-	var worker []*pChunker
+	// Create/initialize the workers
+	worker := make([]*pChunker, n)
 	for i := 0; i < n; i++ {
-		f, err := os.Open(name)
+		f, err := os.Open(name) // open one file per worker
 		if err != nil {
 			return index, err
 		}
@@ -62,62 +61,39 @@ func IndexFromFile(ctx context.Context,
 			results: make(chan IndexChunk, mChunks),
 			done:    make(chan struct{}),
 		}
-		go p.start(ctx)
-		defer p.stop()
-		worker = append(worker, p)
+		worker[i] = p
 	}
 
-	// Go through the workers, starting with the first one being the master/authority.
-	// If one of the produced chunks matches one that the next worker has produced,
-	// then we make the next one the master and stop the current worker.
-	for i := 0; i < n; i++ {
-		var (
-			sync      = IndexChunk{}
-			foundSync bool
-		)
-		for chunk := range worker[i].results {
-			// Any chunk produced by the current master is correct and is recorded
-			// in the array of chunks that will be returned.
+	// Link the workers, each one gets a pointer to the next, the last one gets nil
+	for i := 1; i < n; i++ {
+		worker[i-1].next = worker[i]
+	}
+
+	// Start the workers
+	for _, w := range worker {
+		go w.start(ctx)
+		defer w.stop() // shouldn't be necessary, but better be safe
+	}
+
+	// Go through the workers, starting with the first one, taking all chunks
+	// from their bucket before moving on to the next. It's possible that a worker
+	// reaches the end of the stream before the following worker does (eof=true),
+	// don't advance to the next worker in that case.
+	for _, w := range worker {
+		for chunk := range w.results {
+			// Assemble the list of chunks in the index
 			index.Chunks = append(index.Chunks, chunk)
-
-			// If there are no more workers, just keep going finishing off the chunking
-			// using the current worker
-			if i+1 >= n {
-				continue
-			}
-
-			// Did we advance past the current sync point? If so, grab chunks from
-			// the next worker until it either sync's up or it is ahead of us
-		nextSync:
-			for chunk.Start > sync.Start {
-				select {
-				case sync = <-worker[i+1].results:
-				default: // next worker doesn't have chunks in its bucket?
-					break nextSync // Move on and try again later
-				}
-			}
-
-			// Did we find sync point with the next worker?
-			if chunk.Start == sync.Start && chunk.Size == sync.Size {
-				foundSync = true
-				break
-			}
 		}
-		// The next worker is going to be the master, stop the current master
-		worker[i].stop()
-
-		// Check for any errors
-		if worker[i].err != nil {
-			return index, worker[i].err
+		// Done reading all chunks from this worker, check for any errors
+		if w.err != nil {
+			return index, w.err
 		}
-
-		// If we got here without a sync match, that means the current master
-		// reached the end. So don't go to the next worker
-		if !foundSync {
+		// Stop if this worker reached the end of the stream (it's not necessarily
+		// the last one!)
+		if w.eof {
 			break
 		}
 	}
-
 	return index, nil
 }
 
@@ -133,6 +109,9 @@ type pChunker struct {
 	once    sync.Once
 	done    chan struct{}
 	err     error
+	next    *pChunker
+	eof     bool
+	sync    IndexChunk
 }
 
 func (c *pChunker) start(ctx context.Context) {
@@ -152,17 +131,44 @@ loop:
 			break loop
 		}
 		if len(b) == 0 {
+			// TODO: If this worker reached the end of the stream and it's not the
+			// last one, we should probable stop all following workers. Meh, shouldn't
+			// be happening for large file or save significant CPU for small ones.
+			c.eof = true
 			break loop
 		}
 		// Calculate the chunk ID
 		id := sha512.Sum512_256(b)
 
-		// Record it in our bucket
-		c.results <- IndexChunk{Start: start, Size: uint64(len(b)), ID: id}
+		// Store it in our bucket
+		chunk := IndexChunk{Start: start, Size: uint64(len(b)), ID: id}
+		c.results <- chunk
+
+		// Check if the next worker already has this chunk, at which point we stop
+		// here and let the next continue
+		if c.next != nil && c.next.syncWith(chunk) {
+			break
+		}
 	}
 	close(c.results)
 }
 
 func (c *pChunker) stop() {
 	c.once.Do(func() { close(c.done) })
+}
+
+// Returns true if the given chunk lines up with one in the current bucket
+func (c *pChunker) syncWith(chunk IndexChunk) bool {
+	// Read from our bucket until we're past (or match) where the previous worker
+	// currently is
+	for chunk.Start > c.sync.Start {
+		select {
+		case c.sync = <-c.results:
+		default: // Nothing in my bucket? Move on
+			return false
+		}
+	}
+	// Did we find a match with the previous worker. If so the previous worker
+	// should stop and this one will keep going
+	return chunk.Start == c.sync.Start && chunk.Size == c.sync.Size
 }
