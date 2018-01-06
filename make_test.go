@@ -11,23 +11,31 @@ import (
 )
 
 func TestParallelChunking(t *testing.T) {
-	// Create a file full of zeroes to test behaviour of the chunker when no
-	// boundaries can be found (the rolling hash will not produce boundaries
-	// for files full of nil bytes)
-	z, err := ioutil.TempFile("", "zeroes")
+	blank, err := ioutil.TempFile("", "blank")
 	if err != nil {
 		t.Fatal(err)
 	}
-	z.Close()
-	defer os.RemoveAll(z.Name())
-	if err = ioutil.WriteFile(z.Name(), make([]byte, 1024*1024), 0644); err != nil {
+	blank.Close()
+	defer os.RemoveAll(blank.Name())
+
+	// Create a file full of zeroes to test behaviour of the chunker when no
+	// boundaries can be found (the rolling hash will not produce boundaries
+	// for files full of nil bytes)
+	zeroes, err := ioutil.TempFile("", "zeroes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroes.Close()
+	defer os.RemoveAll(zeroes.Name())
+	if err = ioutil.WriteFile(zeroes.Name(), make([]byte, 1024*1024), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Make an array of files we want to test the chunker with
 	testFiles := []string{
 		"testdata/chunker.input",
-		z.Name(),
+		zeroes.Name(),
+		blank.Name(),
 	}
 
 	// Split each file with different values for n (number of goroutes)
