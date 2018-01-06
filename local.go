@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 const chunkFileExt = ".cacnk"
@@ -40,16 +39,14 @@ func NewLocalStore(dir string) (LocalStore, error) {
 func (s LocalStore) GetChunk(id ChunkID) ([]byte, error) {
 	sID := id.String()
 	p := filepath.Join(s.Base, sID[0:4], sID) + chunkFileExt
-	if _, err := os.Stat(p); err != nil {
-		return nil, ChunkMissing{id}
-	}
-	if s.UpdateTimes {
-		now := time.Now()
-		if err := os.Chtimes(p, now, now); err != nil {
-			return nil, err
+
+	b, err := ioutil.ReadFile(p)
+	if err != nil {
+		if _, ok := err.(*os.PathError); ok {
+			return nil, ChunkMissing{id}
 		}
 	}
-	return ioutil.ReadFile(p)
+	return b, err
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
