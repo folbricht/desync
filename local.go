@@ -41,10 +41,8 @@ func (s LocalStore) GetChunk(id ChunkID) ([]byte, error) {
 	p := filepath.Join(s.Base, sID[0:4], sID) + chunkFileExt
 
 	b, err := ioutil.ReadFile(p)
-	if err != nil {
-		if _, ok := err.(*os.PathError); ok {
-			return nil, ChunkMissing{id}
-		}
+	if os.IsNotExist(err) {
+		err = ChunkMissing{id}
 	}
 	return b, err
 }
