@@ -93,7 +93,7 @@ func TestIndexChunking(t *testing.T) {
 	}
 
 	// Split up the blob into chunks and return the index
-	idx, errs := IndexFromBlob(context.Background(), c, s, 10)
+	idx, errs := SplitBlob(context.Background(), c, s, 10)
 	if len(errs) != 0 {
 		t.Fatal(errs)
 	}
@@ -182,7 +182,7 @@ func splitBlob(b *testing.B) {
 	b.StartTimer()
 	// Split up the blob into chunks and return the index
 	var errs []error
-	idx, errs = IndexFromBlob(context.Background(), c, s, 10)
+	idx, errs = SplitBlob(context.Background(), c, s, 10)
 	if len(errs) != 0 {
 		b.Fatal(errs)
 	}

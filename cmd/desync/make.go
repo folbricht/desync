@@ -54,22 +54,14 @@ func makeCmd(ctx context.Context, args []string) error {
 		return err
 	}
 
-	// Open the blob
-	f, err := os.Open(dataFile)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	// Prepare the chunker
-	c, err := desync.NewChunker(f, min, avg, max, 0)
+	// Split up the file and create and index from it
+	index, err := desync.IndexFromFile(ctx, dataFile, n, min, avg, max)
 	if err != nil {
 		return err
 	}
 
-	// Split the files into chunks, store the chunks, and return an index
-	index, errs := desync.IndexFromBlob(ctx, c, s, n)
-	if len(errs) != 0 {
+	// Chop up the file into chunks and store them in the target store
+	if errs := desync.ChopFile(ctx, dataFile, index.Chunks, s, n); len(errs) != 0 {
 		for _, e := range errs {
 			fmt.Fprintln(os.Stderr, e)
 		}
