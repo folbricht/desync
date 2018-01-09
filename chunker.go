@@ -82,7 +82,7 @@ var hashTable = []uint32{
 }
 
 type Chunker struct {
-	r             io.ReadSeeker
+	r             io.Reader
 	min, avg, max uint64
 
 	start uint64
@@ -97,7 +97,7 @@ type Chunker struct {
 	hDiscriminator uint32
 }
 
-func NewChunker(r io.ReadSeeker, min, avg, max, start uint64) (Chunker, error) {
+func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 	if min < ChunkerWindowSize {
 		return Chunker{}, fmt.Errorf("min chunk size too small, must be over %d", ChunkerWindowSize)
 	}
@@ -110,19 +110,13 @@ func NewChunker(r io.ReadSeeker, min, avg, max, start uint64) (Chunker, error) {
 	if avg > max {
 		return Chunker{}, errors.New("avg chunk size must not be greater than max")
 	}
-	var err error
-	seekDest, err := r.Seek(int64(start), 0)
-	if seekDest != int64(start) {
-		err = fmt.Errorf("Seek to offset %d requested, but actually got position %d", start, seekDest)
-	}
 	return Chunker{
 		r:              r,
 		min:            min,
 		avg:            avg,
 		max:            max,
-		start:		start,
 		hDiscriminator: discriminatorFromAvg(avg),
-	}, err
+	}, nil
 }
 
 // Make a new buffer with 10*max bytes and copy anything that may be leftover

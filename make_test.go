@@ -30,7 +30,6 @@ func TestParallelChunking(t *testing.T) {
 	if err = ioutil.WriteFile(zeroes.Name(), make([]byte, 1024*1024), 0644); err != nil {
 		t.Fatal(err)
 	}
-
 	// Make an array of files we want to test the chunker with
 	testFiles := []string{
 		"testdata/chunker.input",
@@ -47,7 +46,7 @@ func TestParallelChunking(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
+		c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -64,7 +63,7 @@ func TestParallelChunking(t *testing.T) {
 			expected = append(expected, IndexChunk{Start: start, Size: uint64(len(buf)), ID: id})
 		}
 
-		for n := 1; n < 10; n++ {
+		for n := 2; n < 3; n++ {
 			t.Run(fmt.Sprintf("%s, n=%d", name, n), func(t *testing.T) {
 				// Split it up in parallel
 				index, err := IndexFromFile(

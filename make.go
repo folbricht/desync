@@ -3,6 +3,8 @@ package desync
 import (
 	"context"
 	"crypto/sha512"
+	"fmt"
+	"io"
 	"os"
 	"sync"
 )
@@ -52,7 +54,14 @@ func IndexFromFile(ctx context.Context,
 		defer f.Close()
 		start := span * uint64(i)       // starting position for this chunker
 		mChunks := (size-start)/min + 1 // max # of chunks this worker can produce
-		c, err := NewChunker(f, min, avg, max, start)
+		s, err := f.Seek(int64(start), io.SeekStart)
+		if err != nil {
+			return index, err
+		}
+		if uint64(s) != start {
+			return index, fmt.Errorf("requested seek to position %d, but got %d", start, s)
+		}
+		c, err := NewChunker(f, min, avg, max)
 		if err != nil {
 			return index, err
 		}
@@ -60,6 +69,7 @@ func IndexFromFile(ctx context.Context,
 			chunker: c,
 			results: make(chan IndexChunk, mChunks),
 			done:    make(chan struct{}),
+			offset:  start,
 		}
 		worker[i] = p
 	}
@@ -106,12 +116,17 @@ type pChunker struct {
 
 	// single-stream chunker used by this worker
 	chunker Chunker
-	once    sync.Once
-	done    chan struct{}
-	err     error
-	next    *pChunker
-	eof     bool
-	sync    IndexChunk
+
+	// starting position in the stream for this worker, needed to calculate
+	// the absolute position of every boundry that is returned
+	offset uint64
+
+	once sync.Once
+	done chan struct{}
+	err  error
+	next *pChunker
+	eof  bool
+	sync IndexChunk
 }
 
 func (c *pChunker) start(ctx context.Context) {
@@ -130,6 +145,7 @@ loop:
 			c.err = err
 			break loop
 		}
+		start += c.offset
 		if len(b) == 0 {
 			// TODO: If this worker reached the end of the stream and it's not the
 			// last one, we should probable stop all following workers. Meh, shouldn't

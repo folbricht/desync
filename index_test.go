@@ -76,7 +76,7 @@ func TestIndexChunking(t *testing.T) {
 	defer f.Close()
 
 	// Create a chunker
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
+	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,9 +93,9 @@ func TestIndexChunking(t *testing.T) {
 	}
 
 	// Split up the blob into chunks and return the index
-	idx, errs := SplitBlob(context.Background(), c, s, 10)
-	if len(errs) != 0 {
-		t.Fatal(errs)
+	idx, err := SplitBlob(context.Background(), c, s, 10)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Write the index and compare it to the expected one
@@ -164,7 +164,7 @@ func splitBlob(b *testing.B) {
 	defer f.Close()
 
 	// Create a chunker
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault, 0)
+	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -181,9 +181,8 @@ func splitBlob(b *testing.B) {
 	}
 	b.StartTimer()
 	// Split up the blob into chunks and return the index
-	var errs []error
-	idx, errs = SplitBlob(context.Background(), c, s, 10)
-	if len(errs) != 0 {
-		b.Fatal(errs)
+	idx, err = SplitBlob(context.Background(), c, s, 10)
+	if err != nil {
+		b.Fatal(err)
 	}
 }

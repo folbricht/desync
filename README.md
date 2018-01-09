@@ -37,7 +37,7 @@ go get -u github.com/folbricht/desync
 - `cache`        - populate a cache from index files without writing to a blob
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
-- `tar`          - pack a catar file
+- `tar`          - pack a catar file, optionally chunk the catar and create an index file
 - `untar`        - unpack a catar file
 - `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
 - `chunk-server` - start a chunk server that serves chunks via HTTP
@@ -51,6 +51,7 @@ go get -u github.com/folbricht/desync
 - `-y` Answer with `yes` when asked for confirmation. Only supported by the `prune` command.
 - `-l` Listening address for the HTTP chunk server. Only supported by the `chunk-server` command.
 - `-m` Specify the min/avg/max chunk sizes in kb. Only applicable to the `make` command. Defaults to 16:64:256 and for best results the min should be avg/4 and the max should be 4*avg.
+- `-i` When packing an archive, don't produce an archive file but instead store the chunks and create an index file (caidx) for the archive. Only applicable to `tar` command.
 
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
@@ -105,6 +106,11 @@ desync chop -s /some/local/store somefile.tar.caibx somefile.tar
 Pack a directory tree into a catar file.
 ```
 desync tar archive.catar /some/dir
+```
+
+Pack a directory tree into an archive and chunk the archive, producing an index file.
+```
+desync tar -i -s /some/local/store archive.caidx /some/dir
 ```
 
 Unpack a catar file.

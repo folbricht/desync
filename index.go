@@ -108,7 +108,7 @@ func (i *Index) WriteTo(w io.Writer) (int64, error) {
 // SplitBlob splits up a blob into chunks using the provided chunker (single stream),
 // populates a store with the chunks and returns an index. Hashing and compression
 // is performed in n goroutines while the hashing algorithm is performed serially.
-func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, []error) {
+func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, error) {
 	type chunkJob struct {
 		num   int
 		start uint64
@@ -118,7 +118,7 @@ func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, []er
 		stop    bool
 		wg      sync.WaitGroup
 		mu      sync.Mutex
-		errs    []error
+		pErr    error
 		in      = make(chan chunkJob)
 		results = make(map[int]IndexChunk)
 	)
@@ -129,7 +129,9 @@ func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, []er
 	recordError := func(err error) {
 		mu.Lock()
 		defer mu.Unlock()
-		errs = append(errs, err)
+		if pErr == nil {
+			pErr = err
+		}
 		cancel()
 	}
 
@@ -191,7 +193,7 @@ func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, []er
 		}
 		start, b, err := c.Next()
 		if err != nil {
-			return Index{}, []error{err}
+			return Index{}, err
 		}
 		if len(b) == 0 {
 			break
@@ -210,7 +212,7 @@ func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, []er
 	// want to bail out when it happens and abandon any running goroutines that
 	// might still be writing/processing chunks. Only stop here it's safe like here.
 	if stop {
-		return Index{}, errs
+		return Index{}, pErr
 	}
 
 	// All the chunks have been processed and are stored in a map. Now build a
@@ -230,5 +232,5 @@ func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, []er
 		},
 		Chunks: chunks,
 	}
-	return index, errs
+	return index, pErr
 }

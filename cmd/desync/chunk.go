@@ -5,6 +5,7 @@ import (
 	"crypto/sha512"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/folbricht/desync"
@@ -49,9 +50,16 @@ func chunkCmd(ctx context.Context, args []string) error {
 		return err
 	}
 	defer f.Close()
+	s, err := f.Seek(int64(startPos), io.SeekStart)
+	if err != nil {
+		return err
+	}
+	if uint64(s) != startPos {
+		return fmt.Errorf("requested seek to position %d, but got %d", startPos, s)
+	}
 
 	// Prepare the chunker
-	c, err := desync.NewChunker(f, min, avg, max, startPos)
+	c, err := desync.NewChunker(f, min, avg, max)
 	if err != nil {
 		return err
 	}
@@ -70,6 +78,6 @@ func chunkCmd(ctx context.Context, args []string) error {
 			return nil
 		}
 		sum := sha512.Sum512_256(b)
-		fmt.Printf("%d\t%d\t%x\n", start, len(b), sum)
+		fmt.Printf("%d\t%d\t%x\n", start+startPos, len(b), sum)
 	}
 }
