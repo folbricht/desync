@@ -105,10 +105,10 @@ func (i *Index) WriteTo(w io.Writer) (int64, error) {
 	return n + n1, err
 }
 
-// SplitBlob splits up a blob into chunks using the provided chunker (single stream),
+// ChunkStream splits up a blob into chunks using the provided chunker (single stream),
 // populates a store with the chunks and returns an index. Hashing and compression
 // is performed in n goroutines while the hashing algorithm is performed serially.
-func SplitBlob(ctx context.Context, c Chunker, s LocalStore, n int) (Index, error) {
+func ChunkStream(ctx context.Context, c Chunker, s LocalStore, n int) (Index, error) {
 	type chunkJob struct {
 		num   int
 		start uint64

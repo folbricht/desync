@@ -84,7 +84,7 @@ func tar(ctx context.Context, args []string) error {
 
 	// Read from the pipe, split the stream and store the chunks. This should
 	// complete when Tar is done and closes the pipe writer
-	index, err := desync.SplitBlob(ctx, c, s, n)
+	index, err := desync.ChunkStream(ctx, c, s, n)
 	if err != nil {
 		return err
 	}

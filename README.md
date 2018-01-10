@@ -38,7 +38,7 @@ go get -u github.com/folbricht/desync
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file
-- `untar`        - unpack a catar file
+- `untar`        - unpack a catar file or an index referencing a catar
 - `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
 - `chunk-server` - start a chunk server that serves chunks via HTTP
 - `make`         - split a blob into chunks and create an index file
@@ -51,7 +51,7 @@ go get -u github.com/folbricht/desync
 - `-y` Answer with `yes` when asked for confirmation. Only supported by the `prune` command.
 - `-l` Listening address for the HTTP chunk server. Only supported by the `chunk-server` command.
 - `-m` Specify the min/avg/max chunk sizes in kb. Only applicable to the `make` command. Defaults to 16:64:256 and for best results the min should be avg/4 and the max should be 4*avg.
-- `-i` When packing an archive, don't produce an archive file but instead store the chunks and create an index file (caidx) for the archive. Only applicable to `tar` command.
+- `-i` When packing/unpacking an archive, don't create/read an archive file but instead store/read the chunks and use an index file (caidx) for the archive. Only applicable to `tar` and `untar` commands.
 
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
@@ -116,6 +116,11 @@ desync tar -i -s /some/local/store archive.caidx /some/dir
 Unpack a catar file.
 ```
 desync untar archive.catar /some/dir
+```
+
+Unpack a directory tree using an index file referencing a chunked archive.
+```
+desync untar -i -s /some/local/store archive.caidx /some/dir
 ```
 
 Prune a store to only contain chunks that are referenced in the provided index files. Possible data loss.
