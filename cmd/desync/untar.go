@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"sync"
 
@@ -16,13 +17,15 @@ import (
 
 const untarUsage = `desync untar <catar> <target>
 
-Extracts a directory tree from a catar file.`
+Extracts a directory tree from a catar file or an index file.`
 
 func untar(ctx context.Context, args []string) error {
 	var (
-		readIndex     bool
-		n             int
-		storeLocation string
+		readIndex      bool
+		n              int
+		storeLocations = new(multiArg)
+		stores         []desync.Store
+		cacheLocation  string
 	)
 	flags := flag.NewFlagSet("untar", flag.ExitOnError)
 	flags.Usage = func() {
@@ -30,7 +33,8 @@ func untar(ctx context.Context, args []string) error {
 		flags.PrintDefaults()
 	}
 	flags.BoolVar(&readIndex, "i", false, "Read index file (caidx), not catar")
-	flags.StringVar(&storeLocation, "s", "", "Local casync store location (with -i)")
+	flags.Var(storeLocations, "s", "casync store location, can be multiples (with -i)")
+	flags.StringVar(&cacheLocation, "c", "", "use local store as cache (with -i)")
 	flags.IntVar(&n, "n", 10, "number of goroutines (with -i)")
 	flags.Parse(args)
 
@@ -61,10 +65,50 @@ func untar(ctx context.Context, args []string) error {
 		return err
 	}
 
-	// Prepare the store
-	s, err := desync.NewLocalStore(storeLocation)
-	if err != nil {
-		return err
+	// Go through each store passed in the command line, initialize them, and
+	// build a list
+	for _, location := range storeLocations.list {
+		loc, err := url.Parse(location)
+		if err != nil {
+			return fmt.Errorf("Unable to parse store location %s : %s", location, err)
+		}
+		var s desync.Store
+		switch loc.Scheme {
+		case "ssh":
+			r, err := desync.NewRemoteSSHStore(loc, n)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			s = r
+		case "http", "https":
+			s, err = desync.NewRemoteHTTPStore(loc)
+			if err != nil {
+				return err
+			}
+		case "":
+			s, err = desync.NewLocalStore(loc.Path)
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
+		}
+		stores = append(stores, s)
+	}
+
+	// Combine all stores into one router
+	var s desync.Store = desync.NewStoreRouter(stores...)
+
+	// See if we want to use a local store as cache, if so, attach a cache to
+	// the router
+	if cacheLocation != "" {
+		cache, err := desync.NewLocalStore(cacheLocation)
+		if err != nil {
+			return err
+		}
+		cache.UpdateTimes = true
+		s = desync.NewCache(s, cache)
 	}
 
 	return untarIndex(ctx, targetDir, index, s, n)
