@@ -122,7 +122,7 @@ func writeOutput(ctx context.Context, name string, chunks []desync.IndexChunk, s
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
-	tmpfile, err := ioutil.TempFile(filepath.Dir(name), "."+name)
+	tmpfile, err := ioutil.TempFile(filepath.Dir(name), "."+filepath.Base(name))
 	if err != nil {
 		return []error{err}
 	}
