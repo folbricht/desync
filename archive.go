@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 )
 
@@ -129,7 +130,7 @@ loop:
 			return nil, nil
 
 		default:
-			return nil, fmt.Errorf("unsupported element %s in archive", d)
+			return nil, fmt.Errorf("unsupported element %s in archive", reflect.TypeOf(d))
 		}
 	}
 
