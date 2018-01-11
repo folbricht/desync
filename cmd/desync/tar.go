@@ -91,7 +91,7 @@ func tar(ctx context.Context, args []string) error {
 
 	// See if Tar encountered an error along the way
 	if tarErr != nil {
-		return err
+		return tarErr
 	}
 
 	// Write the index to file
