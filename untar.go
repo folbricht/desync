@@ -55,10 +55,6 @@ func makeDir(base string, n NodeDirectory) error {
 		if !info.IsDir() {
 			return fmt.Errorf("%s exists and is not a directory", dst)
 		}
-		// Ok the dir exists, let's set the mode anyway
-		if err := os.Chmod(dst, n.Mode); err != nil {
-			return err
-		}
 	} else {
 		// Stat error'ed out, presumably because the dir doesn't exist. Create it.
 		if err := os.Mkdir(dst, n.Mode); err != nil {
@@ -69,7 +65,10 @@ func makeDir(base string, n NodeDirectory) error {
 	if err := os.Chown(dst, n.UID, n.GID); err != nil {
 		return err
 	}
-	return os.Chtimes(dst, n.MTime, n.MTime)
+	if err := os.Chtimes(dst, n.MTime, n.MTime); err != nil {
+		return err
+	}
+	return syscall.Chmod(dst, uint32(n.Mode))
 }
 
 func makeFile(base string, n NodeFile) error {
@@ -83,13 +82,13 @@ func makeFile(base string, n NodeFile) error {
 	if _, err = io.Copy(f, n.Data); err != nil {
 		return err
 	}
-	if err = f.Chmod(n.Mode); err != nil {
-		return err
-	}
 	if err = f.Chown(n.UID, n.GID); err != nil {
 		return err
 	}
-	return os.Chtimes(dst, n.MTime, n.MTime)
+	if err = os.Chtimes(dst, n.MTime, n.MTime); err != nil {
+		return err
+	}
+	return syscall.Chmod(dst, uint32(n.Mode))
 }
 
 func makeSymlink(base string, n NodeSymlink) error {
@@ -114,7 +113,10 @@ func makeDevice(base string, n NodeDevice) error {
 	if err := os.Chown(dst, n.UID, n.GID); err != nil {
 		return err
 	}
-	return os.Chtimes(dst, n.MTime, n.MTime)
+	if err := os.Chtimes(dst, n.MTime, n.MTime); err != nil {
+		return err
+	}
+	return syscall.Chmod(dst, uint32(n.Mode))
 }
 
 func mkdev(major, minor uint64) uint64 {
