@@ -50,6 +50,13 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 		// Default UID/GID to 0 and move on or error?
 		return n, errors.New("unsupported platform")
 	}
+	m := info.Mode()
+
+	// Skip (and warn about) things we can't encode properly
+	if !(m.IsDir() || m.IsRegular() || isSymlink(m) || isDevice(m)) {
+		fmt.Fprintf(os.Stderr, "skipping '%s' : unsupported node type\n", path)
+		return 0, nil
+	}
 
 	// TODO: Find out what CaFormatWithPermissions is as that's not set in
 	// casync-produced catar archives
@@ -78,7 +85,6 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 		return n, err
 	}
 
-	m := info.Mode()
 	switch {
 	case m.IsDir():
 		stats, err := ioutil.ReadDir(path)
