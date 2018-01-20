@@ -27,7 +27,7 @@ The tool is provided for convenience. It uses the desync library and makes most 
 
 If GOPATH is set correctly, building the tool and installing it into `$GOPATH/bin` can be done with:
 ```
-go get -u github.com/folbricht/desync
+go get -u github.com/folbricht/desync/cmd/desync
 ```
 
 ### Subcommands
