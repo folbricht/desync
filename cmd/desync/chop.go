@@ -50,11 +50,5 @@ func chop(ctx context.Context, args []string) error {
 	}
 
 	// Chop up the file into chunks and store them in the target store
-	if errs := desync.ChopFile(ctx, dataFile, c.Chunks, s, n); len(errs) != 0 {
-		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, e)
-		}
-		os.Exit(1)
-	}
-	return nil
+	return desync.ChopFile(ctx, dataFile, c.Chunks, s, n)
 }

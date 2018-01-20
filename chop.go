@@ -9,12 +9,13 @@ import (
 	"sync"
 )
 
-// ChopFile split a file according to a list of chunks obtained from an Index.
-func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s LocalStore, n int) []error {
+// ChopFile split a file according to a list of chunks obtained from an Index
+// and stores them in the provided store
+func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s LocalStore, n int) error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
-		errs []error
+		pErr error
 		in   = make(chan IndexChunk)
 	)
 	ctx, cancel := context.WithCancel(ctx)
@@ -24,7 +25,9 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s LocalStor
 	recordError := func(err error) {
 		mu.Lock()
 		defer mu.Unlock()
-		errs = append(errs, err)
+		if pErr == nil {
+			pErr = err
+		}
 		cancel()
 	}
 
@@ -33,7 +36,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s LocalStor
 		wg.Add(1)
 		f, err := os.Open(name)
 		if err != nil {
-			return []error{fmt.Errorf("unable to open file %s, %s", name, err)}
+			return fmt.Errorf("unable to open file %s, %s", name, err)
 		}
 		defer f.Close()
 		go func() {
@@ -97,5 +100,5 @@ loop:
 
 	wg.Wait()
 
-	return errs
+	return pErr
 }

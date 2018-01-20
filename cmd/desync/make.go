@@ -61,11 +61,8 @@ func makeCmd(ctx context.Context, args []string) error {
 	}
 
 	// Chop up the file into chunks and store them in the target store
-	if errs := desync.ChopFile(ctx, dataFile, index.Chunks, s, n); len(errs) != 0 {
-		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, e)
-		}
-		os.Exit(1)
+	if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n); err != nil {
+		return err
 	}
 
 	// Write the index to file
