@@ -99,7 +99,7 @@ func IndexFromFile(ctx context.Context,
 			return index, w.err
 		}
 		// Stop if this worker reached the end of the stream (it's not necessarily
-		// the last one!)
+		// the last worker!)
 		if w.eof {
 			break
 		}
@@ -130,20 +130,20 @@ type pChunker struct {
 }
 
 func (c *pChunker) start(ctx context.Context) {
-loop:
+	defer close(c.results)
 	for {
 		select {
 		case <-ctx.Done():
 			c.err = Interrupted{}
-			break loop
+			return
 		case <-c.done:
-			break loop
-		default:
+			return
+		default: // We weren't asked to stop and weren't interrupted, carry on
 		}
 		start, b, err := c.chunker.Next()
 		if err != nil {
 			c.err = err
-			break loop
+			return
 		}
 		start += c.offset
 		if len(b) == 0 {
@@ -151,7 +151,7 @@ loop:
 			// last one, we should probable stop all following workers. Meh, shouldn't
 			// be happening for large file or save significant CPU for small ones.
 			c.eof = true
-			break loop
+			return
 		}
 		// Calculate the chunk ID
 		id := sha512.Sum512_256(b)
@@ -163,10 +163,9 @@ loop:
 		// Check if the next worker already has this chunk, at which point we stop
 		// here and let the next continue
 		if c.next != nil && c.next.syncWith(chunk) {
-			break
+			return
 		}
 	}
-	close(c.results)
 }
 
 func (c *pChunker) stop() {
