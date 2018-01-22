@@ -40,6 +40,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s LocalStor
 		}
 		defer f.Close()
 		go func() {
+			var err error
 			for c := range in {
 				// Skip this chunk if the store already has it
 				if s.HasChunk(c.ID) {
