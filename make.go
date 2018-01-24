@@ -131,6 +131,7 @@ type pChunker struct {
 
 func (c *pChunker) start(ctx context.Context) {
 	defer close(c.results)
+	defer c.stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -165,6 +166,12 @@ func (c *pChunker) start(ctx context.Context) {
 		if c.next != nil && c.next.syncWith(chunk) {
 			return
 		}
+
+		// If the next worker has stopped and has no more chunks in its bucket,
+		// we want to skip that and try to sync with the one after
+		if c.next != nil && !c.next.active() && len(c.next.results) == 0 {
+			c.next = c.next.next
+		}
 	}
 }
 
@@ -172,13 +179,26 @@ func (c *pChunker) stop() {
 	c.once.Do(func() { close(c.done) })
 }
 
+func (c *pChunker) active() bool {
+	select {
+	case <-c.done:
+		return false
+	default:
+		return true
+	}
+}
+
 // Returns true if the given chunk lines up with one in the current bucket
 func (c *pChunker) syncWith(chunk IndexChunk) bool {
 	// Read from our bucket until we're past (or match) where the previous worker
 	// currently is
 	for chunk.Start > c.sync.Start {
+		var ok bool
 		select {
-		case c.sync = <-c.results:
+		case c.sync, ok = <-c.results:
+			if !ok {
+				return false
+			}
 		default: // Nothing in my bucket? Move on
 			return false
 		}
