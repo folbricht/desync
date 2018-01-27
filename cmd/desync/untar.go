@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 
 	"github.com/folbricht/desync"
@@ -22,7 +21,6 @@ func untar(ctx context.Context, args []string) error {
 		readIndex      bool
 		n              int
 		storeLocations = new(multiArg)
-		stores         []desync.Store
 		cacheLocation  string
 	)
 	flags := flag.NewFlagSet("untar", flag.ExitOnError)
@@ -63,51 +61,12 @@ func untar(ctx context.Context, args []string) error {
 		return err
 	}
 
-	// Go through each store passed in the command line, initialize them, and
-	// build a list
-	for _, location := range storeLocations.list {
-		loc, err := url.Parse(location)
-		if err != nil {
-			return fmt.Errorf("Unable to parse store location %s : %s", location, err)
-		}
-		var s desync.Store
-		switch loc.Scheme {
-		case "ssh":
-			r, err := desync.NewRemoteSSHStore(loc, n)
-			if err != nil {
-				return err
-			}
-			defer r.Close()
-			s = r
-		case "http", "https":
-			s, err = desync.NewRemoteHTTPStore(loc)
-			if err != nil {
-				return err
-			}
-		case "":
-			s, err = desync.NewLocalStore(loc.Path)
-			if err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
-		}
-		stores = append(stores, s)
+	// Parse the store locations, open the stores and add a cache is requested
+	s, err := MultiStoreWithCache(n, cacheLocation, storeLocations.list...)
+	if err != nil {
+		return err
 	}
-
-	// Combine all stores into one router
-	var s desync.Store = desync.NewStoreRouter(stores...)
-
-	// See if we want to use a local store as cache, if so, attach a cache to
-	// the router
-	if cacheLocation != "" {
-		cache, err := desync.NewLocalStore(cacheLocation)
-		if err != nil {
-			return err
-		}
-		cache.UpdateTimes = true
-		s = desync.NewCache(s, cache)
-	}
+	defer s.Close()
 
 	return desync.UnTarIndex(ctx, targetDir, index, s, n)
 }

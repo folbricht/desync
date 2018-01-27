@@ -5,11 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 
-	"github.com/folbricht/desync"
 	"io"
+
+	"github.com/folbricht/desync"
 )
 
 const catUsage = `desync cat [options] <caibx> [<outputfile>]
@@ -29,7 +29,6 @@ func cat(ctx context.Context, args []string) error {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
-		stores         []desync.Store
 		offset         int
 		length         int
 		readIndex      bool
@@ -67,58 +66,18 @@ func cat(ctx context.Context, args []string) error {
 	}
 
 	inFile := flags.Arg(0)
-	//containedFile := flags.Arg(1)
 
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
 		return errors.New("No casync store provided. See -h for help.")
 	}
 
-	// Go through each stored passed in the command line, initialize them, and
-	// build a list
-	for _, location := range storeLocations.list {
-		loc, err := url.Parse(location)
-		if err != nil {
-			return fmt.Errorf("Unable to parse store location %s : %s", location, err)
-		}
-		var s desync.Store
-		switch loc.Scheme {
-		case "ssh":
-			r, err := desync.NewRemoteSSHStore(loc, n)
-			if err != nil {
-				return err
-			}
-			defer r.Close()
-			s = r
-		case "http", "https":
-			s, err = desync.NewRemoteHTTPStore(loc)
-			if err != nil {
-				return err
-			}
-		case "":
-			s, err = desync.NewLocalStore(loc.Path)
-			if err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
-		}
-		stores = append(stores, s)
+	// Parse the store locations, open the stores and add a cache is requested
+	s, err := MultiStoreWithCache(n, cacheLocation, storeLocations.list...)
+	if err != nil {
+		return err
 	}
-
-	// Combine all stores into one router
-	var s desync.Store = desync.NewStoreRouter(stores...)
-
-	// See if we want to use a local store as cache, if so, attach a cache to
-	// the router
-	if cacheLocation != "" {
-		cache, err := desync.NewLocalStore(cacheLocation)
-		if err != nil {
-			return err
-		}
-		cache.UpdateTimes = true
-		s = desync.NewCache(s, cache)
-	}
+	defer s.Close()
 
 	// Read the input
 	c, err := readCaibxFile(inFile)
@@ -128,7 +87,7 @@ func cat(ctx context.Context, args []string) error {
 
 	// Write the output
 	readSeeker := desync.NewIndexReadSeeker(c, s)
-	if err = readSeeker.Seek(int64(offset), io.SeekStart); err != nil {
+	if _, err = readSeeker.Seek(int64(offset), io.SeekStart); err != nil {
 		return err
 	}
 

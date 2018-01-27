@@ -47,3 +47,8 @@ func (c Cache) GetChunk(id ChunkID) ([]byte, error) {
 func (c Cache) String() string {
 	return fmt.Sprintf("store:%s with cache %s", c.s, c.l)
 }
+
+func (c Cache) Close() error {
+	c.l.Close()
+	return c.s.Close()
+}

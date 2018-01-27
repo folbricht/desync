@@ -46,3 +46,17 @@ func (r StoreRouter) String() string {
 	}
 	return strings.Join(a, ",")
 }
+
+// Close calls the Close() method on every store in the router. Returns
+// only the first error encountered.
+func (r StoreRouter) Close() error {
+	var sErr error
+	for _, s := range r.Stores {
+		if err := s.Close(); err != nil {
+			if sErr == nil {
+				sErr = err
+			}
+		}
+	}
+	return sErr
+}

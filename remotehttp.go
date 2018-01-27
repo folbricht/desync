@@ -52,3 +52,5 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
 func (r *RemoteHTTP) String() string {
 	return r.location.String()
 }
+
+func (s RemoteHTTP) Close() error { return nil }

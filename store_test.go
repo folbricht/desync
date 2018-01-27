@@ -11,3 +11,5 @@ func (s TestStore) GetChunk(id ChunkID) ([]byte, error) {
 }
 
 func (s TestStore) String() string { return "TestStore" }
+
+func (s TestStore) Close() error { return nil }

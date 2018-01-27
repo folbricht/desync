@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"path/filepath"
 
@@ -24,7 +23,6 @@ func extract(ctx context.Context, args []string) error {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
-		stores         []desync.Store
 	)
 	flags := flag.NewFlagSet("extract", flag.ExitOnError)
 	flags.Usage = func() {
@@ -55,51 +53,12 @@ func extract(ctx context.Context, args []string) error {
 		return errors.New("No casync store provided. See -h for help.")
 	}
 
-	// Go through each stored passed in the command line, initialize them, and
-	// build a list
-	for _, location := range storeLocations.list {
-		loc, err := url.Parse(location)
-		if err != nil {
-			return fmt.Errorf("Unable to parse store location %s : %s", location, err)
-		}
-		var s desync.Store
-		switch loc.Scheme {
-		case "ssh":
-			r, err := desync.NewRemoteSSHStore(loc, n)
-			if err != nil {
-				return err
-			}
-			defer r.Close()
-			s = r
-		case "http", "https":
-			s, err = desync.NewRemoteHTTPStore(loc)
-			if err != nil {
-				return err
-			}
-		case "":
-			s, err = desync.NewLocalStore(loc.Path)
-			if err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
-		}
-		stores = append(stores, s)
+	// Parse the store locations, open the stores and add a cache is requested
+	s, err := MultiStoreWithCache(n, cacheLocation, storeLocations.list...)
+	if err != nil {
+		return err
 	}
-
-	// Combine all stores into one router
-	var s desync.Store = desync.NewStoreRouter(stores...)
-
-	// See if we want to use a local store as cache, if so, attach a cache to
-	// the router
-	if cacheLocation != "" {
-		cache, err := desync.NewLocalStore(cacheLocation)
-		if err != nil {
-			return err
-		}
-		cache.UpdateTimes = true
-		s = desync.NewCache(s, cache)
-	}
+	defer s.Close()
 
 	// Read the input
 	c, err := readCaibxFile(inFile)

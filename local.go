@@ -214,3 +214,5 @@ func (s LocalStore) HasChunk(id ChunkID) bool {
 func (s LocalStore) String() string {
 	return s.Base
 }
+
+func (s LocalStore) Close() error { return nil }
