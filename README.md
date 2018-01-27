@@ -6,7 +6,7 @@ This project re-implements many features of upstream [casync](https://github.com
 ## Goals And Non-Goals
 
 Among the distinguishing factors:
-- Supported on MacOS, though there could be incompatibilities when exchanging catar-files between Linux and Mac for example since devices and filemodes differ slightly. \*BSD should work as well but hasn't been tested.
+- Supported on MacOS, though there could be incompatibilities when exchanging catar-files between Linux and Mac for example since devices and filemodes differ slightly. \*BSD should work as well but hasn't been tested. Windows supports a limited subset of commands.
 - Where the upstream command has chosen to optimize for storage efficiency (f/e, being able to use local files as "seeds", building temporary indexes into them), this command chooses to optimize for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at cost to storage efficiency.
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
 - SHA512/256 is currently the only supported hash function.
@@ -37,8 +37,8 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `cache`        - populate a cache from index files without writing to a blob
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
-- `tar`          - pack a catar file, optionally chunk the catar and create an index file
-- `untar`        - unpack a catar file or an index referencing a catar
+- `tar`          - pack a catar file, optionally chunk the catar and create an index file. Not available on Windows.
+- `untar`        - unpack a catar file or an index referencing a catar. Not available on Windows.
 - `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
 - `chunk-server` - start a chunk server that serves chunks via HTTP
 - `make`         - split a blob into chunks and create an index file
