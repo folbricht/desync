@@ -12,12 +12,16 @@ import (
 	"io"
 )
 
-const catUsage = `desync cat [options] <caibx>
+const catUsage = `desync cat [options] <caibx> [<outputfile>]
 
-Stream a caibx to stdout, optionally seeking and limiting the read length.
+Stream a caibx to stdout or a file-like object, optionally seeking and limiting
+the read length.
 
-This is inherently slower than extract as while multiple chunks can be retrieved
-concurrently, writing to stdout cannot be parallelized.`
+Unlike extract, this supports output to FIFOs, named pipes, and other
+non-seekable destinations.
+
+This is inherently slower than extract as while multiple chunks can be
+retrieved concurrently, writing to stdout cannot be parallelized.`
 
 func cat(ctx context.Context, args []string) error {
 	var (
@@ -124,12 +128,14 @@ func cat(ctx context.Context, args []string) error {
 
 	// Write the output
 	readSeeker := desync.NewIndexReadSeeker(c, s)
-	readSeeker.Seek(int64(offset), io.SeekStart)
+	if err = readSeeker.Seek(int64(offset), io.SeekStart); err != nil {
+		return err
+	}
 
 	if length > 0 {
-		_, err = io.CopyN(outFile, &readSeeker, int64(length))
+		_, err = io.CopyN(outFile, readSeeker, int64(length))
 	} else {
-		_, err = io.Copy(outFile, &readSeeker)
+		_, err = io.Copy(outFile, readSeeker)
 	}
 	return err
 }

@@ -22,11 +22,11 @@ type IndexPos struct {
 	curChunkOffset int64   // offset within current chunk
 }
 
-func NewIndexReadSeeker(i Index, s Store) IndexPos {
+func NewIndexReadSeeker(i Index, s Store) *IndexPos {
 	lastChunk := i.Chunks[len(i.Chunks)-1]
 	length := int64(lastChunk.Start + lastChunk.Size)
 
-	return IndexPos{s, i, length, 0, i.Chunks[0].ID, nil, 0, 0}
+	return &IndexPos{s, i, length, 0, i.Chunks[0].ID, nil, 0, 0}
 }
 
 /* findOffset - Actually update our IndexPos for a new Index
@@ -49,7 +49,8 @@ func (ip *IndexPos) findOffset(newPos int64) (int64, error) {
 	}
 
 	// Degenerate case: Seeking within current chunk
-	if (delta + ip.curChunkOffset) < int64(ip.Index.Chunks[ip.curChunkIdx].Size) {
+	if (delta+ip.curChunkOffset) >= 0 &&
+		(delta+ip.curChunkOffset) < int64(ip.Index.Chunks[ip.curChunkIdx].Size) {
 		ip.pos += delta
 		ip.curChunkOffset += delta
 		return ip.pos, nil
@@ -65,10 +66,10 @@ func (ip *IndexPos) findOffset(newPos int64) (int64, error) {
 	newChunkOffset = newPos - int64(newChunk.Start)
 
 	if newPos < int64(newChunk.Start) {
-		return ip.pos, fmt.Errorf("Seek found chunk beginning at position %v, desired position is %v", newChunk.Start, newPos)
+		return ip.pos, fmt.Errorf("seek found chunk beginning at position %v, desired position is %v", newChunk.Start, newPos)
 	}
 	if newPos > int64(newChunk.Start+newChunk.Size) {
-		return ip.pos, fmt.Errorf("Seek found chunk ending at position %v, desired position is %v", newChunk.Start+newChunk.Size, newPos)
+		return ip.pos, fmt.Errorf("seek found chunk ending at position %v, desired position is %v", newChunk.Start+newChunk.Size, newPos)
 	}
 
 	// Only invalidate cache if new chunk is different from old one (avoid re-decompressing all-0 regions)
@@ -110,7 +111,7 @@ func (ip *IndexPos) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		newPos = ip.pos + offset
 	case io.SeekEnd:
-		newPos = ip.Length - offset
+		newPos = ip.Length + offset
 	default:
 		return ip.pos, fmt.Errorf("invalid whence")
 	}
@@ -144,7 +145,7 @@ func (ip *IndexPos) Read(p []byte) (n int, err error) {
 		copiedBytes := copy(remainingBytes, chunkRemainingBytes)
 		remainingBytes = remainingBytes[copiedBytes:]
 		totalCopiedBytes += copiedBytes
-		_, err := ip.Seek(int64(copiedBytes), io.SeekCurrent)
+		_, err = ip.Seek(int64(copiedBytes), io.SeekCurrent)
 		if err != nil {
 			break
 		}
