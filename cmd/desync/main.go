@@ -22,6 +22,7 @@ extract      - build a blob from a caibx file
 verify       - verify the integrity of a local store
 list-chunks  - list all chunk IDs contained in a caibx
 cache        - populate a cache without writing to a blob
+cat          - stream decoding of a blob to stdout; supports offset+length
 chop         - split a blob based on existing caibx and store the chunks
 pull         - serve chunks using the casync protocol over stdin/stdout
 tar          - pack a directory tree into a catar file
@@ -60,6 +61,7 @@ func main() {
 		"verify":       verify,
 		"cache":        cache,
 		"list-chunks":  list,
+		"cat":          cat,
 		"chop":         chop,
 		"pull":         pull,
 		"tar":          tar,
