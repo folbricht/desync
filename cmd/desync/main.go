@@ -29,6 +29,7 @@ tar          - pack a directory tree into a catar file
 untar        - extract directory tree from a catar file
 prune        - remove all unreferenced chunks from a local store
 chunk-server - start a HTTP chunk server
+mount-index  - FUSE mount an index
 `
 
 func main() {
@@ -70,6 +71,7 @@ func main() {
 		"chunk-server": server,
 		"chunk":        chunkCmd,
 		"make":         makeCmd,
+		"mount-index":  mountIdx,
 	}
 	h, ok := handlers[cmd]
 	if !ok {

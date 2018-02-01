@@ -23,10 +23,7 @@ type IndexPos struct {
 }
 
 func NewIndexReadSeeker(i Index, s Store) *IndexPos {
-	lastChunk := i.Chunks[len(i.Chunks)-1]
-	length := int64(lastChunk.Start + lastChunk.Size)
-
-	return &IndexPos{s, i, length, 0, i.Chunks[0].ID, nil, 0, 0}
+	return &IndexPos{s, i, i.Length(), 0, i.Chunks[0].ID, nil, 0, 0}
 }
 
 /* findOffset - Actually update our IndexPos for a new Index

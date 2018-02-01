@@ -105,6 +105,15 @@ func (i *Index) WriteTo(w io.Writer) (int64, error) {
 	return n + n1, err
 }
 
+// Length returns the total (uncompressed) size of the indexed stream
+func (i *Index) Length() int64 {
+	if len(i.Chunks) < 1 {
+		return 0
+	}
+	lastChunk := i.Chunks[len(i.Chunks)-1]
+	return int64(lastChunk.Start + lastChunk.Size)
+}
+
 // ChunkStream splits up a blob into chunks using the provided chunker (single stream),
 // populates a store with the chunks and returns an index. Hashing and compression
 // is performed in n goroutines while the hashing algorithm is performed serially.

@@ -17,6 +17,7 @@ Among the distinguishing factors:
 - Support for catar files exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present in existing catar files and those won't be present when creating a new catar with the `tar` command
 - Supports chunking with the same algorithm used by casync (see `make` command) but executed in parallel. Results are identical to what casync produces, same chunks and index files, but with significantly better performance. For example, up to 10x faster than casync if the chunks are already present in the store. If the chunks are new, it heavily depends on I/O, but it's still likely several times faster than casync.
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
+- Allows FUSE mounting of blob indexes
 
 
 ## Tool
@@ -42,6 +43,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
 - `chunk-server` - start a chunk server that serves chunks via HTTP
 - `make`         - split a blob into chunks and create an index file
+- `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify`, `chop` and `make` commands only supports one, local store.
@@ -141,6 +143,11 @@ desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -
 Split a blob, store the chunks and create an index file.
 ```
 desync make -s /some/local/store index.caibx /some/blob
+```
+
+FUSE mount an index file. This will make the indexed blob available as file underneath the mount point. The filename in the mount matches the name of the index with the extension removed. In this example `/some/mnt/` will contain one file `index`.
+```
+desync mount-index -s /some/local/store index.caibx /some/mnt
 ```
 
 ## Links
