@@ -2,7 +2,10 @@ package desync
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
+	"sync"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -65,6 +68,10 @@ func (me *IndexMountFS) Open(name string, flags uint32, context *fuse.Context) (
 type IndexMountFile struct {
 	r *IndexPos
 	nodefs.File
+
+	// perhaps not needed, but in case something is trying to use the same
+	// filehandle concurrently
+	mu sync.Mutex
 }
 
 func NewIndexMountFile(idx Index, s Store) *IndexMountFile {
@@ -75,11 +82,15 @@ func NewIndexMountFile(idx Index, s Store) *IndexMountFile {
 }
 
 func (f *IndexMountFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if _, err := f.r.Seek(off, io.SeekStart); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		return nil, fuse.EIO
 	}
 	n, err := f.r.Read(dest)
 	if err != nil && err != io.EOF {
+		fmt.Fprintln(os.Stderr, err)
 		return nil, fuse.EIO
 	}
 	return fuse.ReadResultData(dest[:n]), fuse.OK

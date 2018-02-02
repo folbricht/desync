@@ -55,7 +55,7 @@ func (ip *IndexPos) findOffset(newPos int64) (int64, error) {
 
 	// General case: Bisect
 	chunks := ip.Index.Chunks
-	newChunkIdx = sort.Search(len(chunks), func(i int) bool { return int64(chunks[i].Start) >= newPos })
+	newChunkIdx = sort.Search(len(chunks), func(i int) bool { return newPos < int64(chunks[i].Start+chunks[i].Size) })
 	if newChunkIdx >= len(chunks) { // function was not true for any chunk -- meaning we're running off the end
 		newChunkIdx = len(chunks) - 1
 	}
