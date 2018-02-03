@@ -12,12 +12,13 @@ import (
 // goroutines, creating one filehandle for the file "name" per goroutine
 // and writes to the file simultaneously. If progress is provided, it'll be
 // called when a chunk has been processed.
-func AssembleFile(ctx context.Context, name string, chunks []IndexChunk, s Store, n int, progress func()) error {
+func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, progress func()) error {
 	var (
-		wg   sync.WaitGroup
-		mu   sync.Mutex
-		pErr error
-		in   = make(chan IndexChunk)
+		wg        sync.WaitGroup
+		mu        sync.Mutex
+		pErr      error
+		in        = make(chan IndexChunk)
+		nullChunk = NewNullChunk(idx.Index.ChunkSizeMax)
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -42,31 +43,38 @@ func AssembleFile(ctx context.Context, name string, chunks []IndexChunk, s Store
 		defer f.Close()
 		go func() {
 			for c := range in {
-				// Pull the (compressed) chunk from the store
-				b, err := s.GetChunk(c.ID)
-				if err != nil {
-					recordError(err)
-					continue
-				}
-				// Since we know how big the chunk is supposed to be, pre-allocate a
-				// slice to decompress into
-				db := make([]byte, c.Size)
-				// The the chunk is compressed. Decompress it here
-				db, err = Decompress(db, b)
-				if err != nil {
-					recordError(err)
-					continue
-				}
-				// Verify the checksum of the chunk matches the ID
-				sum := sha512.Sum512_256(db)
-				if sum != c.ID {
-					recordError(fmt.Errorf("unexpected sha512/256 %s for chunk id %s", sum, c.ID))
-					continue
-				}
-				// Might as well verify the chunk size while we're at it
-				if c.Size != uint64(len(db)) {
-					recordError(fmt.Errorf("unexpected size for chunk %s", c.ID))
-					continue
+				var db []byte
+				// See if we can skip the chunk retrieval and decompression if the
+				// null chunk is being requested.
+				if c.ID == nullChunk.ID {
+					db = nullChunk.Data
+				} else {
+					// Pull the (compressed) chunk from the store
+					b, err := s.GetChunk(c.ID)
+					if err != nil {
+						recordError(err)
+						continue
+					}
+					// Since we know how big the chunk is supposed to be, pre-allocate a
+					// slice to decompress into
+					db = make([]byte, c.Size)
+					// The the chunk is compressed. Decompress it here
+					db, err = Decompress(db, b)
+					if err != nil {
+						recordError(err)
+						continue
+					}
+					// Verify the checksum of the chunk matches the ID
+					sum := sha512.Sum512_256(db)
+					if sum != c.ID {
+						recordError(fmt.Errorf("unexpected sha512/256 %s for chunk id %s", sum, c.ID))
+						continue
+					}
+					// Might as well verify the chunk size while we're at it
+					if c.Size != uint64(len(db)) {
+						recordError(fmt.Errorf("unexpected size for chunk %s", c.ID))
+						continue
+					}
 				}
 				// Write the decompressed chunk into the file at the right position
 				if _, err = f.WriteAt(db, int64(c.Start)); err != nil {
@@ -83,7 +91,7 @@ func AssembleFile(ctx context.Context, name string, chunks []IndexChunk, s Store
 
 	// Feed the workers, stop if there are any errors
 loop:
-	for _, c := range chunks {
+	for _, c := range idx.Chunks {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
@@ -95,6 +103,5 @@ loop:
 	close(in)
 
 	wg.Wait()
-
 	return pErr
 }

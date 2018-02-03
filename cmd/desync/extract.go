@@ -54,23 +54,24 @@ func extract(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation, storeLocations.list...)
+	var s desync.Store
+	s, err = MultiStoreWithCache(n, cacheLocation, storeLocations.list...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
 	// Read the input
-	c, err := readCaibxFile(inFile)
+	idx, err := readCaibxFile(inFile)
 	if err != nil {
 		return err
 	}
 
 	// Write the output
-	return writeOutput(ctx, outFile, c.Chunks, s, n)
+	return writeOutput(ctx, outFile, idx, s, n)
 }
 
-func writeOutput(ctx context.Context, name string, chunks []desync.IndexChunk, s desync.Store, n int) error {
+func writeOutput(ctx context.Context, name string, idx desync.Index, s desync.Store, n int) error {
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
@@ -84,14 +85,14 @@ func writeOutput(ctx context.Context, name string, chunks []desync.IndexChunk, s
 	// If this is a terminal, we want a progress bar
 	var progress func()
 	if terminal.IsTerminal(int(os.Stderr.Fd())) {
-		p := NewProgressBar(int(os.Stderr.Fd()), len(chunks))
+		p := NewProgressBar(int(os.Stderr.Fd()), len(idx.Chunks))
 		p.Start()
 		defer p.Stop()
 		progress = func() { p.Add(1) }
 	}
 
 	// Build the blob from the chunks, writing everything into the tempfile
-	if err = desync.AssembleFile(ctx, tmpfile.Name(), chunks, s, n, progress); err != nil {
+	if err = desync.AssembleFile(ctx, tmpfile.Name(), idx, s, n, progress); err != nil {
 		return err
 	}
 

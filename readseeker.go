@@ -20,10 +20,17 @@ type IndexPos struct {
 	curChunk       []byte  // decompressed version of current chunk
 	curChunkIdx    int     // identity of current chunk
 	curChunkOffset int64   // offset within current chunk
+	nullChunk      *NullChunk
 }
 
 func NewIndexReadSeeker(i Index, s Store) *IndexPos {
-	return &IndexPos{s, i, i.Length(), 0, i.Chunks[0].ID, nil, 0, 0}
+	return &IndexPos{
+		Store:      s,
+		Index:      i,
+		Length:     i.Length(),
+		curChunkID: i.Chunks[0].ID,
+		nullChunk:  NewNullChunk(i.Index.ChunkSizeMax),
+	}
 }
 
 /* findOffset - Actually update our IndexPos for a new Index
@@ -82,6 +89,13 @@ func (ip *IndexPos) findOffset(newPos int64) (int64, error) {
 }
 
 func (ip *IndexPos) loadChunk() (err error) {
+	// See if we can simply read a blank slice from memory if the null chunk
+	// is being loaded
+	if ip.curChunkID == ip.nullChunk.ID {
+		ip.curChunk = ip.nullChunk.Data
+		return
+	}
+
 	var compressedChunk []byte
 	var decompressedChunk []byte
 
