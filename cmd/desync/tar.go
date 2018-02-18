@@ -61,11 +61,12 @@ func tar(ctx context.Context, args []string) error {
 	// into a chunker using a pipe
 	r, w := io.Pipe()
 
-	// Prepare the store
-	s, err := desync.NewLocalStore(storeLocation)
+	// Open the target store
+	s, err := WritableStore(n, storeLocation)
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
 	// Prepare the chunker
 	min, avg, max, err := parseChunkSizeParam(chunkSize)

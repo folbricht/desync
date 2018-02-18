@@ -117,7 +117,7 @@ func (i *Index) Length() int64 {
 // ChunkStream splits up a blob into chunks using the provided chunker (single stream),
 // populates a store with the chunks and returns an index. Hashing and compression
 // is performed in n goroutines while the hashing algorithm is performed serially.
-func ChunkStream(ctx context.Context, c Chunker, s LocalStore, n int) (Index, error) {
+func ChunkStream(ctx context.Context, c Chunker, s WriteStore, n int) (Index, error) {
 	type chunkJob struct {
 		num   int
 		start uint64

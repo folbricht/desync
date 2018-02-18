@@ -49,10 +49,11 @@ func makeCmd(ctx context.Context, args []string) error {
 	dataFile := flags.Arg(1)
 
 	// Open the target store
-	s, err := desync.NewLocalStore(storeLocation)
+	s, err := WritableStore(n, storeLocation)
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
 	// Split up the file and create and index from it
 	index, err := desync.IndexFromFile(ctx, dataFile, n, min, avg, max)

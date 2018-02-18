@@ -11,7 +11,7 @@ import (
 
 // ChopFile split a file according to a list of chunks obtained from an Index
 // and stores them in the provided store
-func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s LocalStore, n int) error {
+func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStore, n int) error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex

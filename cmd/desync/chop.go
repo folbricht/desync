@@ -38,10 +38,11 @@ func chop(ctx context.Context, args []string) error {
 	dataFile := flags.Arg(1)
 
 	// Open the target store
-	s, err := desync.NewLocalStore(storeLocation)
+	s, err := WritableStore(n, storeLocation)
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
 	// Read the input
 	c, err := readCaibxFile(indexFile)

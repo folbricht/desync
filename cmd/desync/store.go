@@ -60,3 +60,18 @@ func MultiStoreWithCache(n int, cacheLocation string, storeLocations ...string) 
 	}
 	return store, nil
 }
+
+// WritableStore is used to parse a store location from the command line for
+// commands that expect to write chunks, such as make or tar. It determines
+// which type of writable store is needed, instantiates an returns a
+// single desync.WriteStore.
+func WritableStore(n int, location string) (desync.WriteStore, error) {
+	u, err := url.Parse(location)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme == "" { // No scheme in the URL? Got to be a local dir
+		return desync.NewLocalStore(location)
+	}
+	return nil, nil
+}
