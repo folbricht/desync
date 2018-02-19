@@ -64,6 +64,21 @@ go get -u github.com/folbricht/desync/cmd/desync
 The `-c <store>` option can be used to either specify an existing local store to act as cache or to build a new one. Whenever a cache is requested, it is first looked up in the local cache before routing the request to the main (likely remote store). Any chunks downloaded from the main store are added to the local store (cache). In addition, when a chunk is read from the cache, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache directory as well as the chunks in it are expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), blob assembly will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
 evict bad chunks from a local store or cache.
 
+### S3 chunk stores
+desync supports reading from and writing to chunk stores that offer an S3 API, for example hosted in AWS or running on a local server. When using such a store, credentials are passed into the tool via environment variables `S3_ACCESS_KEY` and `S3_SECRET_KEY`. Care is required when building those URLs. Below a few examples:
+
+#### AWS
+This store is hosted in `eu-west-3` in AWS. `s3` signals that the S3 protocol is to be used, `https` should be specified for SSL connections. The path of the URL contains the bucket, `desync.bucket` in this example. Note, when using AWS, no port should be given in the URL!
+```
+s3+https://s3-eu-west-3.amazonaws.com/desync.bucket
+```
+
+#### Other service with S3 API
+This is a store running on the local machine on port 9000 without SSL.
+```
+s3+http://127.0.0.1:9000/store
+```
+
 ### Examples:
 
 Re-assemble somefile.tar using a remote chunk store and a blob index file.

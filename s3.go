@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	minio "github.com/minio/minio-go"
+	"github.com/pkg/errors"
 )
 
 // S3Store is a read-write store with S3 backing
@@ -31,7 +32,7 @@ func NewS3Store(location string) (S3Store, error) {
 		return s, err
 	}
 	if !strings.HasPrefix(u.Scheme, "s3+http") {
-		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http(s)'", u.Scheme)
+		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http' or 's3+https'", u.Scheme)
 	}
 	var useSSL bool
 	if strings.HasSuffix(u.Scheme, "s") {
@@ -41,19 +42,31 @@ func NewS3Store(location string) (S3Store, error) {
 	// Pull the bucket from a path-style URL
 	s.bucket = filepath.Base(u.Path)
 
-	// Read creds from the environment
+	// Read creds from the environment and setup a client
 	accessKey := os.Getenv("S3_ACCESS_KEY")
 	secretKey := os.Getenv("S3_SECRET_KEY")
 
 	s.client, err = minio.New(u.Host, accessKey, secretKey, useSSL)
-	return s, err
+	if err != nil {
+		return s, errors.Wrap(err, location)
+	}
+
+	// Might as well confirm the bucket exists
+	bucketExists, err := s.client.BucketExists(s.bucket)
+	if err != nil {
+		return s, errors.Wrap(err, location)
+	}
+	if !bucketExists {
+		return s, fmt.Errorf("bucket '%s' does not exist in %s", s.bucket, location)
+	}
+	return s, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 	obj, err := s.client.GetObject(s.bucket, id.String(), minio.GetObjectOptions{})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, s.String())
 	}
 	defer obj.Close()
 
@@ -70,7 +83,7 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 func (s S3Store) StoreChunk(id ChunkID, b []byte) error {
 	contentType := "application/zstd"
 	_, err := s.client.PutObject(s.bucket, id.String(), bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
-	return err
+	return errors.Wrap(err, s.String())
 }
 
 // HasChunk returns true if the chunk is in the store
