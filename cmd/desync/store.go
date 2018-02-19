@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/folbricht/desync"
 )
@@ -31,6 +32,11 @@ func MultiStoreWithCache(n int, cacheLocation string, storeLocations ...string) 
 			}
 		case "http", "https":
 			s, err = desync.NewRemoteHTTPStore(loc)
+			if err != nil {
+				return store, err
+			}
+		case "s3+http":
+			s, err = desync.NewS3Store(location)
 			if err != nil {
 				return store, err
 			}
@@ -73,5 +79,8 @@ func WritableStore(n int, location string) (desync.WriteStore, error) {
 	if u.Scheme == "" { // No scheme in the URL? Got to be a local dir
 		return desync.NewLocalStore(location)
 	}
-	return nil, nil
+	if strings.HasPrefix(location, "s3+http") {
+		return desync.NewS3Store(location)
+	}
+	return nil, fmt.Errorf("store '%s' does not support writing", location)
 }

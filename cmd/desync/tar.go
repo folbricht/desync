@@ -16,7 +16,7 @@ import (
 const tarUsage = `desync tar <catar> <source>
 
 Encodes a directory tree into a catar archive or alternatively an index file
-with the archive chunked in a local store.`
+with the archive chunked in a local or S3 store.`
 
 func tar(ctx context.Context, args []string) error {
 	var (

@@ -18,7 +18,7 @@ Among the distinguishing factors:
 - Supports chunking with the same algorithm used by casync (see `make` command) but executed in parallel. Results are identical to what casync produces, same chunks and index files, but with significantly better performance. For example, up to 10x faster than casync if the chunks are already present in the store. If the chunks are new, it heavily depends on I/O, but it's still likely several times faster than casync.
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 - Allows FUSE mounting of blob indexes
-
+- S3 protocol support to access chunk stores for read operations and some some commands that write chunks
 
 ## Tool
 
@@ -46,7 +46,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
 
 ### Options (not all apply to all commands)
-- `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `verify`, `chop` and `make` commands only supports one, local store.
+- `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, and `tar` commands support updating chunk stores in S3, while `verify` and `prune` commands only operate on a local store.
 - `-c <store>` Location of a *local* chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
@@ -58,6 +58,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
+- `S3_ACCESS_KEY` and `S3_SECRET_KEY` are required when using S3 chunk stores
 
 ### Caching
 The `-c <store>` option can be used to either specify an existing local store to act as cache or to build a new one. Whenever a cache is requested, it is first looked up in the local cache before routing the request to the main (likely remote store). Any chunks downloaded from the main store are added to the local store (cache). In addition, when a chunk is read from the cache, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache directory as well as the chunks in it are expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), blob assembly will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
@@ -143,6 +144,11 @@ desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -
 Split a blob, store the chunks and create an index file.
 ```
 desync make -s /some/local/store index.caibx /some/blob
+```
+
+Split a blob, create an index file and store the chunks in an S3 bucket named `store`.
+```
+S3_ACCESS_KEY=mykey S3_SECRET_KEY=mysecret desync make -s s3+http://127.0.0.1:9000/store index.caibx /some/blob
 ```
 
 FUSE mount an index file. This will make the indexed blob available as file underneath the mount point. The filename in the mount matches the name of the index with the extension removed. In this example `/some/mnt/` will contain one file `index`.

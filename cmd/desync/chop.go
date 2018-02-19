@@ -12,7 +12,8 @@ import (
 
 const chopUsage = `desync chop [options] <caibx> <file>
 
-Reads the index file and extracts all referenced chunks from the file into a local store.`
+Reads the index file and extracts all referenced chunks from the file
+into a local or S3 store.`
 
 func chop(ctx context.Context, args []string) error {
 	var (

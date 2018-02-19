@@ -14,8 +14,8 @@ import (
 
 const makeUsage = `desync make [options] <index> <file>
 
-Creates chunks from the input file, stores them in a local store and writes
-an index file.`
+Creates chunks from the input file, stores them in a local or S3 store
+and writes an index file.`
 
 func makeCmd(ctx context.Context, args []string) error {
 	var (
