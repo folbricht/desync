@@ -19,6 +19,7 @@ type S3Store struct {
 	Location string
 	client   *minio.Client
 	bucket   string
+	prefix   string
 }
 
 // NewS3Store creates an instance of a chunk store with S3 backing. The URL
@@ -39,8 +40,14 @@ func NewS3Store(location string) (S3Store, error) {
 		useSSL = true
 	}
 
-	// Pull the bucket from a path-style URL
-	s.bucket = filepath.Base(u.Path)
+	// Pull the bucket as well as the prefix from a path-style URL
+	path := strings.Trim(u.Path, "/")
+	if path == "" {
+		return s, fmt.Errorf("expected bucket name in path of '%s'", u.Scheme)
+	}
+	f := strings.Split(path, "/")
+	s.bucket = f[0]
+	s.prefix = filepath.Join(f[1:]...)
 
 	// Read creds from the environment and setup a client
 	accessKey := os.Getenv("S3_ACCESS_KEY")
@@ -64,7 +71,8 @@ func NewS3Store(location string) (S3Store, error) {
 
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
-	obj, err := s.client.GetObject(s.bucket, id.String(), minio.GetObjectOptions{})
+	name := strings.Join([]string{s.prefix, id.String()}, "/")
+	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, s.String())
 	}
@@ -82,13 +90,15 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 // StoreChunk adds a new chunk to the store
 func (s S3Store) StoreChunk(id ChunkID, b []byte) error {
 	contentType := "application/zstd"
-	_, err := s.client.PutObject(s.bucket, id.String(), bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
+	name := strings.Join([]string{s.prefix, id.String()}, "/")
+	_, err := s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	return errors.Wrap(err, s.String())
 }
 
 // HasChunk returns true if the chunk is in the store
 func (s S3Store) HasChunk(id ChunkID) bool {
-	_, err := s.client.StatObject(s.bucket, id.String(), minio.StatObjectOptions{})
+	name := strings.Join([]string{s.prefix, id.String()}, "/")
+	_, err := s.client.StatObject(s.bucket, name, minio.StatObjectOptions{})
 	return err == nil
 }
 

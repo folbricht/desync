@@ -35,7 +35,7 @@ func MultiStoreWithCache(n int, cacheLocation string, storeLocations ...string) 
 			if err != nil {
 				return store, err
 			}
-		case "s3+http":
+		case "s3+http", "s3+https":
 			s, err = desync.NewS3Store(location)
 			if err != nil {
 				return store, err

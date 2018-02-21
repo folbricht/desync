@@ -68,9 +68,13 @@ evict bad chunks from a local store or cache.
 desync supports reading from and writing to chunk stores that offer an S3 API, for example hosted in AWS or running on a local server. When using such a store, credentials are passed into the tool via environment variables `S3_ACCESS_KEY` and `S3_SECRET_KEY`. Care is required when building those URLs. Below a few examples:
 
 #### AWS
-This store is hosted in `eu-west-3` in AWS. `s3` signals that the S3 protocol is to be used, `https` should be specified for SSL connections. The path of the URL contains the bucket, `desync.bucket` in this example. Note, when using AWS, no port should be given in the URL!
+This store is hosted in `eu-west-3` in AWS. `s3` signals that the S3 protocol is to be used, `https` should be specified for SSL connections. The first path element of the URL contains the bucket, `desync.bucket` in this example. Note, when using AWS, no port should be given in the URL!
 ```
 s3+https://s3-eu-west-3.amazonaws.com/desync.bucket
+```
+It's possible to use prefixes (or "directories") to object names like so
+```
+s3+https://s3-eu-west-3.amazonaws.com/desync.bucket/prefix
 ```
 
 #### Other service with S3 API
