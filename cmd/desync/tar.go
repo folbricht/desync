@@ -31,7 +31,7 @@ func tar(ctx context.Context, args []string) error {
 		flags.PrintDefaults()
 	}
 	flags.BoolVar(&makeIndex, "i", false, "Create index file (caidx), not catar")
-	flags.StringVar(&storeLocation, "s", "", "Local casync store location (with -i)")
+	flags.StringVar(&storeLocation, "s", "", "Local or S3 casync store location (with -i)")
 	flags.IntVar(&n, "n", 10, "number of goroutines (with -i)")
 	flags.StringVar(&chunkSize, "m", "16:64:256", "Min/Avg/Max chunk size in kb (with -i)")
 	flags.Parse(args)

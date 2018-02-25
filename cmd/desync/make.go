@@ -28,7 +28,7 @@ func makeCmd(ctx context.Context, args []string) error {
 		fmt.Fprintln(os.Stderr, makeUsage)
 		flags.PrintDefaults()
 	}
-	flags.StringVar(&storeLocation, "s", "", "Local casync store location")
+	flags.StringVar(&storeLocation, "s", "", "Local or S3 casync store location")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.StringVar(&chunkSize, "m", "16:64:256", "Min/Avg/Max chunk size in kb")
 	flags.Parse(args)

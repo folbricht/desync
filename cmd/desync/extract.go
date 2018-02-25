@@ -33,6 +33,7 @@ func extract(ctx context.Context, args []string) error {
 	flags.Var(storeLocations, "s", "casync store location, can be multiples")
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
+	flags.BoolVar(&desync.TrustInsecure, "i", false, "allow invalid certificates")
 	flags.Parse(args)
 
 	if flags.NArg() < 2 {

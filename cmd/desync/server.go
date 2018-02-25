@@ -14,7 +14,8 @@ import (
 const serverUsage = `desync chunk-server [options]
 
 Starts an HTTP chunk server that can be used as remote store. It supports
-reading from multiple local or remote stores as well as a local cache.`
+reading from multiple local or remote stores as well as a local cache. If
+-cert and -key are provided, the server will serve over HTTPS.`
 
 func server(ctx context.Context, args []string) error {
 	var (
@@ -22,6 +23,7 @@ func server(ctx context.Context, args []string) error {
 		n              int
 		storeLocations = new(multiArg)
 		listenInt      string
+		cert, key      string
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
@@ -33,10 +35,16 @@ func server(ctx context.Context, args []string) error {
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines, only used for remote SSH stores")
 	flags.StringVar(&listenInt, "l", ":http", "listen address")
+	flags.StringVar(&cert, "cert", "", "cert file in PEM format, requires -key")
+	flags.StringVar(&key, "key", "", "key file in PEM format, requires -cert")
 	flags.Parse(args)
 
 	if flags.NArg() > 0 {
 		return errors.New("Too many arguments. See -h for help.")
+	}
+
+	if key != "" && cert == "" || cert != "" && key == "" {
+		return errors.New("-key and -cert options need to be provided together.")
 	}
 
 	// Checkout the store
@@ -62,7 +70,12 @@ func server(ctx context.Context, args []string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
-		err := server.ListenAndServe()
+		var err error
+		if key == "" {
+			err = server.ListenAndServe()
+		} else {
+			err = server.ListenAndServeTLS(cert, key)
+		}
 		// Did the HTTP server stop because we called shutdown or some problem?
 		if err != http.ErrServerClosed {
 			fmt.Fprintln(os.Stderr, err)

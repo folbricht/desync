@@ -12,7 +12,7 @@ Among the distinguishing factors:
 - SHA512/256 is currently the only supported hash function.
 - Only chunk store using zstd compression are supported at this point.
 - Supports local stores as well as remote stores (as client) over SSH and HTTP
-- Built-in HTTP chunk server that can proxy muliple local or remote stores and also supports caching.
+- Built-in HTTP(S) chunk server that can proxy multiple local or remote stores and also supports caching.
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
 - Support for catar files exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present in existing catar files and those won't be present when creating a new catar with the `tar` command
 - Supports chunking with the same algorithm used by casync (see `make` command) but executed in parallel. Results are identical to what casync produces, same chunks and index files, but with significantly better performance. For example, up to 10x faster than casync if the chunks are already present in the store. If the chunks are new, it heavily depends on I/O, but it's still likely several times faster than casync.
@@ -41,7 +41,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file. Not available on Windows.
 - `untar`        - unpack a catar file or an index referencing a catar. Not available on Windows.
 - `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
-- `chunk-server` - start a chunk server that serves chunks via HTTP
+- `chunk-server` - start a chunk server that serves chunks via HTTP(S)
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
 
@@ -54,6 +54,8 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `-l` Listening address for the HTTP chunk server. Only supported by the `chunk-server` command.
 - `-m` Specify the min/avg/max chunk sizes in kb. Only applicable to the `make` command. Defaults to 16:64:256 and for best results the min should be avg/4 and the max should be 4*avg.
 - `-i` When packing/unpacking an archive, don't create/read an archive file but instead store/read the chunks and use an index file (caidx) for the archive. Only applicable to `tar` and `untar` commands.
+- `-key` Key file in PEM format used for HTTPS `chunk-server` command. Also requires a certificate with `-cert`
+- `-cert` Certificate file in PEM format used for HTTPS `chunk-server` command. Also requires `-key`.
 
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
@@ -158,6 +160,11 @@ desync chunk-server -s /some/local/store
 Start a chunk server on port 8080 acting as proxy for other remote HTTP and SSH stores and populate a local cache.
 ```
 desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -l :8080
+```
+
+Start a TLS chunk server on port 443 acting as proxy for a remote chunk store in AWS with local cache.
+```
+S3_ACCESS_KEY=mykey S3_SECRET_KEY=mysecret desync chunk-server -s s3+https://s3-eu-west-3.amazonaws.com/desync.bucket/prefix -c cache -l 127.0.0.1:https -cert cert.pem -key key.pem
 ```
 
 Split a blob, store the chunks and create an index file.

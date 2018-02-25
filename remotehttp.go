@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -11,12 +12,19 @@ import (
 	"github.com/pkg/errors"
 )
 
+// TrustInsecure determines if invalid certs presented by HTTP stores should
+// be accepted.
+var TrustInsecure bool
+
 // RemoteHTTP is a remote casync store accessed via HTTP.
 type RemoteHTTP struct {
 	location *url.URL
+	client   *http.Client
 }
 
-func NewRemoteHTTPStore(location *url.URL) (*RemoteHTTP, error) {
+// NewRemoteHTTPStore initializes a new store that pulls chunks via HTTP(S) from
+// a remove web server. n defines the size of idle connections allowed.
+func NewRemoteHTTPStore(location *url.URL, n int) (*RemoteHTTP, error) {
 	if location.Scheme != "http" && location.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected http or https", location.Scheme)
 	}
@@ -25,7 +33,17 @@ func NewRemoteHTTPStore(location *url.URL) (*RemoteHTTP, error) {
 	if !strings.HasSuffix(u.Path, "/") {
 		u.Path = u.Path + "/"
 	}
-	return &RemoteHTTP{&u}, nil
+
+	// Build a client with the right size connection pool and optionally disable
+	// certificate verification.
+	tr := &http.Transport{
+		DisableCompression:  true,
+		MaxIdleConnsPerHost: n,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: TrustInsecure},
+	}
+	client := &http.Client{Transport: tr}
+
+	return &RemoteHTTP{&u, client}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -34,7 +52,7 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
 	p := filepath.Join(sID[0:4], sID) + chunkFileExt
 
 	u, _ := r.location.Parse(p)
-	resp, err := http.Get(u.String())
+	resp, err := r.client.Get(u.String())
 	if err != nil {
 		return nil, errors.Wrap(err, u.String())
 	}
