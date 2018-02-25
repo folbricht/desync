@@ -45,7 +45,7 @@ func cat(ctx context.Context, args []string) error {
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.IntVar(&offset, "o", 0, "offset in bytes to seek to before reading")
 	flags.IntVar(&length, "l", 0, "number of bytes to read")
-	flags.BoolVar(&desync.TrustInsecure, "i", false, "allow invalid certificates")
+	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
 	flags.Parse(args)
 
 	if flags.NArg() < 1 {

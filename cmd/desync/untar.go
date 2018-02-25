@@ -32,7 +32,7 @@ func untar(ctx context.Context, args []string) error {
 	flags.Var(storeLocations, "s", "casync store location, can be multiples (with -i)")
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache (with -i)")
 	flags.IntVar(&n, "n", 10, "number of goroutines (with -i)")
-	flags.BoolVar(&desync.TrustInsecure, "i", false, "allow invalid certificates")
+	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
 	flags.Parse(args)
 
 	if flags.NArg() < 2 {

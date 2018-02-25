@@ -54,6 +54,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `-l` Listening address for the HTTP chunk server. Only supported by the `chunk-server` command.
 - `-m` Specify the min/avg/max chunk sizes in kb. Only applicable to the `make` command. Defaults to 16:64:256 and for best results the min should be avg/4 and the max should be 4*avg.
 - `-i` When packing/unpacking an archive, don't create/read an archive file but instead store/read the chunks and use an index file (caidx) for the archive. Only applicable to `tar` and `untar` commands.
+- `-t` Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs when using a HTTPS chunk server.
 - `-key` Key file in PEM format used for HTTPS `chunk-server` command. Also requires a certificate with `-cert`
 - `-cert` Certificate file in PEM format used for HTTPS `chunk-server` command. Also requires `-key`.
 
