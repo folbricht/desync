@@ -35,6 +35,8 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 		u.Path = u.Path + "/"
 	}
 
+	var tr *http.Transport
+
 	if cert != "" && key != "" {
 		// Load client cert
 		certificate, err := tls.LoadX509KeyPair(cert, key)
@@ -45,7 +47,7 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CaCertPool")
 		}
-		tr := &http.Transport{
+		tr = &http.Transport{
 			DisableCompression:  true,
 			MaxIdleConnsPerHost: n,
 			TLSClientConfig:     &tls.Config{
@@ -57,7 +59,7 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 	} else {
 		// Build a client with the right size connection pool and optionally disable
 		// certificate verification.
-		tr := &http.Transport{
+		tr = &http.Transport{
 			DisableCompression:  true,
 			MaxIdleConnsPerHost: n,
 			TLSClientConfig:     &tls.Config{InsecureSkipVerify: TrustInsecure},
