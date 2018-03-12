@@ -25,7 +25,7 @@ type RemoteHTTP struct {
 
 // NewRemoteHTTPStore initializes a new store that pulls chunks via HTTP(S) from
 // a remote web server. n defines the size of idle connections allowed.
-func NewRemoteHTTPStore(location *url.URL, n int) (*RemoteHTTP, error) {
+func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*RemoteHTTP, error) {
 	if location.Scheme != "http" && location.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected http or https", location.Scheme)
 	}
@@ -35,52 +35,35 @@ func NewRemoteHTTPStore(location *url.URL, n int) (*RemoteHTTP, error) {
 		u.Path = u.Path + "/"
 	}
 
-	// Build a client with the right size connection pool and optionally disable
-	// certificate verification.
-	tr := &http.Transport{
-		DisableCompression:  true,
-		MaxIdleConnsPerHost: n,
-		TLSClientConfig:     &tls.Config{InsecureSkipVerify: TrustInsecure},
-	}
-	client := &http.Client{Transport: tr}
+	if cert != "" && key != "" {
+		// Load client cert
+		certificate, err := tls.LoadX509KeyPair(cert, key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate from %s", cert)
+		}
+		caCertPool, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CaCertPool")
+		}
+		tr := &http.Transport{
+			DisableCompression:  true,
+			MaxIdleConnsPerHost: n,
+			TLSClientConfig:     &tls.Config{
+				InsecureSkipVerify: TrustInsecure,
+				Certificates: []tls.Certificate{certificate},
+				RootCAs:      caCertPool,},
+		}
 
-	return &RemoteHTTP{&u, client}, nil
-}
-
-// NewRemoteHTTPStore initializes a new store that pulls chunks via HTTP(S) from
-// a remote web server. n defines the size of idle connections allowed.
-func NewRemoteHTTPStoreWithClientAuth(location *url.URL, n int, cert string, key string) (*RemoteHTTP, error) {
-	if location.Scheme != "http" && location.Scheme != "https" {
-		return nil, fmt.Errorf("unsupported scheme %s, expected http or https", location.Scheme)
-	}
-	// Make sure we have a trailing / on the path
-	u := *location
-	if !strings.HasSuffix(u.Path, "/") {
-		u.Path = u.Path + "/"
-	}
-
-	// Load client cert
-	certificate, err := tls.LoadX509KeyPair(cert, key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load client certificate from %s", cert)
-	}
-	caCertPool, err := x509.SystemCertPool()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create CaCertPool")
+	} else {
+		// Build a client with the right size connection pool and optionally disable
+		// certificate verification.
+		tr := &http.Transport{
+			DisableCompression:  true,
+			MaxIdleConnsPerHost: n,
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: TrustInsecure},
+		}
 	}
 
-
-	// Build a client with the right size connection pool and optionally disable
-	// certificate verification.
-	// Also add the client cert and key for client side authentication
-	tr := &http.Transport{
-		DisableCompression:  true,
-		MaxIdleConnsPerHost: n,
-		TLSClientConfig:     &tls.Config{
-			InsecureSkipVerify: TrustInsecure,
-			Certificates: []tls.Certificate{certificate},
-			RootCAs:      caCertPool,},
-	}
 	client := &http.Client{Transport: tr}
 
 	return &RemoteHTTP{&u, client}, nil
