@@ -56,7 +56,7 @@ func extract(ctx context.Context, args []string) error {
 
 	// Parse the store locations, open the stores and add a cache is requested
 	var s desync.Store
-	s, err = MultiStoreWithCache(n, cacheLocation, storeLocations.list...)
+	s, err = MultiStoreWithCache(n, cacheLocation, "", "", storeLocations.list...)
 	if err != nil {
 		return err
 	}

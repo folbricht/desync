@@ -13,7 +13,7 @@ import (
 // n - Number of goroutines, applies to some types of stores like SSH
 // cacheLocation - Place of the local store used for caching, can be blank
 // storeLocation - URLs or paths to remote or local stores that should be queried in order
-func MultiStoreWithCache(n int, cacheLocation string, storeLocations ...string) (desync.Store, error) {
+func MultiStoreWithCache(n int, cacheLocation string, clientCert string, clientKey string, storeLocations ...string) (desync.Store, error) {
 	var (
 		store  desync.Store
 		stores []desync.Store
@@ -31,7 +31,12 @@ func MultiStoreWithCache(n int, cacheLocation string, storeLocations ...string) 
 				return store, err
 			}
 		case "http", "https":
-			s, err = desync.NewRemoteHTTPStore(loc, n)
+			if  clientCert != ""  && clientKey != "" {
+				s, err = desync.NewRemoteHTTPStoreWithClientAuth(loc,n,clientCert,clientKey)
+			} else {
+				s, err = desync.NewRemoteHTTPStore(loc, n)
+			}
+
 			if err != nil {
 				return store, err
 			}
@@ -69,7 +74,7 @@ func MultiStoreWithCache(n int, cacheLocation string, storeLocations ...string) 
 
 // WritableStore is used to parse a store location from the command line for
 // commands that expect to write chunks, such as make or tar. It determines
-// which type of writable store is needed, instantiates an returns a
+// which type of writable store is needed, instantiates and returns a
 // single desync.WriteStore.
 func WritableStore(n int, location string) (desync.WriteStore, error) {
 	u, err := url.Parse(location)
