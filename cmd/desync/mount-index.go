@@ -25,6 +25,8 @@ func mountIdx(ctx context.Context, args []string) error {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
+		clientCert string
+		clientKey string
 	)
 	flags := flag.NewFlagSet("mount-index", flag.ExitOnError)
 	flags.Usage = func() {
@@ -36,6 +38,8 @@ func mountIdx(ctx context.Context, args []string) error {
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
+	flags.StringVar(&clientCert, "clientCert", "", "Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() < 2 {
@@ -43,6 +47,10 @@ func mountIdx(ctx context.Context, args []string) error {
 	}
 	if flags.NArg() > 2 {
 		return errors.New("Too many arguments. See -h for help.")
+	}
+
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
 	}
 
 	indexFile := flags.Arg(0)
@@ -55,7 +63,7 @@ func mountIdx(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation, "", "", storeLocations.list...)
+	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey, storeLocations.list...)
 	if err != nil {
 		return err
 	}

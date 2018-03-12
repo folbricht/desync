@@ -24,6 +24,8 @@ func server(ctx context.Context, args []string) error {
 		storeLocations = new(multiArg)
 		listenInt      string
 		cert, key      string
+		clientCert string
+		clientKey string
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
@@ -37,6 +39,8 @@ func server(ctx context.Context, args []string) error {
 	flags.StringVar(&listenInt, "l", ":http", "listen address")
 	flags.StringVar(&cert, "cert", "", "cert file in PEM format, requires -key")
 	flags.StringVar(&key, "key", "", "key file in PEM format, requires -cert")
+	flags.StringVar(&clientCert, "clientCert", "", "Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() > 0 {
@@ -47,13 +51,17 @@ func server(ctx context.Context, args []string) error {
 		return errors.New("-key and -cert options need to be provided together.")
 	}
 
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
+	}
+
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
 		return errors.New("No casync store provided. See -h for help.")
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation, "", "", storeLocations.list...)
+	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey, storeLocations.list...)
 	if err != nil {
 		return err
 	}

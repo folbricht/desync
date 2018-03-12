@@ -32,6 +32,8 @@ func cat(ctx context.Context, args []string) error {
 		offset         int
 		length         int
 		readIndex      bool
+		clientCert string
+		clientKey string
 	)
 	flags := flag.NewFlagSet("cat", flag.ExitOnError)
 	flags.Usage = func() {
@@ -46,6 +48,8 @@ func cat(ctx context.Context, args []string) error {
 	flags.IntVar(&offset, "o", 0, "offset in bytes to seek to before reading")
 	flags.IntVar(&length, "l", 0, "number of bytes to read")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
+	flags.StringVar(&clientCert, "clientCert", "", "Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() < 1 {
@@ -53,6 +57,10 @@ func cat(ctx context.Context, args []string) error {
 	}
 	if flags.NArg() > 2 {
 		return errors.New("Too many arguments. See -h for help.")
+	}
+
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
 	}
 
 	var outFile io.Writer
@@ -74,7 +82,7 @@ func cat(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation,"", "", storeLocations.list...)
+	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey, storeLocations.list...)
 	if err != nil {
 		return err
 	}
