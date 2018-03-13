@@ -32,8 +32,8 @@ func cat(ctx context.Context, args []string) error {
 		offset         int
 		length         int
 		readIndex      bool
-		clientCert string
-		clientKey string
+		clientCert     string
+		clientKey      string
 	)
 	flags := flag.NewFlagSet("cat", flag.ExitOnError)
 	flags.Usage = func() {
