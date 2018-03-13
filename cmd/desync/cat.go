@@ -48,8 +48,8 @@ func cat(ctx context.Context, args []string) error {
 	flags.IntVar(&offset, "o", 0, "offset in bytes to seek to before reading")
 	flags.IntVar(&length, "l", 0, "number of bytes to read")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
-	flags.StringVar(&clientCert, "clientCert", "", "Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Client Key for TLS authentication")
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() < 1 {

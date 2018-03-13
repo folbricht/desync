@@ -38,8 +38,8 @@ func mountIdx(ctx context.Context, args []string) error {
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
-	flags.StringVar(&clientCert, "clientCert", "", "Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Client Key for TLS authentication")
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() < 2 {

@@ -39,8 +39,8 @@ func server(ctx context.Context, args []string) error {
 	flags.StringVar(&listenInt, "l", ":http", "listen address")
 	flags.StringVar(&cert, "cert", "", "cert file in PEM format, requires -key")
 	flags.StringVar(&key, "key", "", "key file in PEM format, requires -cert")
-	flags.StringVar(&clientCert, "clientCert", "", "Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Client Key for TLS authentication")
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() > 0 {
