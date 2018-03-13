@@ -21,8 +21,8 @@ func cache(ctx context.Context, args []string) error {
 		cacheLocation  string
 		n              int
 		storeLocations = new(multiArg)
-		clientCert string
-		clientKey string
+		clientCert     string
+		clientKey      string
 	)
 	flags := flag.NewFlagSet("cache", flag.ExitOnError)
 	flags.Usage = func() {
@@ -70,7 +70,7 @@ func cache(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey,storeLocations.list...)
+	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey, storeLocations.list...)
 	if err != nil {
 		return err
 	}
