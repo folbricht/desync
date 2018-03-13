@@ -25,8 +25,8 @@ func mountIdx(ctx context.Context, args []string) error {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
-		clientCert string
-		clientKey string
+		clientCert     string
+		clientKey      string
 	)
 	flags := flag.NewFlagSet("mount-index", flag.ExitOnError)
 	flags.Usage = func() {

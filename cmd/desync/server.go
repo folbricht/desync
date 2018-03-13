@@ -24,8 +24,8 @@ func server(ctx context.Context, args []string) error {
 		storeLocations = new(multiArg)
 		listenInt      string
 		cert, key      string
-		clientCert string
-		clientKey string
+		clientCert     string
+		clientKey      string
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {

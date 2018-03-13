@@ -2,9 +2,9 @@ package desync
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
-	"path/filepath"
 )
 
 func TestArchiveDecoderTypes(t *testing.T) {

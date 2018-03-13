@@ -22,8 +22,8 @@ func untar(ctx context.Context, args []string) error {
 		n              int
 		storeLocations = new(multiArg)
 		cacheLocation  string
-		clientCert string
-		clientKey string
+		clientCert     string
+		clientKey      string
 	)
 	flags := flag.NewFlagSet("untar", flag.ExitOnError)
 	flags.Usage = func() {

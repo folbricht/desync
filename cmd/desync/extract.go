@@ -23,8 +23,8 @@ func extract(ctx context.Context, args []string) error {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
-		clientCert string
-		clientKey string
+		clientCert     string
+		clientKey      string
 	)
 	flags := flag.NewFlagSet("extract", flag.ExitOnError)
 	flags.Usage = func() {

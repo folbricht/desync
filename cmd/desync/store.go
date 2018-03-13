@@ -31,7 +31,7 @@ func MultiStoreWithCache(n int, cacheLocation string, clientCert string, clientK
 				return store, err
 			}
 		case "http", "https":
-			s, err = desync.NewRemoteHTTPStore(loc, n,clientCert,clientKey)
+			s, err = desync.NewRemoteHTTPStore(loc, n, clientCert, clientKey)
 			if err != nil {
 				return store, err
 			}

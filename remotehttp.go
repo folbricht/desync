@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pkg/errors"
 	"crypto/x509"
+	"github.com/pkg/errors"
 )
 
 // TrustInsecure determines if invalid certs presented by HTTP stores should
@@ -50,11 +50,11 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 		tr = &http.Transport{
 			DisableCompression:  true,
 			MaxIdleConnsPerHost: n,
-			TLSClientConfig:     &tls.Config{
+			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: TrustInsecure,
-				Certificates: []tls.Certificate{certificate},
-				RootCAs:      caCertPool,
-				},
+				Certificates:       []tls.Certificate{certificate},
+				RootCAs:            caCertPool,
+			},
 		}
 
 	} else {
