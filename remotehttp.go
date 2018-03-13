@@ -53,7 +53,8 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 			TLSClientConfig:     &tls.Config{
 				InsecureSkipVerify: TrustInsecure,
 				Certificates: []tls.Certificate{certificate},
-				RootCAs:      caCertPool,},
+				RootCAs:      caCertPool,
+				},
 		}
 
 	} else {
