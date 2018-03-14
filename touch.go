@@ -60,5 +60,5 @@ loop:
 	close(in)
 	wg.Wait()
 
-	return nil
+	return pErr
 }
