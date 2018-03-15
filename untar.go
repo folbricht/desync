@@ -174,6 +174,7 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int) er
 				b, err := s.GetChunk(r.chunk.ID)
 				if err != nil {
 					recordError(err)
+					close(r.data)
 					continue
 				}
 				// Since we know how big the chunk is supposed to be, pre-allocate a
@@ -183,17 +184,20 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int) er
 				db, err = Decompress(db, b)
 				if err != nil {
 					recordError(err)
+					close(r.data)
 					continue
 				}
 				// Verify the checksum of the chunk matches the ID
 				sum := sha512.Sum512_256(db)
 				if sum != r.chunk.ID {
 					recordError(fmt.Errorf("unexpected sha512/256 %s for chunk id %s", sum, r.chunk.ID))
+					close(r.data)
 					continue
 				}
 				// Might as well verify the chunk size while we're at it
 				if r.chunk.Size != uint64(len(db)) {
 					recordError(fmt.Errorf("unexpected size for chunk %s", r.chunk.ID))
+					close(r.data)
 					continue
 				}
 				r.data <- db
