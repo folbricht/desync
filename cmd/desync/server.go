@@ -19,13 +19,13 @@ reading from multiple local or remote stores as well as a local cache. If
 
 func server(ctx context.Context, args []string) error {
 	var (
-		cacheLocation  string
-		n              int
-		storeLocations = new(multiArg)
-		listenInt      string
-		cert, key      string
-		clientCert     string
-		clientKey      string
+		cacheLocation   string
+		n               int
+		storeLocations  = new(multiArg)
+		listenAddresses = new(multiArg)
+		cert, key       string
+		clientCert      string
+		clientKey       string
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
@@ -36,7 +36,7 @@ func server(ctx context.Context, args []string) error {
 	flags.Var(storeLocations, "s", "casync store location, can be multiples")
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines, only used for remote SSH stores")
-	flags.StringVar(&listenInt, "l", ":http", "listen address")
+	flags.Var(listenAddresses, "l", "listen address, can be multiples (default :http)")
 	flags.StringVar(&cert, "cert", "", "cert file in PEM format, requires -key")
 	flags.StringVar(&key, "key", "", "key file in PEM format, requires -cert")
 	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
@@ -55,6 +55,10 @@ func server(ctx context.Context, args []string) error {
 		return errors.New("-clientKey and -clientCert options need to be provided together.")
 	}
 
+	if len(listenAddresses.list) == 0 {
+		listenAddresses.Set(":http")
+	}
+
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
 		return errors.New("No casync store provided. See -h for help.")
@@ -69,29 +73,25 @@ func server(ctx context.Context, args []string) error {
 
 	http.Handle("/", desync.NewHTTPHandler(s))
 
-	server := &http.Server{
-		Addr: listenInt,
-	}
-
-	// Run the server in a goroutine, and use the main goroutine to wait for
-	// a signal (ctx gets cancelled) and shutdown the server cleanly.
+	// Run the server(s) in a goroutine, and use the main goroutine to wait for
+	// a signal or a failing server (ctx gets cancelled in that case)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go func() {
-		var err error
-		if key == "" {
-			err = server.ListenAndServe()
-		} else {
-			err = server.ListenAndServeTLS(cert, key)
-		}
-		// Did the HTTP server stop because we called shutdown or some problem?
-		if err != http.ErrServerClosed {
+
+	for _, addr := range listenAddresses.list {
+		go func(a string) {
+			server := &http.Server{Addr: a}
+			var err error
+			if key == "" {
+				err = server.ListenAndServe()
+			} else {
+				err = server.ListenAndServeTLS(cert, key)
+			}
 			fmt.Fprintln(os.Stderr, err)
 			cancel()
-		}
-	}()
-
+		}(addr)
+	}
 	// wait for either INT/TERM or an issue with the server
 	<-ctx.Done()
-	return server.Shutdown(context.Background())
+	return nil
 }
