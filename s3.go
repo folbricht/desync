@@ -2,12 +2,12 @@ package desync
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 
 	minio "github.com/minio/minio-go"
@@ -47,7 +47,10 @@ func NewS3Store(location string) (S3Store, error) {
 	}
 	f := strings.Split(path, "/")
 	s.bucket = f[0]
-	s.prefix = filepath.Join(f[1:]...)
+	s.prefix = strings.Join(f[1:], "/")
+	if s.prefix != "" {
+		s.prefix += "/"
+	}
 
 	// Read creds from the environment and setup a client
 	accessKey := os.Getenv("S3_ACCESS_KEY")
@@ -71,7 +74,7 @@ func NewS3Store(location string) (S3Store, error) {
 
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
-	name := strings.Join([]string{s.prefix, id.String()}, "/")
+	name := s.prefix + id.String()
 	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, s.String())
@@ -90,16 +93,54 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 // StoreChunk adds a new chunk to the store
 func (s S3Store) StoreChunk(id ChunkID, b []byte) error {
 	contentType := "application/zstd"
-	name := strings.Join([]string{s.prefix, id.String()}, "/")
+	name := s.prefix + id.String()
 	_, err := s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	return errors.Wrap(err, s.String())
 }
 
 // HasChunk returns true if the chunk is in the store
 func (s S3Store) HasChunk(id ChunkID) bool {
-	name := strings.Join([]string{s.prefix, id.String()}, "/")
+	name := s.prefix + id.String()
 	_, err := s.client.StatObject(s.bucket, name, minio.StatObjectOptions{})
 	return err == nil
+}
+
+// RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
+// Used when verifying and repairing caches.
+func (s S3Store) RemoveChunk(id ChunkID) error {
+	name := s.prefix + id.String()
+	return s.client.RemoveObject(s.bucket, name)
+}
+
+// Prune removes any chunks from the store that are not contained in a list (map)
+func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+	objectCh := s.client.ListObjectsV2(s.bucket, s.prefix, false, doneCh)
+	for object := range objectCh {
+		if object.Err != nil {
+			return object.Err
+		}
+		// See if we're meant to stop
+		select {
+		case <-ctx.Done():
+			return Interrupted{}
+		default:
+		}
+
+		id, err := ChunkIDFromString(strings.TrimPrefix(object.Key, s.prefix))
+		if err != nil {
+			return err // TBD: Should we stop when runnning into a non-chunk object or simply continue?
+		}
+
+		// Drop the chunk if it's not on the list
+		if _, ok := ids[id]; !ok {
+			if err = s.RemoveChunk(id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s S3Store) String() string {

@@ -1,6 +1,9 @@
 package desync
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // Store is a generic interface implemented by read-only stores, like SSH or
 // HTTP remote stores currently.
@@ -16,4 +19,5 @@ type WriteStore interface {
 	Store
 	HasChunk(id ChunkID) bool
 	StoreChunk(id ChunkID, b []byte) error
+	Prune(ctx context.Context, ids map[ChunkID]struct{}) error
 }

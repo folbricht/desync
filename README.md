@@ -42,13 +42,13 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file. Not available on Windows.
 - `untar`        - unpack a catar file or an index referencing a catar. Not available on Windows.
-- `prune`        - remove unreferenced chunks from a local store. Use with caution, can lead to data loss.
+- `prune`        - remove unreferenced chunks from a local or S3 store. Use with caution, can lead to data loss.
 - `chunk-server` - start a chunk server that serves chunks via HTTP(S)
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
 
 ### Options (not all apply to all commands)
-- `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, and `tar` commands support updating chunk stores in S3, while `verify` and `prune` commands only operate on a local store.
+- `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, `tar` and `prune` commands support updating chunk stores in S3, while `verify` only operates on a local store.
 - `-c <store>` Location of a *local* chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
