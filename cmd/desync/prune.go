@@ -26,7 +26,7 @@ func prune(ctx context.Context, args []string) error {
 		flags.PrintDefaults()
 	}
 
-	flags.StringVar(&storeLocation, "s", "", "local store directory")
+	flags.StringVar(&storeLocation, "s", "", "local or s3 store")
 	flags.BoolVar(&accepted, "y", false, "do not ask for confirmation")
 	flags.Parse(args)
 

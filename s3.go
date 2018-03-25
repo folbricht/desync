@@ -74,7 +74,7 @@ func NewS3Store(location string) (S3Store, error) {
 
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
-	name := s.prefix + id.String()
+	name := s.objectName(id)
 	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, s.String())
@@ -93,14 +93,14 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 // StoreChunk adds a new chunk to the store
 func (s S3Store) StoreChunk(id ChunkID, b []byte) error {
 	contentType := "application/zstd"
-	name := s.prefix + id.String()
+	name := s.objectName(id)
 	_, err := s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	return errors.Wrap(err, s.String())
 }
 
 // HasChunk returns true if the chunk is in the store
 func (s S3Store) HasChunk(id ChunkID) bool {
-	name := s.prefix + id.String()
+	name := s.objectName(id)
 	_, err := s.client.StatObject(s.bucket, name, minio.StatObjectOptions{})
 	return err == nil
 }
@@ -108,7 +108,7 @@ func (s S3Store) HasChunk(id ChunkID) bool {
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
 // Used when verifying and repairing caches.
 func (s S3Store) RemoveChunk(id ChunkID) error {
-	name := s.prefix + id.String()
+	name := s.objectName(id)
 	return s.client.RemoveObject(s.bucket, name)
 }
 
@@ -148,3 +148,58 @@ func (s S3Store) String() string {
 }
 
 func (s S3Store) Close() error { return nil }
+
+// Upgrade converts the storage layout in S3 from the old format (just a flat
+// layout) to the current layout which prefixes every chunk with the first 4
+// characters of the checksum as well as a .cacnk extension. This aligns the
+// layout with that of local stores and allows the used of sync tools outside
+// of this tool, local stores could be copied into S3 for example.
+func (s S3Store) Upgrade(ctx context.Context) error {
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+	objectCh := s.client.ListObjectsV2(s.bucket, s.prefix, false, doneCh)
+	for object := range objectCh {
+		if object.Err != nil {
+			return object.Err
+		}
+		// See if we're meant to stop
+		select {
+		case <-ctx.Done():
+			return Interrupted{}
+		default:
+		}
+
+		// Skip if this one's already in the new format
+		if strings.HasSuffix(object.Key, chunkFileExt) {
+			continue
+		}
+
+		// Skip if we can't parse this checksum, must be an unrelated file
+		id, err := ChunkIDFromString(strings.TrimPrefix(object.Key, s.prefix))
+		if err != nil {
+			continue
+		}
+
+		// Copy the chunk with the new name
+		newName := s.objectName(id)
+		src := minio.NewSourceInfo(s.bucket, object.Key, nil)
+		dst, err := minio.NewDestinationInfo(s.bucket, newName, nil, nil)
+		if err != nil {
+			return err
+		}
+		if err = s.client.CopyObject(dst, src); err != nil {
+			return err
+		}
+
+		// Once copied, drop the old chunk
+		if err = s.client.RemoveObject(s.bucket, object.Key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s S3Store) objectName(id ChunkID) string {
+	sID := id.String()
+	return s.prefix + sID[0:4] + "/" + sID + chunkFileExt
+}
