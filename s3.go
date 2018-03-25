@@ -74,7 +74,7 @@ func NewS3Store(location string) (S3Store, error) {
 
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
-	name := s.objectName(id)
+	name := s.nameFromID(id)
 	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, s.String())
@@ -93,14 +93,14 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 // StoreChunk adds a new chunk to the store
 func (s S3Store) StoreChunk(id ChunkID, b []byte) error {
 	contentType := "application/zstd"
-	name := s.objectName(id)
+	name := s.nameFromID(id)
 	_, err := s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	return errors.Wrap(err, s.String())
 }
 
 // HasChunk returns true if the chunk is in the store
 func (s S3Store) HasChunk(id ChunkID) bool {
-	name := s.objectName(id)
+	name := s.nameFromID(id)
 	_, err := s.client.StatObject(s.bucket, name, minio.StatObjectOptions{})
 	return err == nil
 }
@@ -108,7 +108,7 @@ func (s S3Store) HasChunk(id ChunkID) bool {
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
 // Used when verifying and repairing caches.
 func (s S3Store) RemoveChunk(id ChunkID) error {
-	name := s.objectName(id)
+	name := s.nameFromID(id)
 	return s.client.RemoveObject(s.bucket, name)
 }
 
@@ -116,7 +116,7 @@ func (s S3Store) RemoveChunk(id ChunkID) error {
 func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	doneCh := make(chan struct{})
 	defer close(doneCh)
-	objectCh := s.client.ListObjectsV2(s.bucket, s.prefix, false, doneCh)
+	objectCh := s.client.ListObjectsV2(s.bucket, s.prefix, true, doneCh)
 	for object := range objectCh {
 		if object.Err != nil {
 			return object.Err
@@ -128,9 +128,9 @@ func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		default:
 		}
 
-		id, err := ChunkIDFromString(strings.TrimPrefix(object.Key, s.prefix))
+		id, err := s.idFromName(object.Key)
 		if err != nil {
-			return err // TBD: Should we stop when runnning into a non-chunk object or simply continue?
+			continue
 		}
 
 		// Drop the chunk if it's not on the list
@@ -181,7 +181,7 @@ func (s S3Store) Upgrade(ctx context.Context) error {
 		}
 
 		// Copy the chunk with the new name
-		newName := s.objectName(id)
+		newName := s.nameFromID(id)
 		src := minio.NewSourceInfo(s.bucket, object.Key, nil)
 		dst, err := minio.NewDestinationInfo(s.bucket, newName, nil, nil)
 		if err != nil {
@@ -199,7 +199,24 @@ func (s S3Store) Upgrade(ctx context.Context) error {
 	return nil
 }
 
-func (s S3Store) objectName(id ChunkID) string {
+func (s S3Store) nameFromID(id ChunkID) string {
 	sID := id.String()
 	return s.prefix + sID[0:4] + "/" + sID + chunkFileExt
+}
+
+func (s S3Store) idFromName(name string) (ChunkID, error) {
+	if !strings.HasSuffix(name, chunkFileExt) {
+		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
+	}
+	n := strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), chunkFileExt)
+	fragments := strings.Split(n, "/")
+	if len(fragments) != 2 {
+		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
+	}
+	idx := fragments[0]
+	sid := fragments[1]
+	if !strings.HasPrefix(sid, idx) {
+		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
+	}
+	return ChunkIDFromString(sid)
 }
