@@ -12,8 +12,8 @@ import (
 
 const pruneUsage = `desync prune [options] <index> [<index>..]
 
-Read chunk IDs in from index files and delete any chunks from a local store
-that are not referenced in the files.`
+Read chunk IDs in from index files and delete any chunks from a local (or s3)
+store that are not referenced in the index files.`
 
 func prune(ctx context.Context, args []string) error {
 	var (
@@ -38,10 +38,12 @@ func prune(ctx context.Context, args []string) error {
 		return errors.New("No store provided.")
 	}
 
-	s, err := desync.NewLocalStore(storeLocation)
+	// Open the target store
+	s, err := WritableStore(1, storeLocation)
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
 	// Read the input files and merge all chunk IDs in a map to de-dup them
 	ids := make(map[desync.ChunkID]struct{})
