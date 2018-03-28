@@ -30,6 +30,7 @@ untar        - extract directory tree from a catar file
 prune        - remove all unreferenced chunks from a local store
 chunk-server - start a HTTP chunk server
 mount-index  - FUSE mount an index
+upgrade-s3   - convert an s3 store from the old to the new storage layout
 `
 
 func main() {
@@ -72,6 +73,7 @@ func main() {
 		"chunk":        chunkCmd,
 		"make":         makeCmd,
 		"mount-index":  mountIdx,
+		"upgrade-s3":   upgradeS3,
 	}
 	h, ok := handlers[cmd]
 	if !ok {

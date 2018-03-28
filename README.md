@@ -88,6 +88,9 @@ This is a store running on the local machine on port 9000 without SSL.
 s3+http://127.0.0.1:9000/store
 ```
 
+#### Previous S3 storage layout
+Before April 2018, chunks in S3 stores were kept in a flat layout, with the name being the checksum of the chunk. Since then, the layout was modified to match that of local stores: `<4-checksum-chars>/<checksum>.cacnk` This change allows the use of other tools to convert or copy stores between local and S3 stores. To convert an existing s3 store from the old format, a command `upgrade-s3` is available in the tool.
+
 ### Examples:
 
 Re-assemble somefile.tar using a remote chunk store and a blob index file.
