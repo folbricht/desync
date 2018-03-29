@@ -36,6 +36,7 @@ func server(ctx context.Context, args []string) error {
 	flags.Var(storeLocations, "s", "casync store location, can be multiples")
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines, only used for remote SSH stores")
+	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
 	flags.Var(listenAddresses, "l", "listen address, can be multiples (default :http)")
 	flags.StringVar(&cert, "cert", "", "cert file in PEM format, requires -key")
 	flags.StringVar(&key, "key", "", "key file in PEM format, requires -cert")
