@@ -15,9 +15,15 @@ import (
 	"syscall"
 )
 
+// UntarOptions are used to influence the behaviour of untar
+type UntarOptions struct {
+	NoSameOwner       bool
+	NoSamePermissions bool
+}
+
 // UnTar implements the untar command, decoding a catar file and writing the
 // contained tree to a target directory.
-func UnTar(ctx context.Context, r io.Reader, dst string) error {
+func UnTar(ctx context.Context, r io.Reader, dst string, opts UntarOptions) error {
 	dec := NewArchiveDecoder(r)
 loop:
 	for {
@@ -33,13 +39,13 @@ loop:
 		}
 		switch n := c.(type) {
 		case NodeDirectory:
-			err = makeDir(dst, n)
+			err = makeDir(dst, n, opts)
 		case NodeFile:
-			err = makeFile(dst, n)
+			err = makeFile(dst, n, opts)
 		case NodeDevice:
-			err = makeDevice(dst, n)
+			err = makeDevice(dst, n, opts)
 		case NodeSymlink:
-			err = makeSymlink(dst, n)
+			err = makeSymlink(dst, n, opts)
 		case nil:
 			break loop
 		default:
@@ -52,7 +58,7 @@ loop:
 	return nil
 }
 
-func makeDir(base string, n NodeDirectory) error {
+func makeDir(base string, n NodeDirectory, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
 	// Let's see if there is a dir with the same name already
@@ -66,20 +72,24 @@ func makeDir(base string, n NodeDirectory) error {
 			return err
 		}
 	}
-	// The dir exists now, fix the UID/GID
-	if err := os.Chown(dst, n.UID, n.GID); err != nil {
-		return err
+	// The dir exists now, fix the UID/GID if needed
+	if !opts.NoSameOwner {
+		if err := os.Chown(dst, n.UID, n.GID); err != nil {
+			return err
+		}
 	}
-	if err := os.Chtimes(dst, n.MTime, n.MTime); err != nil {
-		return err
+	if !opts.NoSamePermissions {
+		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
+			return err
+		}
 	}
-	return syscall.Chmod(dst, uint32(n.Mode))
+	return os.Chtimes(dst, n.MTime, n.MTime)
 }
 
-func makeFile(base string, n NodeFile) error {
+func makeFile(base string, n NodeFile, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
-	f, err := os.Create(dst)
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, n.Mode)
 	if err != nil {
 		return err
 	}
@@ -87,16 +97,20 @@ func makeFile(base string, n NodeFile) error {
 	if _, err = io.Copy(f, n.Data); err != nil {
 		return err
 	}
-	if err = f.Chown(n.UID, n.GID); err != nil {
-		return err
+	if !opts.NoSameOwner {
+		if err = f.Chown(n.UID, n.GID); err != nil {
+			return err
+		}
 	}
-	if err = os.Chtimes(dst, n.MTime, n.MTime); err != nil {
-		return err
+	if !opts.NoSamePermissions {
+		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
+			return err
+		}
 	}
-	return syscall.Chmod(dst, uint32(n.Mode))
+	return os.Chtimes(dst, n.MTime, n.MTime)
 }
 
-func makeSymlink(base string, n NodeSymlink) error {
+func makeSymlink(base string, n NodeSymlink, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
 	if err := os.Symlink(n.Target, dst); err != nil {
@@ -106,22 +120,31 @@ func makeSymlink(base string, n NodeSymlink) error {
 	// set them here. But they do matter somewhat on Mac, so should probably
 	// add some Mac-specific logic for that here.
 	// fchmodat() with flag AT_SYMLINK_NOFOLLOW
-	return os.Lchown(dst, n.UID, n.GID)
+	if !opts.NoSameOwner {
+		if err := os.Lchown(dst, n.UID, n.GID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func makeDevice(base string, n NodeDevice) error {
+func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
 	if err := syscall.Mknod(dst, uint32(n.Mode), int(mkdev(n.Major, n.Minor))); err != nil {
 		return err
 	}
-	if err := os.Chown(dst, n.UID, n.GID); err != nil {
-		return err
+	if !opts.NoSameOwner {
+		if err := os.Chown(dst, n.UID, n.GID); err != nil {
+			return err
+		}
 	}
-	if err := os.Chtimes(dst, n.MTime, n.MTime); err != nil {
-		return err
+	if !opts.NoSamePermissions {
+		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
+			return err
+		}
 	}
-	return syscall.Chmod(dst, uint32(n.Mode))
+	return os.Chtimes(dst, n.MTime, n.MTime)
 }
 
 func mkdev(major, minor uint64) uint64 {
@@ -135,7 +158,7 @@ func mkdev(major, minor uint64) uint64 {
 // UnTarIndex takes an index file (of a chunked catar), re-assembles the catar
 // and decodes it on-the-fly into the target directory 'dst'. Uses n gorountines
 // to retrieve and decompress the chunks.
-func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int) error {
+func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, opts UntarOptions) error {
 	type requestJob struct {
 		chunk IndexChunk    // requested chunk
 		data  chan ([]byte) // channel for the (decompressed) chunk
@@ -238,7 +261,7 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int) er
 	}()
 
 	// Run untar in the main goroutine
-	if err := UnTar(ctx, r, dst); err != nil {
+	if err := UnTar(ctx, r, dst, opts); err != nil {
 		return err
 	}
 	return pErr

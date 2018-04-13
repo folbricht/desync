@@ -13,7 +13,7 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const tarUsage = `desync tar <catar> <source>
+const tarUsage = `desync tar <catar|caidx> <source>
 
 Encodes a directory tree into a catar archive or alternatively an index file
 with the archive chunked in a local or S3 store.`
@@ -41,6 +41,9 @@ func tar(ctx context.Context, args []string) error {
 	}
 	if flags.NArg() > 2 {
 		return errors.New("Too many arguments. See -h for help.")
+	}
+	if makeIndex && storeLocation == "" {
+		return errors.New("-i requires a store (-s <location>)")
 	}
 
 	output := flags.Arg(0)
