@@ -108,6 +108,7 @@ Mix and match remote stores and use a local cache store to improve performance.
 desync extract \
        -s ssh://192.168.1.1/path/to/casync.store/ \
        -s http://192.168.1.2/casync.store/ \
+       -s https://192.168.1.3/ssl.store/ \
        -c /path/to/cache \
        somefile.tar.caibx somefile.tar
 ```
