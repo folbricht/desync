@@ -43,6 +43,11 @@ func main() {
 		die(errors.New("No command given. See -h for help."))
 	}
 
+	// Check if there's a config file and load the values from it if there is
+	if err := loadConfigIfPresent(); err != nil {
+		die(err)
+	}
+
 	// Install a signal handler for SIGINT or SIGTERM to cancel a context in
 	// order to clean up and shut down gracefully if Ctrl+C is hit.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -74,6 +79,7 @@ func main() {
 		"make":         makeCmd,
 		"mount-index":  mountIdx,
 		"upgrade-s3":   upgradeS3,
+		"config":       config,
 	}
 	h, ok := handlers[cmd]
 	if !ok {
