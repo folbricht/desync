@@ -55,6 +55,9 @@ func config(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
+		if err = os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+			return err
+		}
 		f, err := os.Create(filename)
 		if err != nil {
 			return err
