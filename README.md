@@ -91,6 +91,14 @@ s3+http://127.0.0.1:9000/store
 #### Previous S3 storage layout
 Before April 2018, chunks in S3 stores were kept in a flat layout, with the name being the checksum of the chunk. Since then, the layout was modified to match that of local stores: `<4-checksum-chars>/<checksum>.cacnk` This change allows the use of other tools to convert or copy stores between local and S3 stores. To convert an existing s3 store from the old format, a command `upgrade-s3` is available in the tool.
 
+### Configuration
+
+For most use cases, it is sufficient to use the tool's default configuration not requiring a config file. Having a config file `$HOME/.config/desync/config.json` allows for further customization of internal behaviour such as timeouts or error retry that can't be set via command-line options or environment variables. To view the current configuration, use `desync config`. If no config file is present, this will show the defaults. To create a config file allowing custom values, use `desync config -w` which will write the current configuration to the file, then edit the file.
+
+Available configuration values:
+- `http-timeout` - HTTP request timeout used in HTTP stores (not S3) in nanoseconds
+- `http-error-retry` - Number of times to retry failed chunk requests from HTTP stores
+
 ### Examples:
 
 Re-assemble somefile.tar using a remote chunk store and a blob index file.

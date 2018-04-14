@@ -21,8 +21,9 @@ var TrustInsecure bool
 
 // RemoteHTTP is a remote casync store accessed via HTTP.
 type RemoteHTTP struct {
-	location *url.URL
-	client   *http.Client
+	location   *url.URL
+	client     *http.Client
+	errorRetry int
 }
 
 // NewRemoteHTTPStore initializes a new store that pulls chunks via HTTP(S) from
@@ -69,9 +70,21 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 		}
 	}
 
-	client := &http.Client{Transport: tr, Timeout: time.Minute}
+	client := &http.Client{Transport: tr}
 
-	return &RemoteHTTP{&u, client}, nil
+	return &RemoteHTTP{location: &u, client: client}, nil
+}
+
+// SetTimeout configures the timeout on the HTTP client for all requests
+func (r *RemoteHTTP) SetTimeout(timeout time.Duration) {
+	r.client.Timeout = timeout
+}
+
+// SetErrorRetry defines how many HTTP errors are retried. This can be useful
+// when dealing with unreliable networks that can timeout or where errors are
+// transient.
+func (r *RemoteHTTP) SetErrorRetry(n int) {
+	r.errorRetry = n
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -80,19 +93,39 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
 	p := filepath.Join(sID[0:4], sID) + chunkFileExt
 
 	u, _ := r.location.Parse(p)
-	resp, err := r.client.Get(u.String())
-	if err != nil {
-		return nil, errors.Wrap(err, u.String())
+	var (
+		resp    *http.Response
+		err     error
+		attempt int
+		b       []byte
+	)
+	for {
+		attempt++
+		resp, err = r.client.Get(u.String())
+		if err != nil {
+			if attempt >= r.errorRetry {
+				return nil, errors.Wrap(err, u.String())
+			}
+			continue
+		}
+		defer resp.Body.Close()
+		switch resp.StatusCode {
+		case 200: // expected
+		case 404:
+			return nil, ChunkMissing{id}
+		default:
+			return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, p)
+		}
+		b, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			if attempt >= r.errorRetry {
+				return nil, errors.Wrap(err, u.String())
+			}
+			continue
+		}
+		break
 	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case 200: // expected
-	case 404:
-		return nil, ChunkMissing{id}
-	default:
-		return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, p)
-	}
-	return ioutil.ReadAll(resp.Body)
+	return b, err
 }
 
 func (r *RemoteHTTP) String() string {
