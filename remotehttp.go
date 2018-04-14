@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"crypto/x509"
+
 	"github.com/pkg/errors"
 )
 
@@ -67,7 +69,7 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 		}
 	}
 
-	client := &http.Client{Transport: tr}
+	client := &http.Client{Transport: tr, Timeout: time.Minute}
 
 	return &RemoteHTTP{&u, client}, nil
 }
