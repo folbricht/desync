@@ -63,14 +63,14 @@ go get -u github.com/folbricht/desync/cmd/desync
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
-- `S3_ACCESS_KEY` and `S3_SECRET_KEY` are required when using S3 chunk stores
+- `S3_ACCESS_KEY` and `S3_SECRET_KEY` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
 
 ### Caching
 The `-c <store>` option can be used to either specify an existing local store to act as cache or to build a new one. Whenever a cache is requested, it is first looked up in the local cache before routing the request to the main (likely remote store). Any chunks downloaded from the main store are added to the local store (cache). In addition, when a chunk is read from the cache, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache directory as well as the chunks in it are expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), blob assembly will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
 evict bad chunks from a local store or cache.
 
 ### S3 chunk stores
-desync supports reading from and writing to chunk stores that offer an S3 API, for example hosted in AWS or running on a local server. When using such a store, credentials are passed into the tool via environment variables `S3_ACCESS_KEY` and `S3_SECRET_KEY`. Care is required when building those URLs. Below a few examples:
+desync supports reading from and writing to chunk stores that offer an S3 API, for example hosted in AWS or running on a local server. When using such a store, credentials are passed into the tool either via environment variables `S3_ACCESS_KEY` and `S3_SECRET_KEY` or, if multiples are required, in the config file. Care is required when building those URLs. Below a few examples:
 
 #### AWS
 This store is hosted in `eu-west-3` in AWS. `s3` signals that the S3 protocol is to be used, `https` should be specified for SSL connections. The first path element of the URL contains the bucket, `desync.bucket` in this example. Note, when using AWS, no port should be given in the URL!
@@ -93,11 +93,31 @@ Before April 2018, chunks in S3 stores were kept in a flat layout, with the name
 
 ### Configuration
 
-For most use cases, it is sufficient to use the tool's default configuration not requiring a config file. Having a config file `$HOME/.config/desync/config.json` allows for further customization of internal behaviour such as timeouts or error retry that can't be set via command-line options or environment variables. To view the current configuration, use `desync config`. If no config file is present, this will show the defaults. To create a config file allowing custom values, use `desync config -w` which will write the current configuration to the file, then edit the file.
+For most use cases, it is sufficient to use the tool's default configuration not requiring a config file. Having a config file `$HOME/.config/desync/config.json` allows for further customization of timeouts, error retry behaviour or credentials that can't be set via command-line options or environment variables. To view the current configuration, use `desync config`. If no config file is present, this will show the defaults. To create a config file allowing custom values, use `desync config -w` which will write the current configuration to the file, then edit the file.
 
 Available configuration values:
 - `http-timeout` - HTTP request timeout used in HTTP stores (not S3) in nanoseconds
 - `http-error-retry` - Number of times to retry failed chunk requests from HTTP stores
+- `s3-credentials` - Defines credentials for use with S3 stores. Especially useful if more than one S3 store is used. The key in the config needs to be the URL scheme and host used for the store, excluding the path, but including the port number if used in the store URL.
+
+**Example config**
+
+```json
+{
+  "http-timeout": 60000000000,
+  "http-error-retry": 0,
+  "s3-credentials": {
+    "http://localhost": {
+      "access-key": "MYACCESSKEY",
+      "secret-key": "MYSECRETKEY"
+    },
+    "https://127.0.0.1:9000": {
+      "access-key": "OTHERACCESSKEY",
+      "secret-key": "OTHERSECRETKEY"
+    }
+  }
+}
+```
 
 ### Examples:
 
@@ -177,9 +197,9 @@ Start a chunk server on port 8080 acting as proxy for other remote HTTP and SSH 
 desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -l :8080
 ```
 
-Start a TLS chunk server on port 443 acting as proxy for a remote chunk store in AWS with local cache.
+Start a TLS chunk server on port 443 acting as proxy for a remote chunk store in AWS with local cache. The credentials for AWS are expected to be in the config file under key `https://s3-eu-west-3.amazonaws.com`.
 ```
-S3_ACCESS_KEY=mykey S3_SECRET_KEY=mysecret desync chunk-server -s s3+https://s3-eu-west-3.amazonaws.com/desync.bucket/prefix -c cache -l 127.0.0.1:https -cert cert.pem -key key.pem
+desync chunk-server -s s3+https://s3-eu-west-3.amazonaws.com/desync.bucket/prefix -c cache -l 127.0.0.1:https -cert cert.pem -key key.pem
 ```
 
 Split a blob, store the chunks and create an index file.

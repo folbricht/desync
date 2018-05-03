@@ -6,17 +6,46 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 )
 
+type S3Creds struct {
+	AccessKey string `json:"access-key"`
+	SecretKey string `json:"secret-key"`
+}
+
 type Config struct {
-	HTTPTimeout    time.Duration `json:"http-timeout"`
-	HTTPErrorRetry int           `json:"http-error-retry"`
+	HTTPTimeout    time.Duration      `json:"http-timeout"`
+	HTTPErrorRetry int                `json:"http-error-retry"`
+	S3Credentials  map[string]S3Creds `json:"s3-credentials"`
+}
+
+// GetS3CredentialsFor attempts to find creds for an S3 location in the config
+// and the environment (which takes precedence). Returns accessKey and secretKey
+// if found, or "" if not found. Uses the scheme, host and port which need to
+// match what's in the config file.
+func (c Config) GetS3CredentialsFor(u *url.URL) (string, string) {
+	// See if creds are defined in the ENV, if so, they take precedence
+	accessKey := os.Getenv("S3_ACCESS_KEY")
+	secretKey := os.Getenv("S3_SECRET_KEY")
+	if accessKey != "" || secretKey != "" {
+		return accessKey, secretKey
+	}
+
+	// Look in the config to find a match for scheme+host
+	key := &url.URL{
+		Scheme: strings.TrimPrefix(u.Scheme, "s3+"),
+		Host:   u.Host,
+	}
+	creds := c.S3Credentials[key.String()]
+	return creds.AccessKey, creds.SecretKey
 }
 
 // Global config in the main packe defining the defaults. Those can be
@@ -58,7 +87,7 @@ func config(ctx context.Context, args []string) error {
 		if err = os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
 			return err
 		}
-		f, err := os.Create(filename)
+		f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			return err
 		}

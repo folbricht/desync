@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/folbricht/desync"
@@ -38,7 +39,12 @@ func upgradeS3(ctx context.Context, args []string) error {
 	}
 
 	// Open the target store
-	s, err := desync.NewS3Store(storeLocation)
+	loc, err := url.Parse(storeLocation)
+	if err != nil {
+		return err
+	}
+	accesskey, secretkey := cfg.GetS3CredentialsFor(loc)
+	s, err := desync.NewS3Store(storeLocation, accesskey, secretkey)
 	if err != nil {
 		return err
 	}

@@ -39,7 +39,8 @@ func MultiStoreWithCache(n int, cacheLocation string, clientCert string, clientK
 			h.SetErrorRetry(cfg.HTTPErrorRetry)
 			s = h
 		case "s3+http", "s3+https":
-			s, err = desync.NewS3Store(location)
+			accesskey, secretkey := cfg.GetS3CredentialsFor(loc)
+			s, err = desync.NewS3Store(location, accesskey, secretkey)
 			if err != nil {
 				return store, err
 			}
@@ -83,7 +84,8 @@ func WritableStore(n int, location string) (desync.WriteStore, error) {
 		return desync.NewLocalStore(location)
 	}
 	if strings.HasPrefix(location, "s3+http") {
-		return desync.NewS3Store(location)
+		accesskey, secretkey := cfg.GetS3CredentialsFor(u)
+		return desync.NewS3Store(location, accesskey, secretkey)
 	}
 	return nil, fmt.Errorf("store '%s' does not support writing", location)
 }

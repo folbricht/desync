@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 
 	minio "github.com/minio/minio-go"
@@ -26,7 +25,7 @@ type S3Store struct {
 // should be provided like this: s3+http://host:port/bucket
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3S3_SECRET_KEY.
-func NewS3Store(location string) (S3Store, error) {
+func NewS3Store(location, accessKey, secretKey string) (S3Store, error) {
 	s := S3Store{Location: location}
 	u, err := url.Parse(location)
 	if err != nil {
@@ -51,10 +50,6 @@ func NewS3Store(location string) (S3Store, error) {
 	if s.prefix != "" {
 		s.prefix += "/"
 	}
-
-	// Read creds from the environment and setup a client
-	accessKey := os.Getenv("S3_ACCESS_KEY")
-	secretKey := os.Getenv("S3_SECRET_KEY")
 
 	s.client, err = minio.New(u.Host, accessKey, secretKey, useSSL)
 	if err != nil {
