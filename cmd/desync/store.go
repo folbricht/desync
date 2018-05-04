@@ -3,54 +3,31 @@ package main
 import (
 	"fmt"
 	"net/url"
-	"strings"
 
 	"github.com/folbricht/desync"
 )
+
+// storeOptions are used to pass additional options to store initalization
+type storeOptions struct {
+	n          int
+	clientCert string
+	clientKey  string
+}
 
 // MultiStoreWithCache is used to parse store and cache locations given in the
 // command line.
 // n - Number of goroutines, applies to some types of stores like SSH
 // cacheLocation - Place of the local store used for caching, can be blank
 // storeLocation - URLs or paths to remote or local stores that should be queried in order
-func MultiStoreWithCache(n int, cacheLocation string, clientCert string, clientKey string, storeLocations ...string) (desync.Store, error) {
+func MultiStoreWithCache(opts storeOptions, cacheLocation string, storeLocations ...string) (desync.Store, error) {
 	var (
 		store  desync.Store
 		stores []desync.Store
 	)
 	for _, location := range storeLocations {
-		loc, err := url.Parse(location)
+		s, err := storeFromLocation(location, opts)
 		if err != nil {
-			return store, fmt.Errorf("Unable to parse store location %s : %s", location, err)
-		}
-		var s desync.Store
-		switch loc.Scheme {
-		case "ssh":
-			s, err = desync.NewRemoteSSHStore(loc, n)
-			if err != nil {
-				return store, err
-			}
-		case "http", "https":
-			h, err := desync.NewRemoteHTTPStore(loc, n, clientCert, clientKey)
-			if err != nil {
-				return store, err
-			}
-			h.SetTimeout(cfg.HTTPTimeout)
-			h.SetErrorRetry(cfg.HTTPErrorRetry)
-			s = h
-		case "s3+http", "s3+https":
-			accesskey, secretkey := cfg.GetS3CredentialsFor(loc)
-			s, err = desync.NewS3Store(location, accesskey, secretkey)
-			if err != nil {
-				return store, err
-			}
-		case "":
-			s, err = desync.NewLocalStore(loc.Path)
-			if err != nil {
-				return store, err
-			}
-		default:
-			return store, fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
+			return store, err
 		}
 		stores = append(stores, s)
 	}
@@ -58,14 +35,17 @@ func MultiStoreWithCache(n int, cacheLocation string, clientCert string, clientK
 	// Combine all stores into one router
 	store = desync.NewStoreRouter(stores...)
 
-	// See if we want to use a local store as cache, if so, attach a cache to
+	// See if we want to use a writable store as cache, if so, attach a cache to
 	// the router
 	if cacheLocation != "" {
-		cache, err := desync.NewLocalStore(cacheLocation)
+		cache, err := WritableStore(cacheLocation, opts)
 		if err != nil {
 			return store, err
 		}
-		cache.UpdateTimes = true
+
+		if ls, ok := cache.(desync.LocalStore); ok {
+			ls.UpdateTimes = true
+		}
 		store = desync.NewCache(store, cache)
 	}
 	return store, nil
@@ -75,17 +55,52 @@ func MultiStoreWithCache(n int, cacheLocation string, clientCert string, clientK
 // commands that expect to write chunks, such as make or tar. It determines
 // which type of writable store is needed, instantiates and returns a
 // single desync.WriteStore.
-func WritableStore(n int, location string) (desync.WriteStore, error) {
-	u, err := url.Parse(location)
+func WritableStore(location string, opts storeOptions) (desync.WriteStore, error) {
+	s, err := storeFromLocation(location, opts)
 	if err != nil {
 		return nil, err
 	}
-	if u.Scheme == "" { // No scheme in the URL? Got to be a local dir
-		return desync.NewLocalStore(location)
+	store, ok := s.(desync.WriteStore)
+	if !ok {
+		return nil, fmt.Errorf("store '%s' does not support writing", location)
 	}
-	if strings.HasPrefix(location, "s3+http") {
-		accesskey, secretkey := cfg.GetS3CredentialsFor(u)
-		return desync.NewS3Store(location, accesskey, secretkey)
+	return store, nil
+}
+
+// Parse a single store URL or path and return an initialized instance of it
+func storeFromLocation(location string, opts storeOptions) (desync.Store, error) {
+	loc, err := url.Parse(location)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to parse store location %s : %s", location, err)
 	}
-	return nil, fmt.Errorf("store '%s' does not support writing", location)
+	var s desync.Store
+	switch loc.Scheme {
+	case "ssh":
+		s, err = desync.NewRemoteSSHStore(loc, opts.n)
+		if err != nil {
+			return nil, err
+		}
+	case "http", "https":
+		h, err := desync.NewRemoteHTTPStore(loc, opts.n, opts.clientCert, opts.clientKey)
+		if err != nil {
+			return nil, err
+		}
+		h.SetTimeout(cfg.HTTPTimeout)
+		h.SetErrorRetry(cfg.HTTPErrorRetry)
+		s = h
+	case "s3+http", "s3+https":
+		accesskey, secretkey := cfg.GetS3CredentialsFor(loc)
+		s, err = desync.NewS3Store(location, accesskey, secretkey)
+		if err != nil {
+			return nil, err
+		}
+	case "":
+		s, err = desync.NewLocalStore(loc.Path)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
+	}
+	return s, nil
 }

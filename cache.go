@@ -12,12 +12,12 @@ import (
 // Any chunks retrieved from the remote store will be stored in the local one.
 type Cache struct {
 	s Store
-	l LocalStore
+	l WriteStore
 }
 
 // NewCache returns a cache router that uses a local store as cache before
 // accessing a (supposedly slower) remote one.
-func NewCache(s Store, l LocalStore) Cache {
+func NewCache(s Store, l WriteStore) Cache {
 	return Cache{s: s, l: l}
 }
 

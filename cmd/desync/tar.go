@@ -65,7 +65,7 @@ func tar(ctx context.Context, args []string) error {
 	r, w := io.Pipe()
 
 	// Open the target store
-	s, err := WritableStore(n, storeLocation)
+	s, err := WritableStore(storeLocation, storeOptions{n: n})
 	if err != nil {
 		return err
 	}
