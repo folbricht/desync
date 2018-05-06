@@ -218,9 +218,9 @@ FUSE mount an index file. This will make the indexed blob available as file unde
 desync mount-index -s /some/local/store index.caibx /some/mnt
 ```
 
-Show information about an index file to see how many of its chunks are present in an S3 store. The output will be in JSON format for easier processing in scripts.
+Show information about an index file to see how many of its chunks are present in a local store or an S3 store. The local store is queried first, S3 is only queried if the chunk is not present in the local store. The output will be in JSON format (`-j`) for easier processing in scripts.
 ```
-desync info -j -s s3+http://127.0.0.1:9000/store /path/to/index
+desync info -j -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
 ```
 
 ## Links

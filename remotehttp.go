@@ -3,6 +3,7 @@ package desync
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -126,6 +127,36 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
 		break
 	}
 	return b, err
+}
+
+// HasChunk returns true if the chunk is in the store
+func (r *RemoteHTTP) HasChunk(id ChunkID) bool {
+	sID := id.String()
+	p := filepath.Join(sID[0:4], sID) + chunkFileExt
+
+	u, _ := r.location.Parse(p)
+	var (
+		resp    *http.Response
+		err     error
+		attempt int
+	)
+retry:
+	attempt++
+	resp, err = r.client.Head(u.String())
+	if err != nil {
+		if attempt >= r.errorRetry {
+			return false
+		}
+		goto retry
+	}
+	io.Copy(ioutil.Discard, resp.Body)
+	resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *RemoteHTTP) String() string {

@@ -10,6 +10,10 @@ func (s TestStore) GetChunk(id ChunkID) ([]byte, error) {
 	return b, nil
 }
 
+func (s TestStore) HasChunk(id ChunkID) bool {
+	return false
+}
+
 func (s TestStore) String() string { return "TestStore" }
 
 func (s TestStore) Close() error { return nil }

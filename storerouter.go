@@ -39,6 +39,17 @@ func (r StoreRouter) GetChunk(id ChunkID) ([]byte, error) {
 	return nil, ChunkMissing{id}
 }
 
+// HasChunk returns true if one of the containing stores has the chunk. It
+// goes through the stores in order and returns as soon as the chunk is found.
+func (r StoreRouter) HasChunk(id ChunkID) bool {
+	for _, s := range r.Stores {
+		if s.HasChunk(id) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r StoreRouter) String() string {
 	var a []string
 	for _, s := range r.Stores {

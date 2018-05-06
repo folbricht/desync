@@ -21,10 +21,10 @@ store.`
 
 func info(ctx context.Context, args []string) error {
 	var (
-		n             int
-		storeLocation string
-		showJSON      bool
-		results       struct {
+		n              int
+		storeLocations = new(multiArg)
+		showJSON       bool
+		results        struct {
 			Total   int    `json:"total"`
 			Unique  int    `json:"unique"`
 			InStore uint64 `json:"in-store"`
@@ -36,7 +36,7 @@ func info(ctx context.Context, args []string) error {
 		fmt.Fprintln(os.Stderr, infoUsage)
 		flags.PrintDefaults()
 	}
-	flags.StringVar(&storeLocation, "s", "", "local store directory")
+	flags.Var(storeLocations, "s", "store location, can be multiples")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.BoolVar(&showJSON, "j", false, "show information in JSON format")
 	flags.Parse(args)
@@ -73,14 +73,10 @@ func info(ctx context.Context, args []string) error {
 	}
 	results.Unique = len(deduped)
 
-	if storeLocation != "" {
-		s, err := storeFromLocation(storeLocation, storeOptions{n: n})
+	if len(storeLocations.list) > 0 {
+		store, err := multiStore(storeOptions{n: n}, storeLocations.list...)
 		if err != nil {
 			return err
-		}
-		store, ok := s.(desync.QueryStore)
-		if !ok {
-			return fmt.Errorf("store '%s' does not support querying", storeLocation)
 		}
 
 		// Query the store in parallel for better performance

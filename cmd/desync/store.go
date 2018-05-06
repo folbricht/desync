@@ -16,7 +16,6 @@ type storeOptions struct {
 
 // MultiStoreWithCache is used to parse store and cache locations given in the
 // command line.
-// n - Number of goroutines, applies to some types of stores like SSH
 // cacheLocation - Place of the local store used for caching, can be blank
 // storeLocation - URLs or paths to remote or local stores that should be queried in order
 func MultiStoreWithCache(opts storeOptions, cacheLocation string, storeLocations ...string) (desync.Store, error) {
@@ -49,6 +48,21 @@ func MultiStoreWithCache(opts storeOptions, cacheLocation string, storeLocations
 		store = desync.NewCache(store, cache)
 	}
 	return store, nil
+}
+
+// multiStoreWithCache is used to parse store locations, and return a store
+// router instance containing them all for reading, in the order they're given
+func multiStore(opts storeOptions, storeLocations ...string) (desync.Store, error) {
+	var stores []desync.Store
+	for _, location := range storeLocations {
+		s, err := storeFromLocation(location, opts)
+		if err != nil {
+			return nil, err
+		}
+		stores = append(stores, s)
+	}
+
+	return desync.NewStoreRouter(stores...), nil
 }
 
 // WritableStore is used to parse a store location from the command line for

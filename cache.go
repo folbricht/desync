@@ -44,6 +44,14 @@ func (c Cache) GetChunk(id ChunkID) ([]byte, error) {
 	return b, nil
 }
 
+// HasChunk first checks the cache for the chunk, then the store.
+func (c Cache) HasChunk(id ChunkID) bool {
+	if c.l.HasChunk(id) || c.s.HasChunk(id) {
+		return true
+	}
+	return false
+}
+
 func (c Cache) String() string {
 	return fmt.Sprintf("store:%s with cache %s", c.s, c.l)
 }

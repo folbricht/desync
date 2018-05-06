@@ -51,6 +51,17 @@ func (r *RemoteSSH) Close() error {
 	return err
 }
 
+// HasChunk returns true if the chunk is in the store. TODO: Implementing it
+// this way, pulling the whole chunk just to see if it's present, is very
+// inefficient. I'm not aware of a way to implement it with the casync protocol
+// any other way.
+func (r *RemoteSSH) HasChunk(id ChunkID) bool {
+	if _, err := r.GetChunk(id); err == nil {
+		return true
+	}
+	return false
+}
+
 func (r *RemoteSSH) String() string {
 	return r.location.String()
 }
