@@ -63,7 +63,12 @@ func mountIdx(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey, storeLocations.list...)
+	opts := storeOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
+	}
+	s, err := MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
 	if err != nil {
 		return err
 	}

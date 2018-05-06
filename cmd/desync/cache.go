@@ -13,8 +13,10 @@ import (
 
 const cacheUsage = `desync cache [options] <index> [<index>...]
 
-Read chunk IDs in caibx files from one or more stores without creating a blob.
-Can be used to pre-populate a local cache.`
+Read chunk IDs from caibx or caidx files from one or more stores without
+writing to disk. Can be used (with -c_ to populate a store with desired chunks
+either to be used as cache, or to populate a store with chunks referenced in an
+index file.`
 
 func cache(ctx context.Context, args []string) error {
 	var (
@@ -70,7 +72,12 @@ func cache(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey, storeLocations.list...)
+	opts := storeOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
+	}
+	s, err := MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
 	if err != nil {
 		return err
 	}

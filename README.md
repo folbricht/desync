@@ -37,7 +37,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `extract`      - build a blob from an index file
 - `verify`       - verify the integrity of a local store
 - `list-chunks`  - list all chunk IDs contained in an index file
-- `cache`        - populate a cache from index files without writing to a blob
+- `cache`        - populate a cache from index files without extracting a blob or archive
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file. Not available on Windows.
@@ -49,7 +49,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, `tar` and `prune` commands support updating chunk stores in S3, while `verify` only operates on a local store.
-- `-c <store>` Location of a *local* chunk store to be used as cache. Needs to be writable.
+- `-c <store>` Location of a chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
 - `-y` Answer with `yes` when asked for confirmation. Only supported by the `prune` command.
@@ -66,7 +66,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `S3_ACCESS_KEY` and `S3_SECRET_KEY` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
 
 ### Caching
-The `-c <store>` option can be used to either specify an existing local store to act as cache or to build a new one. Whenever a cache is requested, it is first looked up in the local cache before routing the request to the main (likely remote store). Any chunks downloaded from the main store are added to the local store (cache). In addition, when a chunk is read from the cache, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache directory as well as the chunks in it are expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), blob assembly will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
+The `-c <store>` option can be used to either specify an existing store to act as cache or to populate a new store. Whenever a chunk is requested, it is first looked up in the cache before routing the request to the next (possibly remote) store. Any chunks downloaded from the main stores are added to the cache. In addition, when a chunk is read from the cache and it is a local store, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache store is expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), the operation will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
 evict bad chunks from a local store or cache.
 
 ### S3 chunk stores

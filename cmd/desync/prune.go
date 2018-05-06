@@ -39,7 +39,7 @@ func prune(ctx context.Context, args []string) error {
 	}
 
 	// Open the target store
-	s, err := WritableStore(1, storeLocation)
+	s, err := WritableStore(storeLocation, storeOptions{})
 	if err != nil {
 		return err
 	}

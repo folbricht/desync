@@ -76,7 +76,12 @@ func untar(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	s, err := MultiStoreWithCache(n, cacheLocation, clientCert, clientKey, storeLocations.list...)
+	sOpts := storeOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
+	}
+	s, err := MultiStoreWithCache(sOpts, cacheLocation, storeLocations.list...)
 	if err != nil {
 		return err
 	}
