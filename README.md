@@ -46,6 +46,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `chunk-server` - start a chunk server that serves chunks via HTTP(S)
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
+- `info`         - Show information about an index file, such as number of chunks and optionally chunks from an index that a re present in a store
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, `tar` and `prune` commands support updating chunk stores in S3, while `verify` only operates on a local store.
@@ -215,6 +216,11 @@ S3_ACCESS_KEY=mykey S3_SECRET_KEY=mysecret desync make -s s3+http://127.0.0.1:90
 FUSE mount an index file. This will make the indexed blob available as file underneath the mount point. The filename in the mount matches the name of the index with the extension removed. In this example `/some/mnt/` will contain one file `index`.
 ```
 desync mount-index -s /some/local/store index.caibx /some/mnt
+```
+
+Show information about an index file to see how many of its chunks are present in an S3 store. The output will be in JSON format for easier processing in scripts.
+```
+desync info -j -s s3+http://127.0.0.1:9000/store /path/to/index
 ```
 
 ## Links

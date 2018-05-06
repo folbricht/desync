@@ -13,11 +13,16 @@ type Store interface {
 	fmt.Stringer
 }
 
+// QueryStore implements functions to check if a chunk is in the store
+type QueryStore interface {
+	HasChunk(id ChunkID) bool
+}
+
 // WriteStore is implemented by stores supporting both read and write operations
 // such as a local store or an S3 store.
 type WriteStore interface {
 	Store
-	HasChunk(id ChunkID) bool
+	QueryStore
 	StoreChunk(id ChunkID, b []byte) error
 	Prune(ctx context.Context, ids map[ChunkID]struct{}) error
 }

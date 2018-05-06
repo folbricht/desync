@@ -31,6 +31,7 @@ prune        - remove all unreferenced chunks from a local store
 chunk-server - start a HTTP chunk server
 mount-index  - FUSE mount an index
 upgrade-s3   - convert an s3 store from the old to the new storage layout
+info         - show information about an index file
 `
 
 func main() {
@@ -80,6 +81,7 @@ func main() {
 		"mount-index":  mountIdx,
 		"upgrade-s3":   upgradeS3,
 		"config":       config,
+		"info":         info,
 	}
 	h, ok := handlers[cmd]
 	if !ok {
