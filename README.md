@@ -70,6 +70,19 @@ go get -u github.com/folbricht/desync/cmd/desync
 The `-c <store>` option can be used to either specify an existing store to act as cache or to populate a new store. Whenever a chunk is requested, it is first looked up in the cache before routing the request to the next (possibly remote) store. Any chunks downloaded from the main stores are added to the cache. In addition, when a chunk is read from the cache and it is a local store, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache store is expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), the operation will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
 evict bad chunks from a local store or cache.
 
+### Multiple chunk stores
+One of the main features of desync is the ability to combine/chain multiple chunk stores of different types and also combine it with a cache store. For example, for a command that reads chunks when assembling a blob, stores can be chained in the command line like so: `-s <store1> -s <store2> -s <store3>`. A chunk will first be requested from `store1`, and if not found there, the request will be routed to `<store2>` and so on. Typically, the fastest chunk store should be listed first to improve performance. It is also possible to combine multiple chunk stores with a cache. In most cases the cache would be a local store, but that is not a requirement. When combining stores and a cache like so: `-s <store1> -s <store2> -c <cache>`, a chunk request will first be routed to the cache store, then to store1 followed by store2. Any chunks that is not yet in the cache will be stored there upon first request.
+
+Not all types of stores support all operations. The table below lists the supported operations on all store types.
+
+| Operation | Local store | S3 store | HTTP store | SSH (casync protocol)
+| --- | :---: | :---: | :---: | :---: |
+| Read chunks | yes | yes | yes | yes |
+| Write chunks | yes | yes | yes | no |
+| Use as cache | yes | yes | yes | no |
+| Prune | yes | yes | no | no |
+| Verify | yes | yes | no | no |
+
 ### S3 chunk stores
 desync supports reading from and writing to chunk stores that offer an S3 API, for example hosted in AWS or running on a local server. When using such a store, credentials are passed into the tool either via environment variables `S3_ACCESS_KEY` and `S3_SECRET_KEY` or, if multiples are required, in the config file. Care is required when building those URLs. Below a few examples:
 

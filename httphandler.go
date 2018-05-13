@@ -1,7 +1,9 @@
 package desync
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,11 +11,12 @@ import (
 )
 
 type HTTPHandler struct {
-	s Store
+	s        Store
+	writable bool
 }
 
-func NewHTTPHandler(s Store) http.Handler {
-	return HTTPHandler{s}
+func NewHTTPHandler(s Store, writable bool) http.Handler {
+	return HTTPHandler{s, writable}
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +44,8 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.get(id, w)
 	case "HEAD":
 		h.head(id, w)
+	case "PUT":
+		h.put(id, w, r)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		w.Write([]byte("only GET is supported"))
@@ -70,4 +75,34 @@ func (h HTTPHandler) head(id ChunkID, w http.ResponseWriter) {
 		return
 	}
 	w.WriteHeader(http.StatusNotFound)
+}
+
+func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
+	// Make sure writing was enabled for this server
+	if !h.writable {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "writing to upstream chunk store '%s' is not enabled\n", h.s)
+		return
+	}
+	// The upstream store needs to support writing as well
+	s, ok := h.s.(WriteStore)
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "upstream chunk store '%s' does not support writing\n", h.s)
+		return
+	}
+	// Read the chunk into memory
+	b := new(bytes.Buffer)
+	if _, err := io.Copy(b, r.Body); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, err)
+		return
+	}
+	// Store it upstream
+	if err := s.StoreChunk(id, b.Bytes()); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

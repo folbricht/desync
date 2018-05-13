@@ -39,11 +39,17 @@ func prune(ctx context.Context, args []string) error {
 	}
 
 	// Open the target store
-	s, err := WritableStore(storeLocation, storeOptions{})
+	sr, err := storeFromLocation(storeLocation, storeOptions{})
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer sr.Close()
+
+	// Make sure this store can be used for pruning
+	s, ok := sr.(desync.PruneStore)
+	if !ok {
+		return fmt.Errorf("store '%s' does not support pruning", storeLocation)
+	}
 
 	// Read the input files and merge all chunk IDs in a map to de-dup them
 	ids := make(map[desync.ChunkID]struct{})

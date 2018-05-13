@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -157,6 +158,38 @@ retry:
 	default:
 		return false
 	}
+}
+
+// StoreChunk adds a new chunk to the store
+func (r *RemoteHTTP) StoreChunk(id ChunkID, b []byte) error {
+	sID := id.String()
+	p := filepath.Join(sID[0:4], sID) + chunkFileExt
+
+	u, _ := r.location.Parse(p)
+	var (
+		resp    *http.Response
+		err     error
+		attempt int
+	)
+retry:
+	attempt++
+	req, err := http.NewRequest("PUT", u.String(), bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	resp, err = r.client.Do(req)
+	if err != nil {
+		if attempt >= r.errorRetry {
+			return err
+		}
+		goto retry
+	}
+	defer resp.Body.Close()
+	msg, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return errors.New(string(msg))
+	}
+	return nil
 }
 
 func (r *RemoteHTTP) String() string {

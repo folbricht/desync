@@ -19,5 +19,10 @@ type Store interface {
 type WriteStore interface {
 	Store
 	StoreChunk(id ChunkID, b []byte) error
+}
+
+// PruneStore is a store that supports pruning of chunks
+type PruneStore interface {
+	WriteStore
 	Prune(ctx context.Context, ids map[ChunkID]struct{}) error
 }

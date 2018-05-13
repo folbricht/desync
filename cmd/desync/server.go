@@ -15,7 +15,9 @@ const serverUsage = `desync chunk-server [options]
 
 Starts an HTTP chunk server that can be used as remote store. It supports
 reading from multiple local or remote stores as well as a local cache. If
--cert and -key are provided, the server will serve over HTTPS.`
+-cert and -key are provided, the server will serve over HTTPS. The -w option
+enables writing to this store, but this is only allowed when just one upstream
+chunk store is provided.`
 
 func server(ctx context.Context, args []string) error {
 	var (
@@ -26,6 +28,7 @@ func server(ctx context.Context, args []string) error {
 		cert, key       string
 		clientCert      string
 		clientKey       string
+		writable        bool
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
@@ -42,6 +45,7 @@ func server(ctx context.Context, args []string) error {
 	flags.StringVar(&key, "key", "", "key file in PEM format, requires -cert")
 	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
 	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
+	flags.BoolVar(&writable, "w", false, "support writing")
 	flags.Parse(args)
 
 	if flags.NArg() > 0 {
@@ -65,19 +69,32 @@ func server(ctx context.Context, args []string) error {
 		return errors.New("No casync store provided. See -h for help.")
 	}
 
-	// Parse the store locations, open the stores and add a cache is requested
-	opts := storeOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
+	// When supporting writing, only one upstream store is possible
+	if writable && (len(storeLocations.list) > 1 || cacheLocation != "") {
+		return errors.New("Only one upstream store supported for writing")
 	}
-	s, err := MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
+
+	// Parse the store locations, open the stores and add a cache is requested
+	var (
+		s    desync.Store
+		err  error
+		opts = storeOptions{
+			n:          n,
+			clientCert: clientCert,
+			clientKey:  clientKey,
+		}
+	)
+	if writable {
+		s, err = WritableStore(storeLocations.list[0], opts)
+	} else {
+		s, err = MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
+	}
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
-	http.Handle("/", desync.NewHTTPHandler(s))
+	http.Handle("/", desync.NewHTTPHandler(s, writable))
 
 	// Run the server(s) in a goroutine, and use the main goroutine to wait for
 	// a signal or a failing server (ctx gets cancelled in that case)
