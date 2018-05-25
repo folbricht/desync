@@ -60,6 +60,17 @@ func (s LocalStore) RemoveChunk(id ChunkID) error {
 
 // StoreChunk adds a new chunk to the store
 func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
+	// confirm the data we want to store is consistent
+	db, err := Decompress(nil, b)
+	if err != nil {
+		return err
+	}
+	// Verify the checksum of the chunk matches the ID
+	sum := sha512.Sum512_256(db)
+	if sum != id {
+		return fmt.Errorf("data to be stored does not match expected hash %s, got %s", id, sum)
+	}
+
 	sID := id.String()
 	d := filepath.Join(s.Base, sID[0:4])
 	if err := os.MkdirAll(d, 0755); err != nil {
@@ -75,7 +86,11 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 		return err
 	}
 	p := filepath.Join(d, sID) + chunkFileExt
-	return os.Rename(tmpfile.Name(), p)
+	if err := os.Rename(tmpfile.Name(), p); err != nil {
+		return err
+	}
+	// Read the chunk back from disk and check it one more time
+	return s.verifyChunk(id)
 }
 
 // Verify all chunks in the store. If repair is set true, bad chunks are deleted.
