@@ -68,7 +68,9 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 	// Verify the checksum of the chunk matches the ID
 	sum := sha512.Sum512_256(db)
 	if sum != id {
-		return fmt.Errorf("data to be stored does not match expected hash %s, got %s", id, sum)
+		ioutil.WriteFile(id.String()+"-StoreChunk-compressed", b, 0644)
+		ioutil.WriteFile(id.String()+"-StoreChunk-decompressed", db, 0644)
+		return fmt.Errorf("data to be stored does not match expected hash %s, got %x", id, sum)
 	}
 
 	sID := id.String()
@@ -86,11 +88,7 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 		return err
 	}
 	p := filepath.Join(d, sID) + chunkFileExt
-	if err := os.Rename(tmpfile.Name(), p); err != nil {
-		return err
-	}
-	// Read the chunk back from disk and check it one more time
-	return s.verifyChunk(id)
+	return os.Rename(tmpfile.Name(), p)
 }
 
 // Verify all chunks in the store. If repair is set true, bad chunks are deleted.

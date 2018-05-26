@@ -5,6 +5,7 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"sync"
 )
@@ -78,6 +79,10 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStor
 
 				// And store it
 				if err = s.StoreChunk(c.ID, cb); err != nil {
+					ioutil.WriteFile(c.ID.String()+"-ChopFile-compressed", cb, 0644)
+					ioutil.WriteFile(c.ID.String()+"-ChopFile-decompressed", b, 0644)
+					rb, _ := Compress(b)
+					ioutil.WriteFile(c.ID.String()+"-ChopFile-recompressed", rb, 0644)
 					recordError(err)
 					continue
 				}
