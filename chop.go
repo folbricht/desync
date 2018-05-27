@@ -1,8 +1,10 @@
 package desync
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -69,6 +71,8 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStor
 					continue
 				}
 
+				var retried bool
+			retry:
 				// Compress the chunk
 				cb, err := Compress(b)
 				if err != nil {
@@ -76,7 +80,27 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStor
 					continue
 				}
 
-				// And store it
+				// The zstd library appears to fail to compress correctly in some cases, to
+				// avoid storing invalid chunks, verify the chunk again by decompressing
+				// and comparing. See https://github.com/folbricht/desync/issues/37.
+				// Ideally the code below should be removed once zstd library can be trusted
+				// again.
+				db, err := Decompress(nil, cb)
+				if err != nil {
+					recordError(err)
+					continue
+				}
+				if !bytes.Equal(b, db) {
+					if !retried {
+						fmt.Fprintln(os.Stderr, "zstd compression error detected, retrying")
+						retried = true
+						goto retry
+					}
+					recordError(errors.New("too many zstd compression errors, aborting"))
+					continue
+				}
+
+				// Store the commpressed chunk
 				if err = s.StoreChunk(c.ID, cb); err != nil {
 					recordError(err)
 					continue
