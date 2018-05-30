@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"net/url"
 	"strings"
 
@@ -55,15 +54,6 @@ func NewS3Store(location, accessKey, secretKey string) (S3Store, error) {
 	if err != nil {
 		return s, errors.Wrap(err, location)
 	}
-
-	// Might as well confirm the bucket exists
-	bucketExists, err := s.client.BucketExists(s.bucket)
-	if err != nil {
-		return s, errors.Wrap(err, location)
-	}
-	if !bucketExists {
-		return s, fmt.Errorf("bucket '%s' does not exist in %s", s.bucket, location)
-	}
 	return s, nil
 }
 
@@ -77,9 +67,12 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 	defer obj.Close()
 
 	b, err := ioutil.ReadAll(obj)
-	if err != nil {
-		if e, ok := err.(minio.ErrorResponse); ok && e.StatusCode == http.StatusNotFound {
-			return nil, ChunkMissing{ID: id}
+	if e, ok := err.(minio.ErrorResponse); ok {
+		switch e.Code {
+		case "NoSuchBucket":
+			err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
+		default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+			err = ChunkMissing{ID: id}
 		}
 	}
 	return b, err
