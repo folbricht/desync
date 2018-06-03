@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 )
 
 // IndexFromFile chunks a file in parallel and returns an index. It does not
@@ -23,7 +24,7 @@ func IndexFromFile(ctx context.Context,
 	n int,
 	min, avg, max uint64,
 	progress func(uint64),
-) (Index, error) {
+) (Index, ChunkingStats, error) {
 
 	index := Index{
 		Index: FormatIndex{
@@ -34,10 +35,12 @@ func IndexFromFile(ctx context.Context,
 		},
 	}
 
+	stats := ChunkingStats{}
+
 	// Adjust n if it's a small file that doesn't have n*max bytes
 	info, err := os.Stat(name)
 	if err != nil {
-		return index, err
+		return index, stats, err
 	}
 	nn := int(info.Size()/int64(max)) + 1
 	if nn < n {
@@ -51,27 +54,28 @@ func IndexFromFile(ctx context.Context,
 	for i := 0; i < n; i++ {
 		f, err := os.Open(name) // open one file per worker
 		if err != nil {
-			return index, err
+			return index, stats, err
 		}
 		defer f.Close()
 		start := span * uint64(i)       // starting position for this chunker
 		mChunks := (size-start)/min + 1 // max # of chunks this worker can produce
 		s, err := f.Seek(int64(start), io.SeekStart)
 		if err != nil {
-			return index, err
+			return index, stats, err
 		}
 		if uint64(s) != start {
-			return index, fmt.Errorf("requested seek to position %d, but got %d", start, s)
+			return index, stats, fmt.Errorf("requested seek to position %d, but got %d", start, s)
 		}
 		c, err := NewChunker(f, min, avg, max)
 		if err != nil {
-			return index, err
+			return index, stats, err
 		}
 		p := &pChunker{
 			chunker: c,
 			results: make(chan IndexChunk, mChunks),
 			done:    make(chan struct{}),
 			offset:  start,
+			stats:   &stats,
 		}
 		worker[i] = p
 	}
@@ -98,10 +102,11 @@ func IndexFromFile(ctx context.Context,
 			if progress != nil {
 				progress(chunk.Start + chunk.Size)
 			}
+			stats.incAccepted()
 		}
 		// Done reading all chunks from this worker, check for any errors
 		if w.err != nil {
-			return index, w.err
+			return index, stats, w.err
 		}
 		// Stop if this worker reached the end of the stream (it's not necessarily
 		// the last worker!)
@@ -109,7 +114,7 @@ func IndexFromFile(ctx context.Context,
 			break
 		}
 	}
-	return index, nil
+	return index, stats, nil
 }
 
 // Parallel chunk worker - Splits a stream and stores start, size and ID in
@@ -126,12 +131,13 @@ type pChunker struct {
 	// the absolute position of every boundry that is returned
 	offset uint64
 
-	once sync.Once
-	done chan struct{}
-	err  error
-	next *pChunker
-	eof  bool
-	sync IndexChunk
+	once  sync.Once
+	done  chan struct{}
+	err   error
+	next  *pChunker
+	eof   bool
+	sync  IndexChunk
+	stats *ChunkingStats
 }
 
 func (c *pChunker) start(ctx context.Context) {
@@ -151,6 +157,7 @@ func (c *pChunker) start(ctx context.Context) {
 			c.err = err
 			return
 		}
+		c.stats.incProduced()
 		start += c.offset
 		if len(b) == 0 {
 			// TODO: If this worker reached the end of the stream and it's not the
@@ -211,4 +218,17 @@ func (c *pChunker) syncWith(chunk IndexChunk) bool {
 	// Did we find a match with the previous worker. If so the previous worker
 	// should stop and this one will keep going
 	return chunk.Start == c.sync.Start && chunk.Size == c.sync.Size
+}
+
+type ChunkingStats struct {
+	ChunksAccepted uint64
+	ChunksProduced uint64
+}
+
+func (s *ChunkingStats) incAccepted() {
+	atomic.AddUint64(&s.ChunksAccepted, 1)
+}
+
+func (s *ChunkingStats) incProduced() {
+	atomic.AddUint64(&s.ChunksProduced, 1)
 }

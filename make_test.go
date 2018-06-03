@@ -66,7 +66,7 @@ func TestParallelChunking(t *testing.T) {
 		for n := 2; n < 3; n++ {
 			t.Run(fmt.Sprintf("%s, n=%d", name, n), func(t *testing.T) {
 				// Split it up in parallel
-				index, err := IndexFromFile(
+				index, _, err := IndexFromFile(
 					context.Background(),
 					name,
 					n,

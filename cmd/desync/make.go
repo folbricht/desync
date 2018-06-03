@@ -64,7 +64,7 @@ func makeCmd(ctx context.Context, args []string) error {
 
 	// Split up the file and create and index from it
 	pc.Start()
-	index, err := desync.IndexFromFile(ctx, dataFile, n, min, avg, max, func(v uint64) { pc.Set(int(v)) })
+	index, stats, err := desync.IndexFromFile(ctx, dataFile, n, min, avg, max, func(v uint64) { pc.Set(int(v)) })
 	if err != nil {
 		return err
 	}
@@ -79,6 +79,9 @@ func makeCmd(ctx context.Context, args []string) error {
 		return err
 	}
 	ps.Stop()
+
+	fmt.Println("Chunks produced:", stats.ChunksAccepted)
+	fmt.Println("Overhead:", stats.ChunksProduced-stats.ChunksAccepted)
 
 	// Write the index to file
 	i, err := os.Create(indexFile)
