@@ -32,8 +32,8 @@ func cache(ctx context.Context, args []string) error {
 		flags.PrintDefaults()
 	}
 
-	flags.Var(storeLocations, "s", "casync store location, can be multiples")
-	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
+	flags.Var(storeLocations, "s", "source store location, can be multiples")
+	flags.StringVar(&cacheLocation, "c", "", "target store to be used as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
 	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
@@ -46,7 +46,10 @@ func cache(ctx context.Context, args []string) error {
 
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
-		return errors.New("No casync store provided. See -h for help.")
+		return errors.New("No source store provided. See -h for help.")
+	}
+	if cacheLocation == "" {
+		return errors.New("No target cache store provided. See -h for help.")
 	}
 
 	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
@@ -77,11 +80,17 @@ func cache(ctx context.Context, args []string) error {
 		clientCert: clientCert,
 		clientKey:  clientKey,
 	}
-	s, err := MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
+	s, err := multiStore(opts, storeLocations.list...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
+
+	dst, err := WritableStore(cacheLocation, opts)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
 
 	// If this is a terminal, we want a progress bar
 	var progress func()
@@ -93,5 +102,5 @@ func cache(ctx context.Context, args []string) error {
 	}
 
 	// Pull all the chunks, and load them into the cache in the process
-	return desync.Touch(ctx, ids, s, n, progress)
+	return desync.Copy(ctx, ids, s, dst, n, progress)
 }
