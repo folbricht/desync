@@ -13,7 +13,7 @@ import (
 
 // ChopFile split a file according to a list of chunks obtained from an Index
 // and stores them in the provided store
-func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStore, n int) error {
+func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStore, n int, progress func()) error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
@@ -44,6 +44,11 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStor
 		go func() {
 			var err error
 			for c := range in {
+				// Update progress bar if any
+				if progress != nil {
+					progress()
+				}
+
 				// Skip this chunk if the store already has it
 				if s.HasChunk(c.ID) {
 					continue
@@ -105,6 +110,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStor
 					recordError(err)
 					continue
 				}
+
 			}
 			wg.Done()
 		}()

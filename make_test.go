@@ -71,6 +71,7 @@ func TestParallelChunking(t *testing.T) {
 					name,
 					n,
 					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+					nil,
 				)
 				if err != nil {
 					t.Fatal(err)

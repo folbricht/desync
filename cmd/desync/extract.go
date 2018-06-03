@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"github.com/folbricht/desync"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 const extractUsage = `desync extract [options] <caibx> <output>
@@ -97,16 +96,12 @@ func writeOutput(ctx context.Context, name string, idx desync.Index, s desync.St
 	defer os.Remove(tmpfile.Name())
 
 	// If this is a terminal, we want a progress bar
-	var progress func()
-	if terminal.IsTerminal(int(os.Stderr.Fd())) {
-		p := NewProgressBar(int(os.Stderr.Fd()), len(idx.Chunks))
-		p.Start()
-		defer p.Stop()
-		progress = func() { p.Add(1) }
-	}
+	p := NewProgressBar(len(idx.Chunks), "")
+	p.Start()
+	defer p.Stop()
 
 	// Build the blob from the chunks, writing everything into the tempfile
-	if err = desync.AssembleFile(ctx, tmpfile.Name(), idx, s, n, progress); err != nil {
+	if err = desync.AssembleFile(ctx, tmpfile.Name(), idx, s, n, func() { p.Add(1) }); err != nil {
 		return err
 	}
 

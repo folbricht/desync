@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/folbricht/desync"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 const cacheUsage = `desync cache [options] <index> [<index>...]
@@ -93,14 +92,10 @@ func cache(ctx context.Context, args []string) error {
 	defer dst.Close()
 
 	// If this is a terminal, we want a progress bar
-	var progress func()
-	if terminal.IsTerminal(int(os.Stderr.Fd())) {
-		p := NewProgressBar(int(os.Stderr.Fd()), len(ids))
-		p.Start()
-		defer p.Stop()
-		progress = func() { p.Add(1) }
-	}
+	p := NewProgressBar(len(ids), "")
+	p.Start()
+	defer p.Stop()
 
 	// Pull all the chunks, and load them into the cache in the process
-	return desync.Copy(ctx, ids, s, dst, n, progress)
+	return desync.Copy(ctx, ids, s, dst, n, func() { p.Add(1) })
 }

@@ -16,11 +16,13 @@ import (
 // The main routine reads and assembles a list of (confirmed) chunks from the
 // workers, starting with the first worker.
 // This algorithm wastes some CPU and I/O if the data doesn't contain chunk
-// boundaries, for example if the whole file contains nil bytes.
+// boundaries, for example if the whole file contains nil bytes. If progress
+// is not nil, it'll be updated with the confirmed chunk position in the file.
 func IndexFromFile(ctx context.Context,
 	name string,
 	n int,
 	min, avg, max uint64,
+	progress func(uint64),
 ) (Index, error) {
 
 	index := Index{
@@ -93,6 +95,9 @@ func IndexFromFile(ctx context.Context,
 		for chunk := range w.results {
 			// Assemble the list of chunks in the index
 			index.Chunks = append(index.Chunks, chunk)
+			if progress != nil {
+				progress(chunk.Start + chunk.Size)
+			}
 		}
 		// Done reading all chunks from this worker, check for any errors
 		if w.err != nil {
