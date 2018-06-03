@@ -13,7 +13,7 @@ Among the distinguishing factors:
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
 - SHA512/256 is currently the only supported hash function.
 - Only chunk store using zstd compression are supported at this point.
-- Supports local stores as well as remote stores (as client) over SSH and HTTP
+- Supports local stores as well as remote stores (as client) over SSH, SFTP and HTTP
 - Built-in HTTP(S) chunk server that can proxy multiple local or remote stores and also supports caching.
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
 - Support for catar files exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present in existing catar files and those won't be present when creating a new catar with the `tar` command
@@ -70,7 +70,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `-cert` Certificate file in PEM format used for HTTPS `chunk-server` command. Also requires `-key`.
 
 ### Environment variables
-- `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to the remove chunk store
+- `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to a remote SSH or SFTP chunk store
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
 - `S3_ACCESS_KEY` and `S3_SECRET_KEY` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
 
@@ -83,13 +83,13 @@ One of the main features of desync is the ability to combine/chain multiple chun
 
 Not all types of stores support all operations. The table below lists the supported operations on all store types.
 
-| Operation | Local store | S3 store | HTTP store | SSH (casync protocol)
-| --- | :---: | :---: | :---: | :---: |
-| Read chunks | yes | yes | yes | yes |
-| Write chunks | yes | yes | yes | no |
-| Use as cache | yes | yes | yes | no |
-| Prune | yes | yes | no | no |
-| Verify | yes | yes | no | no |
+| Operation | Local store | S3 store | HTTP store | SFTP | SSH (casync protocol)
+| --- | :---: | :---: | :---: | :---: | :---: |
+| Read chunks | yes | yes | yes | yes | yes |
+| Write chunks | yes | yes | yes | yes | no |
+| Use as cache | yes | yes | yes |yes | no |
+| Prune | yes | yes | no | yes | no |
+| Verify | yes | yes | no | no | no |
 
 ### S3 chunk stores
 desync supports reading from and writing to chunk stores that offer an S3 API, for example hosted in AWS or running on a local server. When using such a store, credentials are passed into the tool either via environment variables `S3_ACCESS_KEY` and `S3_SECRET_KEY` or, if multiples are required, in the config file. Care is required when building those URLs. Below a few examples:
@@ -217,6 +217,11 @@ desync chunk-server -s /some/local/store
 Start a chunk server on port 8080 acting as proxy for other remote HTTP and SSH stores and populate a local cache.
 ```
 desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -l :8080
+```
+
+Copy all chunks referenced in an index file from a remote HTTP store to a remote SFTP store.
+```
+desync cache -s ssh://192.168.1.2/store -c sftp://192.168.1.3/path/to/store /path/to/index.caibx
 ```
 
 Start a TLS chunk server on port 443 acting as proxy for a remote chunk store in AWS with local cache. The credentials for AWS are expected to be in the config file under key `https://s3-eu-west-3.amazonaws.com`.

@@ -94,6 +94,11 @@ func storeFromLocation(location string, opts storeOptions) (desync.Store, error)
 		if err != nil {
 			return nil, err
 		}
+	case "sftp":
+		s, err = desync.NewSFTPStore(loc)
+		if err != nil {
+			return nil, err
+		}
 	case "http", "https":
 		h, err := desync.NewRemoteHTTPStore(loc, opts.n, opts.clientCert, opts.clientKey)
 		if err != nil {
