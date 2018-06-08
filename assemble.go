@@ -3,6 +3,7 @@ package desync
 import (
 	"context"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -12,6 +13,10 @@ import (
 // goroutines, creating one filehandle for the file "name" per goroutine
 // and writes to the file simultaneously. If progress is provided, it'll be
 // called when a chunk has been processed.
+// If the input file exists and is not empty, the algorithm will first
+// confirm if the data matches what is expected and only populate areas that
+// differ from the expected content. This can be used to complete partly
+// written files.
 func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, progress func()) error {
 	var (
 		wg        sync.WaitGroup
@@ -19,6 +24,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 		pErr      error
 		in        = make(chan IndexChunk)
 		nullChunk = NewNullChunk(idx.Index.ChunkSizeMax)
+		isBlank   bool
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -33,17 +39,35 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 		cancel()
 	}
 
+	// Determine is the target exists and create it if not
+	info, err := os.Stat(name)
+	switch {
+	case os.IsNotExist(err):
+		f, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		f.Close()
+		isBlank = true
+	case info.Size() == 0:
+		isBlank = true
+	}
+
 	// Truncate the output file to the full expected size. Not only does this
-	// confirm there's enough disk space, but it allow allows for an optimization
+	// confirm there's enough disk space, but it allows for an optimization
 	// when dealing with the Null Chunk
 	if err := os.Truncate(name, idx.Length()); err != nil {
 		return err
 	}
 
+	// Keep a record of what's already been written to the file and can be
+	// re-used if there are duplicate chunks
+	var written fileChunks
+
 	// Start the workers, each having its own filehandle to write concurrently
 	for i := 0; i < n; i++ {
 		wg.Add(1)
-		f, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY, 0666)
+		f, err := os.OpenFile(name, os.O_RDWR, 0666)
 		if err != nil {
 			return fmt.Errorf("unable to open file %s, %s", name, err)
 		}
@@ -54,10 +78,34 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 					progress()
 				}
 				// See if we can skip the chunk retrieval and decompression if the
-				// null chunk is being requested. If the file is truncated to the
+				// null chunk is being requested. If a new file is truncated to the
 				// right size beforehand, there's nothing to do since everything
 				// defaults to 0 bytes.
-				if c.ID == nullChunk.ID {
+				if isBlank && c.ID == nullChunk.ID {
+					continue
+				}
+				// If we operate on an existing file there's a good chance we already
+				// have the data written for this chunk. Let's read it from disk and
+				// compare to what is expected.
+				if !isBlank {
+					b := make([]byte, c.Size)
+					if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
+						recordError(err)
+						continue
+					}
+					sum := sha512.Sum512_256(b)
+					if sum == c.ID {
+						written.add(c)
+						continue
+					}
+				}
+				// Before pulling a chunk from the store, let's see if that same chunk's
+				// been written to the file already. If so, we can simply clone it from
+				// that location.
+				if cw, ok := written.get(c.ID); ok {
+					if err := cloneInFile(f, c, cw); err != nil {
+						recordError(err)
+					}
 					continue
 				}
 				// Pull the (compressed) chunk from the store
@@ -92,6 +140,8 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 					recordError(err)
 					continue
 				}
+				// Make a record of this chunk being available in the file now
+				written.add(c)
 			}
 			wg.Done()
 		}()
@@ -112,4 +162,48 @@ loop:
 
 	wg.Wait()
 	return pErr
+}
+
+// fileChunks acts as a kind of in-file cache for chunks already written to
+// the file being assembled. Every chunk ref that has been successfully written
+// into the file is added to it. If another write operation requires the same
+// (duplicate) chunk again, it can just copied out of the file to the new
+// position, rather than requesting it from a (possibly remote) store again
+// and decompressing it.
+type fileChunks struct {
+	mu     sync.RWMutex
+	chunks map[ChunkID]IndexChunk
+}
+
+func (f *fileChunks) add(c IndexChunk) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.chunks) == 0 {
+		f.chunks = make(map[ChunkID]IndexChunk)
+	}
+	f.chunks[c.ID] = c
+}
+
+func (f *fileChunks) get(id ChunkID) (IndexChunk, bool) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	c, ok := f.chunks[id]
+	return c, ok
+}
+
+// cloneInFile copies a chunk from one position to another in the same file.
+// Used when duplicate chunks are used in a file. TODO: The current implementation
+// uses just the one given filehandle, copies into memory, then writes to disk.
+// It may be more efficient to open a 2nd filehandle, seek, and copy directly
+// with a io.LimitReader.
+func cloneInFile(f *os.File, dst, src IndexChunk) error {
+	if src.ID != dst.ID || src.Size != dst.Size {
+		return errors.New("internal error: different chunks requested for in-file copy")
+	}
+	b := make([]byte, int64(src.Size))
+	if _, err := f.ReadAt(b, int64(src.Start)); err != nil {
+		return err
+	}
+	_, err := f.WriteAt(b, int64(dst.Start))
+	return err
 }
