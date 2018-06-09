@@ -68,6 +68,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `-t` Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs when using a HTTPS chunk server.
 - `-key` Key file in PEM format used for HTTPS `chunk-server` command. Also requires a certificate with `-cert`
 - `-cert` Certificate file in PEM format used for HTTPS `chunk-server` command. Also requires `-key`.
+- `-k` Keep partially assembled files in place when `extract` fails or is interrupted. The command can then be restarted and it'll not have to retrieve completed parts again.
 
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to a remote SSH or SFTP chunk store
@@ -161,6 +162,11 @@ desync extract \
        -s https://192.168.1.3/ssl.store/ \
        -c /path/to/cache \
        somefile.tar.caibx somefile.tar
+```
+
+Extract a file in-place (`-k` option). If this operation fails, the file will remain partially complete and can be restarted without the need to re-download chunks from the remote SFTP store. Use `-k` when a local cache is not available and the extract may be interrupted.
+```
+desync extract -k -s sftp://192.168.1.1/path/to/store file.caibx file.tar
 ```
 
 Verify a local cache. Errors will be reported to STDOUT, since `-r` is not given, nothing invalid will be removed.
