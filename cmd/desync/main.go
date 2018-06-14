@@ -28,6 +28,7 @@ pull         - serve chunks using the casync protocol over stdin/stdout
 tar          - pack a directory tree into a catar file
 untar        - extract directory tree from a catar file
 prune        - remove all unreferenced chunks from a local store
+verify-index - verify that an index file matches a given blob
 chunk-server - start a HTTP chunk server
 mount-index  - FUSE mount an index
 upgrade-s3   - convert an s3 store from the old to the new storage layout
@@ -82,6 +83,7 @@ func main() {
 		"upgrade-s3":   upgradeS3,
 		"config":       config,
 		"info":         info,
+		"verify-index": verifyIndex,
 	}
 	h, ok := handlers[cmd]
 	if !ok {
