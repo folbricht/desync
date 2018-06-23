@@ -13,6 +13,8 @@ import (
 	"reflect"
 	"sync"
 	"syscall"
+
+	"github.com/pkg/errors"
 )
 
 // UntarOptions are used to influence the behaviour of untar
@@ -132,7 +134,7 @@ func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
 	if err := syscall.Mknod(dst, uint32(n.Mode), int(mkdev(n.Major, n.Minor))); err != nil {
-		return err
+		return errors.Wrapf(err, "mknod %s", dst)
 	}
 	if !opts.NoSameOwner {
 		if err := os.Chown(dst, n.UID, n.GID); err != nil {
@@ -141,7 +143,7 @@ func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	}
 	if !opts.NoSamePermissions {
 		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
-			return err
+			return errors.Wrapf(err, "chmod %s", dst)
 		}
 	}
 	return os.Chtimes(dst, n.MTime, n.MTime)
@@ -261,8 +263,15 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 	}()
 
 	// Run untar in the main goroutine
-	if err := UnTar(ctx, r, dst, opts); err != nil {
-		return err
+	err := UnTar(ctx, r, dst, opts)
+
+	// We now have 2 possible error values. pErr for anything that failed during
+	// chunk download and assembly of the catar stream and err for failures during
+	// the untar stage. If pErr is set, this would have triggered an error from
+	// the untar stage as well (since it cancels the context), so pErr takes
+	// precedence here.
+	if pErr != nil {
+		return pErr
 	}
-	return pErr
+	return err
 }

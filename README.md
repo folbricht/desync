@@ -51,6 +51,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file. Not available on Windows.
 - `untar`        - unpack a catar file or an index referencing a catar. Not available on Windows.
 - `prune`        - remove unreferenced chunks from a local or S3 store. Use with caution, can lead to data loss.
+- `verify-index` - verify that an index file matches a given blob
 - `chunk-server` - start a chunk server that serves chunks via HTTP(S)
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
