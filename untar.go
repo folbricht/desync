@@ -115,6 +115,9 @@ func makeFile(base string, n NodeFile, opts UntarOptions) error {
 func makeSymlink(base string, n NodeSymlink, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
+	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	if err := os.Symlink(n.Target, dst); err != nil {
 		return err
 	}
@@ -133,6 +136,9 @@ func makeSymlink(base string, n NodeSymlink, opts UntarOptions) error {
 func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
+	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	if err := syscall.Mknod(dst, uint32(n.Mode), int(mkdev(n.Major, n.Minor))); err != nil {
 		return errors.Wrapf(err, "mknod %s", dst)
 	}
