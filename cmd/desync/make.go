@@ -14,8 +14,9 @@ import (
 
 const makeUsage = `desync make [options] <index> <file>
 
-Creates chunks from the input file, stores them in a local or S3 store
-and writes an index file.`
+Creates chunks from the input file and builds an index. If a chunk store is
+provided with -s, such as a local directory or S3 store, it split the input
+file according to the index and stores the chunks.`
 
 func makeCmd(ctx context.Context, args []string) error {
 	var (
@@ -28,7 +29,7 @@ func makeCmd(ctx context.Context, args []string) error {
 		fmt.Fprintln(os.Stderr, makeUsage)
 		flags.PrintDefaults()
 	}
-	flags.StringVar(&storeLocation, "s", "", "Local or S3 casync store location")
+	flags.StringVar(&storeLocation, "s", "", "Chunk store location")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.StringVar(&chunkSize, "m", "16:64:256", "Min/Avg/Max chunk size in kb")
 	flags.Parse(args)
@@ -48,12 +49,15 @@ func makeCmd(ctx context.Context, args []string) error {
 	indexFile := flags.Arg(0)
 	dataFile := flags.Arg(1)
 
-	// Open the target store
-	s, err := WritableStore(storeLocation, storeOptions{n: n})
-	if err != nil {
-		return err
+	// Open the target store if one was given
+	var s desync.WriteStore
+	if storeLocation != "" {
+		s, err = WritableStore(storeLocation, storeOptions{n: n})
+		if err != nil {
+			return err
+		}
+		defer s.Close()
 	}
-	defer s.Close()
 
 	// Progress bar based on file size for the chunking step
 	stat, err := os.Stat(dataFile)
@@ -70,15 +74,15 @@ func makeCmd(ctx context.Context, args []string) error {
 	}
 	pc.Stop()
 
-	// Progress bar for storing the chunks if this is a terminal
-	ps := NewProgressBar(len(index.Chunks), "Storing ")
-
-	// Chop up the file into chunks and store them in the target store
-	ps.Start()
-	if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, func() { ps.Add(1) }); err != nil {
-		return err
+	// Chop up the file into chunks and store them in the target store if a store was given
+	if s != nil {
+		ps := NewProgressBar(len(index.Chunks), "Storing ")
+		ps.Start()
+		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, func() { ps.Add(1) }); err != nil {
+			return err
+		}
+		ps.Stop()
 	}
-	ps.Stop()
 
 	fmt.Println("Chunks produced:", stats.ChunksAccepted)
 	fmt.Println("Overhead:", stats.ChunksProduced-stats.ChunksAccepted)
