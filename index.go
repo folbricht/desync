@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha512"
 	"fmt"
@@ -30,7 +31,7 @@ type IndexChunk struct {
 // IndexFromReader parses a caibx structure (from a reader) and returns a populated Caibx
 // object
 func IndexFromReader(r io.Reader) (c Index, err error) {
-	d := NewFormatDecoder(r)
+	d := NewFormatDecoder(bufio.NewReader(r))
 	var ok bool
 	// Read the index
 	e, err := d.Next()
