@@ -124,7 +124,7 @@ func TestExtract(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := AssembleFile(context.Background(), test.outfile, index, test.store, 10, nil); err != nil {
+			if err := AssembleFile(context.Background(), test.outfile, index, test.store, nil, 10, nil); err != nil {
 				t.Fatal(err)
 			}
 			b, err := ioutil.ReadFile(test.outfile)

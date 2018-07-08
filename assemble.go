@@ -17,12 +17,16 @@ import (
 // confirm if the data matches what is expected and only populate areas that
 // differ from the expected content. This can be used to complete partly
 // written files.
-func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, progress func()) error {
+func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, progress func()) error {
+	type Job struct {
+		chunks []IndexChunk
+		from   section
+	}
 	var (
 		wg        sync.WaitGroup
 		mu        sync.Mutex
 		pErr      error
-		in        = make(chan IndexChunk)
+		in        = make(chan Job)
 		nullChunk = NewNullChunk(idx.Index.ChunkSizeMax)
 		isBlank   bool
 	)
@@ -60,6 +64,15 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 		return err
 	}
 
+	// Prepend a nullchunk seed to the list of seeds to make sure we read that
+	// before any large null sections in other seed files
+	ns, err := newNullChunkSeed(name, BlockSize, idx.Index.ChunkSizeMax)
+	if err != nil {
+		return err
+	}
+	defer ns.close()
+	seeds = append(seeds, ns)
+
 	// Keep a record of what's already been written to the file and can be
 	// re-used if there are duplicate chunks
 	var written fileChunks
@@ -73,7 +86,18 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 		}
 		defer f.Close()
 		go func() {
-			for c := range in {
+			for job := range in {
+				if job.from != nil {
+					start := job.chunks[0].Start
+					last := job.chunks[len(job.chunks)-1]
+					end := last.Start + last.Size
+					if err := job.from.writeInto(f, start, end); err != nil {
+						recordError(err)
+						continue
+					}
+					continue
+				}
+				c := job.chunks[0]
 				if progress != nil {
 					progress()
 				}
@@ -147,16 +171,22 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 		}()
 	}
 
+	seq := NewSeedSequencer(idx, seeds...)
+
 	// Feed the workers, stop if there are any errors
 loop:
-	for _, c := range idx.Chunks {
+	for {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
 			break loop
 		default:
 		}
-		in <- c
+		chunks, from, done := seq.Next()
+		in <- Job{chunks, from}
+		if done {
+			break
+		}
 	}
 	close(in)
 

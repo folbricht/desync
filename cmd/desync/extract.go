@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/folbricht/desync"
 )
@@ -26,6 +27,7 @@ func extract(ctx context.Context, args []string) error {
 		n              int
 		err            error
 		storeLocations = new(multiArg)
+		seedLocations  = new(multiArg)
 		clientCert     string
 		clientKey      string
 		inPlace        bool
@@ -37,6 +39,7 @@ func extract(ctx context.Context, args []string) error {
 	}
 
 	flags.Var(storeLocations, "s", "casync store location, can be multiples")
+	flags.Var(seedLocations, "seed", "seed indexes, can be multiples")
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
@@ -80,19 +83,25 @@ func extract(ctx context.Context, args []string) error {
 	}
 	defer s.Close()
 
-	// Read the input
+	// Read the target index
 	idx, err := readCaibxFile(inFile)
 	if err != nil {
 		return err
 	}
 
-	if inPlace {
-		return writeInplace(ctx, outFile, idx, s, n)
+	// Build a list of seeds if any were given in the command line
+	seeds, err := readSeeds(outFile, seedLocations.list)
+	if err != nil {
+		return err
 	}
-	return writeWithTmpFile(ctx, outFile, idx, s, n)
+
+	if inPlace {
+		return writeInplace(ctx, outFile, idx, s, seeds, n)
+	}
+	return writeWithTmpFile(ctx, outFile, idx, s, seeds, n)
 }
 
-func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desync.Store, n int) error {
+func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) error {
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
@@ -104,7 +113,7 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 	defer os.Remove(tmpfile.Name())
 
 	// Build the blob from the chunks, writing everything into the tempfile
-	if err = writeInplace(ctx, tmpfile.Name(), idx, s, n); err != nil {
+	if err = writeInplace(ctx, tmpfile.Name(), idx, s, seeds, n); err != nil {
 		return err
 	}
 
@@ -119,12 +128,30 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 	return os.Chmod(name, 0644)
 }
 
-func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, n int) error {
+func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) error {
 	// If this is a terminal, we want a progress bar
 	p := NewProgressBar(len(idx.Chunks), "")
 	p.Start()
 	defer p.Stop()
 
 	// Build the blob from the chunks, writing everything into given filename
-	return desync.AssembleFile(ctx, name, idx, s, n, func() { p.Add(1) })
+	return desync.AssembleFile(ctx, name, idx, s, seeds, n, func() { p.Add(1) })
+}
+
+func readSeeds(dstFile string, locations []string) ([]desync.Seed, error) {
+	var seeds []desync.Seed
+	for _, srcIndexFile := range locations {
+		srcIndex, err := readCaibxFile(srcIndexFile)
+		if err != nil {
+			return nil, err
+		}
+		srcFile := strings.TrimSuffix(srcIndexFile, ".caibx")
+
+		seed, err := desync.NewIndexSeed(dstFile, desync.BlockSize, srcFile, srcIndex)
+		if err != nil {
+			return nil, err
+		}
+		seeds = append(seeds, seed)
+	}
+	return seeds, nil
 }
