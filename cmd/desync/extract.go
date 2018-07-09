@@ -129,13 +129,10 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 }
 
 func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) error {
-	// If this is a terminal, we want a progress bar
-	p := NewProgressBar(len(idx.Chunks), "")
-	p.Start()
-	defer p.Stop()
+	pb := NewProgressBar("")
 
 	// Build the blob from the chunks, writing everything into given filename
-	return desync.AssembleFile(ctx, name, idx, s, seeds, n, func() { p.Add(1) })
+	return desync.AssembleFile(ctx, name, idx, s, seeds, n, pb)
 }
 
 func readSeeds(dstFile string, locations []string) ([]desync.Seed, error) {

@@ -11,7 +11,7 @@ import (
 
 // VerifyIndex re-calculates the checksums of a blob comparing it to a given index.
 // Fails if the index does not match the blob.
-func VerifyIndex(ctx context.Context, name string, idx Index, n int, progress func()) error {
+func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb ProgressBar) error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
@@ -20,6 +20,13 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, progress fu
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// Setup and start the progressbar if any
+	if pb != nil {
+		pb.SetTotal(len(idx.Chunks))
+		pb.Start()
+		defer pb.Finish()
+	}
 
 	stat, err := os.Stat(name)
 	if err != nil {
@@ -51,8 +58,8 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, progress fu
 			var err error
 			for c := range in {
 				// Update progress bar if any
-				if progress != nil {
-					progress()
+				if pb != nil {
+					pb.Increment()
 				}
 
 				// Position the filehandle to the place where the chunk is meant to come

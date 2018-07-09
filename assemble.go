@@ -17,7 +17,7 @@ import (
 // confirm if the data matches what is expected and only populate areas that
 // differ from the expected content. This can be used to complete partly
 // written files.
-func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, progress func()) error {
+func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, pb ProgressBar) error {
 	type Job struct {
 		chunks []IndexChunk
 		from   section
@@ -32,6 +32,13 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// Setup and start the progressbar if any
+	if pb != nil {
+		pb.SetTotal(len(idx.Chunks))
+		pb.Start()
+		defer pb.Finish()
+	}
 
 	// Helper function to record and deal with any errors in the goroutines
 	recordError := func(err error) {
@@ -87,6 +94,9 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		defer f.Close()
 		go func() {
 			for job := range in {
+				if pb != nil {
+					pb.Add(len(job.chunks))
+				}
 				if job.from != nil {
 					start := job.chunks[0].Start
 					last := job.chunks[len(job.chunks)-1]
@@ -98,9 +108,6 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					continue
 				}
 				c := job.chunks[0]
-				if progress != nil {
-					progress()
-				}
 				// See if we can skip the chunk retrieval and decompression if the
 				// null chunk is being requested. If a new file is truncated to the
 				// right size beforehand, there's nothing to do since everything

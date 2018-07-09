@@ -23,7 +23,7 @@ func IndexFromFile(ctx context.Context,
 	name string,
 	n int,
 	min, avg, max uint64,
-	progress func(uint64),
+	pb ProgressBar,
 ) (Index, ChunkingStats, error) {
 
 	index := Index{
@@ -48,6 +48,13 @@ func IndexFromFile(ctx context.Context,
 	}
 	size := uint64(info.Size())
 	span := size / uint64(n) // intial spacing between chunkers
+
+	// Setup and start the progressbar if any
+	if pb != nil {
+		pb.SetTotal(int(info.Size()))
+		pb.Start()
+		defer pb.Finish()
+	}
 
 	// Create/initialize the workers
 	worker := make([]*pChunker, n)
@@ -99,8 +106,8 @@ func IndexFromFile(ctx context.Context,
 		for chunk := range w.results {
 			// Assemble the list of chunks in the index
 			index.Chunks = append(index.Chunks, chunk)
-			if progress != nil {
-				progress(chunk.Start + chunk.Size)
+			if pb != nil {
+				pb.Set(int(chunk.Start + chunk.Size))
 			}
 			stats.incAccepted()
 		}

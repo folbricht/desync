@@ -52,10 +52,8 @@ func chop(ctx context.Context, args []string) error {
 	}
 
 	// If this is a terminal, we want a progress bar
-	p := NewProgressBar(len(c.Chunks), "")
-	p.Start()
-	defer p.Stop()
+	pb := NewProgressBar("")
 
 	// Chop up the file into chunks and store them in the target store
-	return desync.ChopFile(ctx, dataFile, c.Chunks, s, n, func() { p.Add(1) })
+	return desync.ChopFile(ctx, dataFile, c.Chunks, s, n, pb)
 }

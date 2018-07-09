@@ -13,7 +13,7 @@ import (
 
 // ChopFile split a file according to a list of chunks obtained from an Index
 // and stores them in the provided store
-func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStore, n int, progress func()) error {
+func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStore, n int, pb ProgressBar) error {
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
@@ -22,6 +22,13 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStor
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// Setup and start the progressbar if any
+	if pb != nil {
+		pb.SetTotal(len(chunks))
+		pb.Start()
+		defer pb.Finish()
+	}
 
 	// Helper function to record and deal with any errors in the goroutines
 	recordError := func(err error) {
@@ -45,8 +52,8 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, s WriteStor
 			var err error
 			for c := range in {
 				// Update progress bar if any
-				if progress != nil {
-					progress()
+				if pb != nil {
+					pb.Increment()
 				}
 
 				// Skip this chunk if the store already has it

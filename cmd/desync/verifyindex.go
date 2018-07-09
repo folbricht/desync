@@ -43,10 +43,8 @@ func verifyIndex(ctx context.Context, args []string) error {
 	}
 
 	// If this is a terminal, we want a progress bar
-	p := NewProgressBar(len(idx.Chunks), "")
-	p.Start()
-	defer p.Stop()
+	pb := NewProgressBar("")
 
 	// Chop up the file into chunks and store them in the target store
-	return desync.VerifyIndex(ctx, dataFile, idx, n, func() { p.Add(1) })
+	return desync.VerifyIndex(ctx, dataFile, idx, n, pb)
 }
