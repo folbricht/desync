@@ -103,6 +103,35 @@ func TestExtract(t *testing.T) {
 	out3.Close()
 	defer os.RemoveAll(out3.Name())
 
+	// Build a seed file that is similar but not quite the same. It should have
+	// some common chunks but not be completely the same.
+	b[ChunkSizeMaxDefault+1]++
+	b[2*ChunkSizeMaxDefault+1]++
+	seedFile, err := ioutil.TempFile("", "seed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(seedFile.Name())
+	if _, err := io.Copy(seedFile, bytes.NewReader(b)); err != nil {
+		t.Fatal(err)
+	}
+	seedFile.Close()
+	seedIndex, _, err := IndexFromFile(
+		context.Background(),
+		seedFile.Name(),
+		10,
+		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed file to be used for out1
+	seed1, err := NewIndexSeed(out1.Name(), 4096, seedFile.Name(), seedIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// At this point we have the data needed for the test setup
 	// in - Temp file that represents the original input file
 	// inSub - MD5 of the input file
@@ -112,19 +141,21 @@ func TestExtract(t *testing.T) {
 	// out1 - Just a non-existing file that gets assembled
 	// out2 - The output file already fully complete, no GetChunk should be needed
 	// out3 - Partial/damaged file with most, but not all data correct
-
+	// seedIndex + seedFile - Seed file to help assemble the input
 	tests := map[string]struct {
 		outfile string
 		store   Store
+		seed    []Seed
 	}{
 		"extract to new file":        {outfile: out1.Name(), store: s},
 		"extract to complete file":   {outfile: out2.Name(), store: bs},
 		"extract to incomplete file": {outfile: out3.Name(), store: s},
+		"extract with seed":          {outfile: out1.Name(), store: s, seed: []Seed{seed1}},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := AssembleFile(context.Background(), test.outfile, index, test.store, nil, 10, nil); err != nil {
+			if err := AssembleFile(context.Background(), test.outfile, index, test.store, test.seed, 10, nil); err != nil {
 				t.Fatal(err)
 			}
 			b, err := ioutil.ReadFile(test.outfile)
