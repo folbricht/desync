@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"crypto/rand"
 	"io"
 	"io/ioutil"
 	"os"
@@ -103,35 +104,6 @@ func TestExtract(t *testing.T) {
 	out3.Close()
 	defer os.RemoveAll(out3.Name())
 
-	// Build a seed file that is similar but not quite the same. It should have
-	// some common chunks but not be completely the same.
-	b[ChunkSizeMaxDefault+1]++
-	b[2*ChunkSizeMaxDefault+1]++
-	seedFile, err := ioutil.TempFile("", "seed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(seedFile.Name())
-	if _, err := io.Copy(seedFile, bytes.NewReader(b)); err != nil {
-		t.Fatal(err)
-	}
-	seedFile.Close()
-	seedIndex, _, err := IndexFromFile(
-		context.Background(),
-		seedFile.Name(),
-		10,
-		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Seed file to be used for out1
-	seed1, err := NewIndexSeed(out1.Name(), 4096, seedFile.Name(), seedIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// At this point we have the data needed for the test setup
 	// in - Temp file that represents the original input file
 	// inSub - MD5 of the input file
@@ -150,12 +122,11 @@ func TestExtract(t *testing.T) {
 		"extract to new file":        {outfile: out1.Name(), store: s},
 		"extract to complete file":   {outfile: out2.Name(), store: bs},
 		"extract to incomplete file": {outfile: out3.Name(), store: s},
-		"extract with seed":          {outfile: out1.Name(), store: s, seed: []Seed{seed1}},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := AssembleFile(context.Background(), test.outfile, index, test.store, test.seed, 10, nil); err != nil {
+			if err := AssembleFile(context.Background(), test.outfile, index, test.store, nil, 10, nil); err != nil {
 				t.Fatal(err)
 			}
 			b, err := ioutil.ReadFile(test.outfile)
@@ -168,4 +139,148 @@ func TestExtract(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSeed(t *testing.T) {
+	// Prepare different types of data slices that'll be used to assemble target
+	// and seed files with varying amount of duplication
+	data1, err := ioutil.ReadFile("testdata/chunker.input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	null := make([]byte, 4*ChunkSizeMaxDefault)
+	rand1 := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(rand1)
+	rand2 := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(rand2)
+
+	// Setup a temporary store
+	store, err := ioutil.TempDir("", "store")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(store)
+
+	s, err := NewLocalStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Define tests with files with different content, by building files out
+	// of sets of byte slices to create duplication or not between the target and
+	// its seeds
+	tests := map[string]struct {
+		target [][]byte
+		seeds  [][][]byte
+	}{
+		"extract without seed": {
+			target: [][]byte{rand1, rand2},
+			seeds:  nil},
+		"extract with single file seed": {
+			target: [][]byte{data1, null, null, rand1, null},
+			seeds: [][][]byte{
+				{data1, null, rand2, rand2, data1},
+			},
+		},
+		"extract with multiple file seeds": {
+			target: [][]byte{null, null, rand1, null, data1},
+			seeds: [][][]byte{
+				{rand2, null, rand2, rand2, data1},
+				{data1, null, rand2, rand2, data1},
+				{rand2},
+			},
+		},
+		"extract with identical file seed": {
+			target: [][]byte{data1, null, rand1, null, data1},
+			seeds: [][][]byte{
+				{data1, null, rand1, null, data1},
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Build the destination file so we can chunk it
+			dst, err := ioutil.TempFile("", "dst")
+			if err != nil {
+				t.Fatal(err)
+			}
+			dstBytes := join(test.target...)
+			if _, err := io.Copy(dst, bytes.NewReader(dstBytes)); err != nil {
+				t.Fatal(err)
+			}
+			dst.Close()
+			defer os.Remove(dst.Name())
+
+			// Record the checksum of the target file, used to compare to the output later
+			dstSum := md5.Sum(dstBytes)
+
+			// Chunk the file to get an index
+			dstIndex, _, err := IndexFromFile(
+				context.Background(),
+				dst.Name(),
+				10,
+				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+				nil,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Chop up the input file into the store
+			if err := ChopFile(context.Background(), dst.Name(), dstIndex.Chunks, s, 10, nil); err != nil {
+				t.Fatal(err)
+			}
+
+			// Build the seed files and indexes then populate the array of seeds
+			var seeds []Seed
+			for _, f := range test.seeds {
+				seedFile, err := ioutil.TempFile("", "seed")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := io.Copy(seedFile, bytes.NewReader(join(f...))); err != nil {
+					t.Fatal(err)
+				}
+				seedFile.Close()
+				defer os.Remove(seedFile.Name())
+				seedIndex, _, err := IndexFromFile(
+					context.Background(),
+					seedFile.Name(),
+					10,
+					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+					nil,
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				seed, err := NewIndexSeed(dst.Name(), BlockSize, seedFile.Name(), seedIndex)
+				if err != nil {
+					t.Fatal(err)
+				}
+				seeds = append(seeds, seed)
+			}
+
+			if err := AssembleFile(context.Background(), dst.Name(), dstIndex, s, seeds, 10, nil); err != nil {
+				t.Fatal(err)
+			}
+			b, err := ioutil.ReadFile(dst.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			outSum := md5.Sum(b)
+			if dstSum != outSum {
+				t.Fatal("checksum of extracted file doesn't match expected")
+			}
+		})
+	}
+
+}
+
+func join(slices ...[]byte) []byte {
+	var out []byte
+	for _, b := range slices {
+		out = append(out, b...)
+	}
+	return out
 }
