@@ -10,7 +10,7 @@ import (
 )
 
 // Filesystem block size
-const BlockSize = 4096
+const DefaultBlockSize = 4096
 
 // Seed represent a source of chunks other than the store. Typically a seed is
 // another index+blob that present on disk already and is used to copy or clone
@@ -21,7 +21,7 @@ type Seed interface {
 
 type section interface {
 	size() uint64
-	writeInto(dst *os.File, start, end uint64) error
+	writeInto(dst *os.File, start, end, blocksize uint64) error
 }
 
 // IndexSeed is used to copy or clone blocks from an existing index+blob during
@@ -31,7 +31,6 @@ type IndexSeed struct {
 	index      Index
 	pos        map[ChunkID][]int
 	canReflink bool
-	blocksize  int
 }
 
 type fileSection struct {
@@ -58,7 +57,7 @@ func (f *fileSection) size() uint64 {
 	return f.end() - f.start()
 }
 
-func (s *fileSection) writeInto(dst *os.File, start, end uint64) error {
+func (s *fileSection) writeInto(dst *os.File, start, end, blocksize uint64) error {
 	if end-start != s.size() {
 		return fmt.Errorf("unable to copy %d bytes from %s to %s : wrong size", end-start, s.seed.srcFile, dst.Name())
 	}
@@ -78,7 +77,7 @@ func (s *fileSection) writeInto(dst *os.File, start, end uint64) error {
 	if !s.seed.canReflink {
 		return s.copy(dst, src, s.chunks[0].Start, end-start, start)
 	}
-	return s.clone(dst, src, s.chunks[0].Start, end-start, start)
+	return s.clone(dst, src, s.chunks[0].Start, end-start, start, blocksize)
 }
 
 // Compares all chunks in this slice of the seed index to the underlying data
@@ -112,14 +111,14 @@ func (s *fileSection) copy(dst, src *os.File, srcOffset, srcLength, dstOffset ui
 
 // Reflink the overlapping blocks in the two ranges and copy the bit before and
 // after the blocks.
-func (s *fileSection) clone(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) error {
-	if srcOffset%uint64(s.seed.blocksize) != dstOffset%uint64(s.seed.blocksize) {
+func (s *fileSection) clone(dst, src *os.File, srcOffset, srcLength, dstOffset, blocksize uint64) error {
+	if srcOffset%blocksize != dstOffset%blocksize {
 		return fmt.Errorf("reflink ranges not aligned between %s and %s", src.Name(), dst.Name())
 	}
 
-	srcAlignStart := (srcOffset/uint64(s.seed.blocksize) + 1) * uint64(s.seed.blocksize)
-	srcAlignEnd := (srcOffset + srcLength) / uint64(s.seed.blocksize) * uint64(s.seed.blocksize)
-	dstAlignStart := (dstOffset/uint64(s.seed.blocksize) + 1) * uint64(s.seed.blocksize)
+	srcAlignStart := (srcOffset/blocksize + 1) * blocksize
+	srcAlignEnd := (srcOffset + srcLength) / blocksize * blocksize
+	dstAlignStart := (dstOffset/blocksize + 1) * blocksize
 	alignLength := srcAlignEnd - srcAlignStart
 	dstAlignEnd := dstAlignStart + alignLength
 
@@ -136,13 +135,12 @@ func (s *fileSection) clone(dst, src *os.File, srcOffset, srcLength, dstOffset u
 }
 
 // NewIndexSeed initializes a new seed that uses an existing index and its blob
-func NewIndexSeed(dstFile string, blocksize int, srcFile string, index Index) (*IndexSeed, error) {
+func NewIndexSeed(dstFile string, srcFile string, index Index) (*IndexSeed, error) {
 	s := IndexSeed{
 		srcFile:    srcFile,
 		pos:        make(map[ChunkID][]int),
 		index:      index,
 		canReflink: CanClone(dstFile, srcFile),
-		blocksize:  blocksize,
 	}
 	for i, c := range s.index.Chunks {
 		s.pos[c.ID] = append(s.pos[c.ID], i)
@@ -201,12 +199,11 @@ func (s *IndexSeed) maxMatchFrom(chunks []IndexChunk, p int) []IndexChunk {
 
 type nullChunkSeed struct {
 	id         ChunkID
-	blocksize  int
 	blockfile  *os.File
 	canReflink bool
 }
 
-func newNullChunkSeed(dstFile string, blocksize int, max uint64) (*nullChunkSeed, error) {
+func newNullChunkSeed(dstFile string, blocksize uint64, max uint64) (*nullChunkSeed, error) {
 	blockfile, err := ioutil.TempFile(filepath.Dir(dstFile), ".tmp-block")
 	if err != nil {
 		return nil, err
@@ -223,7 +220,6 @@ func newNullChunkSeed(dstFile string, blocksize int, max uint64) (*nullChunkSeed
 		id:         NewNullChunk(max).ID,
 		canReflink: canReflink,
 		blockfile:  blockfile,
-		blocksize:  blocksize,
 	}, nil
 }
 
@@ -252,7 +248,6 @@ func (s *nullChunkSeed) longestMatchWith(chunks []IndexChunk) (int, section) {
 	return n, &nullChunkSection{
 		from:       chunks[0].Start,
 		to:         chunks[n-1].Start + chunks[n-1].Size,
-		blocksize:  s.blocksize,
 		blockfile:  s.blockfile,
 		canReflink: s.canReflink,
 	}
@@ -260,7 +255,6 @@ func (s *nullChunkSeed) longestMatchWith(chunks []IndexChunk) (int, section) {
 
 type nullChunkSection struct {
 	from, to   uint64
-	blocksize  int
 	blockfile  *os.File
 	canReflink bool
 }
@@ -271,7 +265,7 @@ func (s *nullChunkSection) end() uint64 { return s.to }
 
 func (s *nullChunkSection) size() uint64 { return s.to - s.from }
 
-func (s *nullChunkSection) writeInto(dst *os.File, start, end uint64) error {
+func (s *nullChunkSection) writeInto(dst *os.File, start, end, blocksize uint64) error {
 	if end-start != s.size() {
 		return fmt.Errorf("unable to copy %d bytes to %s : wrong size", end-start, dst.Name())
 	}
@@ -279,7 +273,7 @@ func (s *nullChunkSection) writeInto(dst *os.File, start, end uint64) error {
 	if !s.canReflink {
 		return s.copy(dst, start, s.size())
 	}
-	return s.clone(dst, start, s.size())
+	return s.clone(dst, start, s.size(), blocksize)
 }
 
 func (s *nullChunkSection) copy(dst *os.File, dstOffset, length uint64) error {
@@ -290,9 +284,9 @@ func (s *nullChunkSection) copy(dst *os.File, dstOffset, length uint64) error {
 	return err
 }
 
-func (s *nullChunkSection) clone(dst *os.File, dstOffset, length uint64) error {
-	dstAlignStart := (dstOffset/uint64(s.blocksize) + 1) * uint64(s.blocksize)
-	dstAlignEnd := (dstOffset + length) / uint64(s.blocksize) * uint64(s.blocksize)
+func (s *nullChunkSection) clone(dst *os.File, dstOffset, length, blocksize uint64) error {
+	dstAlignStart := (dstOffset/blocksize + 1) * blocksize
+	dstAlignEnd := (dstOffset + length) / blocksize * blocksize
 	// alignLength := dstAlignEnd - dstAlignStart
 
 	// fill the area before the first aligned block
@@ -303,8 +297,8 @@ func (s *nullChunkSection) clone(dst *os.File, dstOffset, length uint64) error {
 	if err := s.copy(dst, dstAlignEnd, dstOffset+length-dstAlignEnd); err != nil {
 		return err
 	}
-	for offset := dstAlignStart; offset < dstAlignEnd; offset += uint64(s.blocksize) {
-		if err := CloneRange(dst, s.blockfile, 0, uint64(s.blocksize), offset); err != nil {
+	for offset := dstAlignStart; offset < dstAlignEnd; offset += blocksize {
+		if err := CloneRange(dst, s.blockfile, 0, blocksize, offset); err != nil {
 			return err
 		}
 	}

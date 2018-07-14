@@ -254,7 +254,7 @@ func TestSeed(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				seed, err := NewIndexSeed(dst.Name(), BlockSize, seedFile.Name(), seedIndex)
+				seed, err := NewIndexSeed(dst.Name(), seedFile.Name(), seedIndex)
 				if err != nil {
 					t.Fatal(err)
 				}

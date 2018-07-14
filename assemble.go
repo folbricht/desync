@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"syscall"
 )
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
@@ -71,9 +72,12 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		return err
 	}
 
+	// Determine the blocksize of the target file which is required for reflinking
+	blocksize := blocksizeOfFile(name)
+
 	// Prepend a nullchunk seed to the list of seeds to make sure we read that
 	// before any large null sections in other seed files
-	ns, err := newNullChunkSeed(name, BlockSize, idx.Index.ChunkSizeMax)
+	ns, err := newNullChunkSeed(name, blocksize, idx.Index.ChunkSizeMax)
 	if err != nil {
 		return err
 	}
@@ -101,7 +105,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					start := job.chunks[0].Start
 					last := job.chunks[len(job.chunks)-1]
 					end := last.Start + last.Size
-					if err := job.from.writeInto(f, start, end); err != nil {
+					if err := job.from.writeInto(f, start, end, blocksize); err != nil {
 						recordError(err)
 						continue
 					}
@@ -243,4 +247,17 @@ func cloneInFile(f *os.File, dst, src IndexChunk) error {
 	}
 	_, err := f.WriteAt(b, int64(dst.Start))
 	return err
+}
+
+func blocksizeOfFile(name string) uint64 {
+	stat, err := os.Stat(name)
+	if err != nil {
+		return DefaultBlockSize
+	}
+	switch sys := stat.Sys().(type) {
+	case *syscall.Stat_t:
+		return uint64(sys.Blksize)
+	default:
+		return DefaultBlockSize
+	}
 }
