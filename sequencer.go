@@ -13,21 +13,22 @@ func NewSeedSequencer(idx Index, src ...Seed) *SeedSequencer {
 	}
 }
 
-func (r *SeedSequencer) Next() (to []IndexChunk, from section, done bool) {
+func (r *SeedSequencer) Next() (indexSegment, SeedSegment, bool) {
 	var (
 		max     uint64
 		advance int = 1
+		source  SeedSegment
 	)
 	for _, s := range r.seeds {
-		n, m := s.longestMatchWith(r.index.Chunks[r.current:])
-		if n > 0 && m.size() > max {
-			from = m
+		n, m := s.LongestMatchWith(r.index.Chunks[r.current:])
+		if n > 0 && m.Size() > max {
+			source = m
 			advance = n
-			max = m.size()
+			max = m.Size()
 		}
 	}
 
-	to = r.index.Chunks[r.current : r.current+advance]
+	segment := indexSegment{index: r.index, first: r.current, last: r.current + advance - 1}
 	r.current += advance
-	return to, from, r.current >= len(r.index.Chunks)
+	return segment, source, r.current >= len(r.index.Chunks)
 }

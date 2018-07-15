@@ -144,7 +144,7 @@ func readSeeds(dstFile string, locations []string) ([]desync.Seed, error) {
 		}
 		srcFile := strings.TrimSuffix(srcIndexFile, ".caibx")
 
-		seed, err := desync.NewIndexSeed(dstFile, desync.BlockSize, srcFile, srcIndex)
+		seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
 		if err != nil {
 			return nil, err
 		}

@@ -176,6 +176,12 @@ func TestSeed(t *testing.T) {
 		"extract without seed": {
 			target: [][]byte{rand1, rand2},
 			seeds:  nil},
+		"extract all null file": {
+			target: [][]byte{null, null, null, null, null},
+			seeds:  nil},
+		"extract repetitive file": {
+			target: [][]byte{data1, data1, data1, data1, data1},
+			seeds:  nil},
 		"extract with single file seed": {
 			target: [][]byte{data1, null, null, rand1, null},
 			seeds: [][][]byte{
