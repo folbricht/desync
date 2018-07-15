@@ -72,12 +72,18 @@ type nullChunkSection struct {
 
 func (s *nullChunkSection) Size() uint64 { return s.to - s.from }
 
-func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uint64) error {
+func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) error {
 	if length != s.Size() {
 		return fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
 	}
 
+	// When cloning isn'a available we'd normally have to copy the 0 bytes into
+	// the target range. But if that's already blank (because it's a new/truncated
+	// file) there's no need to copy 0 bytes.
 	if !s.canReflink {
+		if isBlank {
+			return nil
+		}
 		return s.copy(dst, offset, s.Size())
 	}
 	return s.clone(dst, offset, length, blocksize)

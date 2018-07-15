@@ -19,7 +19,7 @@ type Seed interface {
 // a target file during an extract operation.
 type SeedSegment interface {
 	Size() uint64
-	WriteInto(dst *os.File, offset, end, blocksize uint64) error
+	WriteInto(dst *os.File, offset, end, blocksize uint64, isBlank bool) error
 }
 
 // indexSegment represents a contiguous section of an index which is used when

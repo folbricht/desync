@@ -103,7 +103,7 @@ func (f *fileSeedSegment) Size() uint64 {
 	return last.Start + last.Size - f.chunks[0].Start
 }
 
-func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint64) error {
+func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) error {
 	if length != s.Size() {
 		return fmt.Errorf("unable to copy %d bytes from %s to %s : wrong size", length, s.file, dst.Name())
 	}

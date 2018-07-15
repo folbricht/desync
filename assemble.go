@@ -105,7 +105,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				if job.source != nil {
 					offset := job.segment.start()
 					length := job.segment.lengthBytes()
-					if err := job.source.WriteInto(f, offset, length, blocksize); err != nil {
+					if err := job.source.WriteInto(f, offset, length, blocksize, isBlank); err != nil {
 						recordError(err)
 						continue
 					}
