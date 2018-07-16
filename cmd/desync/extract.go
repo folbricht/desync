@@ -19,6 +19,8 @@ Read a caibx and build a blob reading chunks from one or more casync stores.
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
+Muptiple optional seed indexes can be given with -seed. The matching blob needs
+to have the same name as the indexfile without the .caibx extension.
 `
 
 func extract(ctx context.Context, args []string) error {
