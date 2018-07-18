@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/pkg/sftp"
 )
 
@@ -90,28 +91,33 @@ func (s *SFTPStore) StoreChunk(id ChunkID, b []byte) error {
 	sID := id.String()
 	d := s.path + sID[0:4]
 
-	// Create the containing dir if not already
-	if _, err := s.client.Stat(d); err != nil {
-		if err := s.client.Mkdir(d); err != nil {
-			return err
-		}
-	}
 	// Write to a tempfile on the remote server. This is not 100% guaranteed to not
 	// conflict between gorouties, there's no tempfile() function for remote servers.
 	// Use a large enough random number instead to build a tempfile
-	tmpfile := s.path + sID[0:4] + "/." + sID + chunkFileExt + strconv.Itoa(rand.Int())
+	tmpfile := d + "/." + sID + chunkFileExt + strconv.Itoa(rand.Int())
+	var errCount int
+retry:
 	f, err := s.client.Create(tmpfile)
 	if err != nil {
-		return err
+		// It's possible the parent dir doesn't yet exist. Create it while ignoring
+		// errors since that could be racy and fail if another goroutine does the
+		// same.
+		if errCount < 1 {
+			s.client.Mkdir(d)
+			errCount++
+			goto retry
+		}
+		return errors.Wrap(err, "sftp:create "+tmpfile)
 	}
+
 	if _, err := io.Copy(f, bytes.NewReader(b)); err != nil {
 		s.client.Remove(tmpfile)
-		return err
+		return errors.Wrap(err, "sftp:copying chunk data to "+tmpfile)
 	}
 	if err = f.Close(); err != nil {
-		return err
+		return errors.Wrap(err, "sftp:closing "+tmpfile)
 	}
-	return s.client.Rename(tmpfile, name)
+	return errors.Wrap(s.client.PosixRename(tmpfile, name), "sftp:renaming "+tmpfile+" to "+name)
 }
 
 // Close terminates all client connections
@@ -125,10 +131,8 @@ func (s *SFTPStore) Close() error {
 // HasChunk returns true if the chunk is in the store
 func (s *SFTPStore) HasChunk(id ChunkID) bool {
 	name := s.nameFromID(id)
-	if _, err := s.client.Stat(name); err == nil {
-		return true
-	}
-	return false
+	_, err := s.client.Stat(name)
+	return err == nil
 }
 
 // Prune removes any chunks from the store that are not contained in a list
