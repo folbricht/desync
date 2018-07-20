@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/folbricht/desync"
+	"github.com/pkg/errors"
 )
 
 const usage = `desync <command> [options]
@@ -107,7 +107,8 @@ func readCaibxFile(name string) (c desync.Index, err error) {
 		return
 	}
 	defer f.Close()
-	return desync.IndexFromReader(f)
+	c, err = desync.IndexFromReader(f)
+	return c, errors.Wrap(err, name)
 }
 
 func die(err error) {

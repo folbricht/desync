@@ -72,6 +72,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, `tar` and `prune` commands support updating chunk stores in S3, while `verify` only operates on a local store.
 - `-seed <indexfile>` Specifies a seed file and index for the `extract` command. The tool expects the matching file to be present and have the same name as the index file, without the `.caibx` extension.
+- `-seed-dir <dir>` Specifies a directory containing seed files and their indexes for the `extract` command. For each index file in the directory (`*.caibx`) there needs to be a matching blob without the extension.
 - `-c <store>` Location of a chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
@@ -174,6 +175,11 @@ desync extract -s /local/store \
   -seed image-v1.qcow2.caibx \
   -seed image-v2.qcow2.caibx \
   image-v3.qcow2.caibx image-v3.qcow2
+```
+
+Extract an image using several seeds present in a directory. Each of the `.caibx` files in the directory needs to have a matching blob of the same name. It is possible for the source index file to be in the same directory also (it'll be skipped automatically).
+```
+desync extract -s /local/store -seed-dir /path/to/images image-v3.qcow2.caibx image-v3.qcow2
 ```
 
 Mix and match remote stores and use a local cache store to improve performance.

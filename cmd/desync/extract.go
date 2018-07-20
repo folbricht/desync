@@ -20,19 +20,22 @@ When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
 Muptiple optional seed indexes can be given with -seed. The matching blob needs
-to have the same name as the indexfile without the .caibx extension.
+to have the same name as the indexfile without the .caibx extension. If several
+seed files and indexes are available, the -seed-dir option can be used to
+automatically select call .caibx files in a directory as seeds.
 `
 
 func extract(ctx context.Context, args []string) error {
 	var (
-		cacheLocation  string
-		n              int
-		err            error
-		storeLocations = new(multiArg)
-		seedLocations  = new(multiArg)
-		clientCert     string
-		clientKey      string
-		inPlace        bool
+		cacheLocation    string
+		n                int
+		err              error
+		storeLocations   = new(multiArg)
+		seedLocations    = new(multiArg)
+		seedDirLocations = new(multiArg)
+		clientCert       string
+		clientKey        string
+		inPlace          bool
 	)
 	flags := flag.NewFlagSet("extract", flag.ExitOnError)
 	flags.Usage = func() {
@@ -42,6 +45,7 @@ func extract(ctx context.Context, args []string) error {
 
 	flags.Var(storeLocations, "s", "casync store location, can be multiples")
 	flags.Var(seedLocations, "seed", "seed indexes, can be multiples")
+	flags.Var(seedDirLocations, "seed-dir", "directory with seed index files, can be multiples")
 	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
@@ -97,6 +101,13 @@ func extract(ctx context.Context, args []string) error {
 		return err
 	}
 
+	// Expand the list of seeds with all found in provided directories
+	dSeeds, err := readSeedDirs(outFile, inFile, seedDirLocations.list)
+	if err != nil {
+		return err
+	}
+	seeds = append(seeds, dSeeds...)
+
 	if inPlace {
 		return writeInplace(ctx, outFile, idx, s, seeds, n)
 	}
@@ -151,6 +162,55 @@ func readSeeds(dstFile string, locations []string) ([]desync.Seed, error) {
 			return nil, err
 		}
 		seeds = append(seeds, seed)
+	}
+	return seeds, nil
+}
+
+func readSeedDirs(dstFile, dstIdxFile string, dirs []string) ([]desync.Seed, error) {
+	var seeds []desync.Seed
+	absIn, err := filepath.Abs(dstIdxFile)
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range dirs {
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			if filepath.Ext(path) != ".caibx" {
+				return nil
+			}
+			abs, err := filepath.Abs(path)
+			if err != nil {
+				return err
+			}
+			// The index we're trying to extract may be in the same dir, skip it
+			if abs == absIn {
+				return nil
+			}
+			// Expect the blob to be there next to the index file, skip the index if not
+			srcFile := strings.TrimSuffix(path, ".caibx")
+			if _, err := os.Stat(srcFile); err != nil {
+				return nil
+			}
+			// Read the index and add it to the list of seeds
+			srcIndex, err := readCaibxFile(path)
+			if err != nil {
+				return err
+			}
+			seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
+			if err != nil {
+				return err
+			}
+			seeds = append(seeds, seed)
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return seeds, nil
 }
