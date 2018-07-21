@@ -145,14 +145,17 @@ func (s *fileSeedSegment) validate(src *os.File) error {
 
 // Performs a plain copy of everything in the seed to the target, not cloning
 // of blocks.
-func (s *fileSeedSegment) copy(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) (uint64, uint64, error) {
+func (s *fileSeedSegment) copy(dst, src *os.File, srcOffset, length, dstOffset uint64) (uint64, uint64, error) {
 	if _, err := dst.Seek(int64(dstOffset), os.SEEK_SET); err != nil {
 		return 0, 0, err
 	}
 	if _, err := src.Seek(int64(srcOffset), os.SEEK_SET); err != nil {
 		return 0, 0, err
 	}
-	copied, err := io.CopyN(dst, src, int64(srcLength))
+
+	// Copy using a fixed buffer. Using io.Copy() with a LimitReader will make it
+	// create a buffer matching N of the LimitReader which can be too large
+	copied, err := io.CopyBuffer(dst, io.LimitReader(src, int64(length)), make([]byte, 64*1024))
 	return uint64(copied), 0, err
 }
 

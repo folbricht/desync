@@ -93,8 +93,10 @@ func (s *nullChunkSection) copy(dst *os.File, offset, length uint64) (uint64, ui
 	if _, err := dst.Seek(int64(offset), os.SEEK_SET); err != nil {
 		return 0, 0, err
 	}
-	n, err := io.CopyN(dst, nullReader{}, int64(length))
-	return uint64(n), 0, err
+	// Copy using a fixed buffer. Using io.Copy() with a LimitReader will make it
+	// create a buffer matching N of the LimitReader which can be too large
+	copied, err := io.CopyBuffer(dst, io.LimitReader(nullReader{}, int64(length)), make([]byte, 64*1024))
+	return uint64(copied), 0, err
 }
 
 func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64) (uint64, uint64, error) {
