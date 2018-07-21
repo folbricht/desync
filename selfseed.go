@@ -9,7 +9,7 @@ import (
 // to potentially dedup/reflink duplicate chunks or ranges of chunks within the
 // same file.
 type selfSeed struct {
-	srcFile    string
+	file       string
 	index      Index
 	pos        map[ChunkID][]int
 	canReflink bool
@@ -18,13 +18,13 @@ type selfSeed struct {
 	cache      map[int]struct{}
 }
 
-// NewIndexSeed initializes a new seed that uses an existing index and its blob
-func newSelfSeed(dstFile string, srcFile string, index Index) (*selfSeed, error) {
+// newSelfSeed initializes a new seed based on the file being extracted
+func newSelfSeed(file string, index Index) (*selfSeed, error) {
 	s := selfSeed{
-		srcFile:    srcFile,
+		file:       file,
 		pos:        make(map[ChunkID][]int),
 		index:      index,
-		canReflink: CanClone(dstFile, srcFile),
+		canReflink: CanClone(file, file),
 		cache:      make(map[int]struct{}),
 	}
 	return &s, nil
@@ -79,7 +79,7 @@ func (s *selfSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 			max = len(m)
 		}
 	}
-	return max, newFileSeedSegment(s.srcFile, match, s.canReflink, false)
+	return max, newFileSeedSegment(s.file, match, s.canReflink, false)
 }
 
 // Returns a slice of chunks from the seed. Compares chunks from position 0

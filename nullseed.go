@@ -72,9 +72,9 @@ type nullChunkSection struct {
 
 func (s *nullChunkSection) Size() uint64 { return s.to - s.from }
 
-func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) error {
+func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) (uint64, uint64, error) {
 	if length != s.Size() {
-		return fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
+		return 0, 0, fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
 	}
 
 	// When cloning isn'a available we'd normally have to copy the 0 bytes into
@@ -82,39 +82,46 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 	// file) there's no need to copy 0 bytes.
 	if !s.canReflink {
 		if isBlank {
-			return nil
+			return 0, 0, nil
 		}
 		return s.copy(dst, offset, s.Size())
 	}
 	return s.clone(dst, offset, length, blocksize)
 }
 
-func (s *nullChunkSection) copy(dst *os.File, offset, length uint64) error {
+func (s *nullChunkSection) copy(dst *os.File, offset, length uint64) (uint64, uint64, error) {
 	if _, err := dst.Seek(int64(offset), os.SEEK_SET); err != nil {
-		return err
+		return 0, 0, err
 	}
-	_, err := io.CopyN(dst, nullReader{}, int64(length))
-	return err
+	n, err := io.CopyN(dst, nullReader{}, int64(length))
+	return uint64(n), 0, err
 }
 
-func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64) error {
+func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64) (uint64, uint64, error) {
 	dstAlignStart := (offset/blocksize + 1) * blocksize
 	dstAlignEnd := (offset + length) / blocksize * blocksize
 
 	// fill the area before the first aligned block
-	if err := s.copy(dst, offset, dstAlignStart-offset); err != nil {
-		return err
+	var copied, cloned uint64
+	c1, _, err := s.copy(dst, offset, dstAlignStart-offset)
+	if err != nil {
+		return c1, 0, err
 	}
+	copied += c1
 	// fill the area after the last aligned block
-	if err := s.copy(dst, dstAlignEnd, offset+length-dstAlignEnd); err != nil {
-		return err
+	c2, _, err := s.copy(dst, dstAlignEnd, offset+length-dstAlignEnd)
+	if err != nil {
+		return copied + c2, 0, err
 	}
+	copied += c2
+
 	for blkOffset := dstAlignStart; blkOffset < dstAlignEnd; blkOffset += blocksize {
 		if err := CloneRange(dst, s.blockfile, 0, blocksize, blkOffset); err != nil {
-			return err
+			return copied, cloned, err
 		}
+		cloned += blocksize
 	}
-	return nil
+	return copied, cloned, nil
 }
 
 type nullReader struct{}

@@ -17,7 +17,7 @@ import (
 // confirm if the data matches what is expected and only populate areas that
 // differ from the expected content. This can be used to complete partly
 // written files.
-func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, pb ProgressBar) error {
+func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, pb ProgressBar) (*ExtractStats, error) {
 	type Job struct {
 		segment indexSegment
 		source  SeedSegment
@@ -39,6 +39,12 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		defer pb.Finish()
 	}
 
+	// Initialize stats to be gathered during extraction
+	stats := &ExtractStats{
+		BytesTotal:  idx.Length(),
+		ChunksTotal: len(idx.Chunks),
+	}
+
 	// Helper function to record and deal with any errors in the goroutines
 	recordError := func(err error) {
 		mu.Lock()
@@ -55,7 +61,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	case os.IsNotExist(err):
 		f, err := os.Create(name)
 		if err != nil {
-			return err
+			return stats, err
 		}
 		f.Close()
 		isBlank = true
@@ -67,7 +73,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	// confirm there's enough disk space, but it allows for an optimization
 	// when dealing with the Null Chunk
 	if err := os.Truncate(name, idx.Length()); err != nil {
-		return err
+		return stats, err
 	}
 
 	// Determine the blocksize of the target file which is required for reflinking
@@ -77,24 +83,28 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	// before any large null sections in other seed files
 	ns, err := newNullChunkSeed(name, blocksize, idx.Index.ChunkSizeMax)
 	if err != nil {
-		return err
+		return stats, err
 	}
 	defer ns.close()
 
 	// Start a self-seed which will become usable once chunks are written contigously
 	// beginning at position 0.
-	ss, err := newSelfSeed(name, name, idx)
+	ss, err := newSelfSeed(name, idx)
 	if err != nil {
-		return err
+		return stats, err
 	}
 	seeds = append([]Seed{ns, ss}, seeds...)
+
+	// Record the total number of seeds and blocksize in the stats
+	stats.Seeds = len(seeds)
+	stats.Blocksize = blocksize
 
 	// Start the workers, each having its own filehandle to write concurrently
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		f, err := os.OpenFile(name, os.O_RDWR, 0666)
 		if err != nil {
-			return fmt.Errorf("unable to open file %s, %s", name, err)
+			return stats, fmt.Errorf("unable to open file %s, %s", name, err)
 		}
 		defer f.Close()
 		go func() {
@@ -103,13 +113,18 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					pb.Add(job.segment.lengthChunks())
 				}
 				if job.source != nil {
+					stats.addChunksFromSeed(uint64(job.segment.lengthChunks()))
 					offset := job.segment.start()
 					length := job.segment.lengthBytes()
-					if err := job.source.WriteInto(f, offset, length, blocksize, isBlank); err != nil {
+					copied, cloned, err := job.source.WriteInto(f, offset, length, blocksize, isBlank)
+					if err != nil {
 						recordError(err)
 						continue
 					}
-					// Record this chunk's been written in the self-seed before processing the next
+					stats.addBytesCopied(copied)
+					stats.addBytesCloned(cloned)
+					// Record this segment's been written in the self-seed to make it
+					// available going forward
 					ss.add(job.segment)
 					continue
 				}
@@ -127,9 +142,13 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					if sum == c.ID {
 						// Record this chunk's been written in the self-seed
 						ss.add(job.segment)
+						// Record we kept this chunk in the file (when using in-place extract)
+						stats.incChunksInPlace()
 						continue
 					}
 				}
+				// Record this chunk having been pulled from the store
+				stats.incChunksFromStore()
 				// Pull the (compressed) chunk from the store
 				b, err := s.GetChunk(c.ID)
 				if err != nil {
@@ -189,7 +208,7 @@ loop:
 	close(in)
 
 	wg.Wait()
-	return pErr
+	return stats, pErr
 }
 
 func blocksizeOfFile(name string) uint64 {

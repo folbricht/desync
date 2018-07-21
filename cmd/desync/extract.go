@@ -36,6 +36,7 @@ func extract(ctx context.Context, args []string) error {
 		clientCert       string
 		clientKey        string
 		inPlace          bool
+		printStats       bool
 	)
 	flags := flag.NewFlagSet("extract", flag.ExitOnError)
 	flags.Usage = func() {
@@ -52,6 +53,7 @@ func extract(ctx context.Context, args []string) error {
 	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
 	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.BoolVar(&inPlace, "k", false, "extract the file in place and keep it in case of error")
+	flags.BoolVar(&printStats, "stats", false, "Print statistics in JSON format")
 	flags.Parse(args)
 
 	if flags.NArg() < 2 {
@@ -108,40 +110,50 @@ func extract(ctx context.Context, args []string) error {
 	}
 	seeds = append(seeds, dSeeds...)
 
+	var stats *desync.ExtractStats
 	if inPlace {
-		return writeInplace(ctx, outFile, idx, s, seeds, n)
+		stats, err = writeInplace(ctx, outFile, idx, s, seeds, n)
+	} else {
+		stats, err = writeWithTmpFile(ctx, outFile, idx, s, seeds, n)
 	}
-	return writeWithTmpFile(ctx, outFile, idx, s, seeds, n)
+	if err != nil {
+		return err
+	}
+	if printStats {
+		return printJSON(stats)
+	}
+	return nil
 }
 
-func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) error {
+func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) (*desync.ExtractStats, error) {
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
+	var stats *desync.ExtractStats
 	tmpfile, err := ioutil.TempFile(filepath.Dir(name), "."+filepath.Base(name))
 	if err != nil {
-		return err
+		return stats, err
 	}
 	tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
 	// Build the blob from the chunks, writing everything into the tempfile
-	if err = writeInplace(ctx, tmpfile.Name(), idx, s, seeds, n); err != nil {
-		return err
+	if stats, err = writeInplace(ctx, tmpfile.Name(), idx, s, seeds, n); err != nil {
+		return stats, err
 	}
 
 	// Rename the tempfile to the output file
 	if err := os.Rename(tmpfile.Name(), name); err != nil {
-		return err
+		return stats, err
 	}
 
 	// FIXME Unfortunately, tempfiles are created with 0600 perms and there doesn't
 	// appear a way to influence that, short of writing another function that
 	// generates a tempfile name. Set 0644 perms here after rename (ignoring umask)
-	return os.Chmod(name, 0644)
+	return stats, os.Chmod(name, 0644)
 }
 
-func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) error {
+func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) (*desync.ExtractStats, error) {
 	pb := NewProgressBar("")
 
 	// Build the blob from the chunks, writing everything into given filename

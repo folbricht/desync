@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -109,6 +110,15 @@ func readCaibxFile(name string) (c desync.Index, err error) {
 	defer f.Close()
 	c, err = desync.IndexFromReader(f)
 	return c, errors.Wrap(err, name)
+}
+
+func printJSON(v interface{}) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(b))
+	return nil
 }
 
 func die(err error) {

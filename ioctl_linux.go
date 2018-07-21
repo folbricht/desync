@@ -18,32 +18,21 @@ import (
 const fiCloneRange = 0x4020940d
 
 // CanClone tries to determine if the filesystem allows cloning of blocks between
-// two files. If the files don't (yet) exits, it'll create a tempfile in the
-// same dirs and attempt to perfom a 0-byte long block clone. If that's successful
-// it'll return true.
-func CanClone(dstFile string, srcFile string) bool {
-	dst, err := os.OpenFile(dstFile, os.O_WRONLY, 0)
+// two files. It'll create two tempfiles in the same dirs and attempt to perfom
+// a 0-byte long block clone. If that's successful it'll return true.
+func CanClone(dstFile, srcFile string) bool {
+	dst, err := ioutil.TempFile(filepath.Dir(dstFile), ".tmp")
 	if err != nil {
-		dst, err = ioutil.TempFile(filepath.Dir(dstFile), ".tmp")
-		if err != nil {
-			return false
-		}
-		defer dst.Close()
-		defer os.Remove(dst.Name())
-	} else {
-		defer dst.Close()
+		return false
 	}
-	src, err := os.Open(srcFile)
+	defer dst.Close()
+	defer os.Remove(dst.Name())
+	src, err := ioutil.TempFile(filepath.Dir(srcFile), ".tmp")
 	if err != nil {
-		src, err = ioutil.TempFile(filepath.Dir(srcFile), ".tmp")
-		if err != nil {
-			return false
-		}
-		defer src.Close()
-		defer os.Remove(src.Name())
-	} else {
-		defer src.Close()
+		return false
 	}
+	defer src.Close()
+	defer os.Remove(src.Name())
 	err = CloneRange(dst, src, 0, 0, 0)
 	return err == nil
 }

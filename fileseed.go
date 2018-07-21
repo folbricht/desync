@@ -103,13 +103,13 @@ func (f *fileSeedSegment) Size() uint64 {
 	return last.Start + last.Size - f.chunks[0].Start
 }
 
-func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) error {
+func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) (uint64, uint64, error) {
 	if length != s.Size() {
-		return fmt.Errorf("unable to copy %d bytes from %s to %s : wrong size", length, s.file, dst.Name())
+		return 0, 0, fmt.Errorf("unable to copy %d bytes from %s to %s : wrong size", length, s.file, dst.Name())
 	}
 	src, err := os.Open(s.file)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	defer src.Close()
 
@@ -117,10 +117,9 @@ func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint
 	// the index says it is if that's required.
 	if s.needValidation {
 		if err := s.validate(src); err != nil {
-			return err
+			return 0, 0, err
 		}
 	}
-
 	// Do a straight copy if reflinks are not supported
 	if !s.canReflink {
 		return s.copy(dst, src, s.chunks[0].Start, length, offset)
@@ -146,22 +145,22 @@ func (s *fileSeedSegment) validate(src *os.File) error {
 
 // Performs a plain copy of everything in the seed to the target, not cloning
 // of blocks.
-func (s *fileSeedSegment) copy(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) error {
+func (s *fileSeedSegment) copy(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) (uint64, uint64, error) {
 	if _, err := dst.Seek(int64(dstOffset), os.SEEK_SET); err != nil {
-		return err
+		return 0, 0, err
 	}
 	if _, err := src.Seek(int64(srcOffset), os.SEEK_SET); err != nil {
-		return err
+		return 0, 0, err
 	}
-	_, err := io.CopyN(dst, src, int64(srcLength))
-	return err
+	copied, err := io.CopyN(dst, src, int64(srcLength))
+	return uint64(copied), 0, err
 }
 
 // Reflink the overlapping blocks in the two ranges and copy the bit before and
 // after the blocks.
-func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffset, blocksize uint64) error {
+func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffset, blocksize uint64) (uint64, uint64, error) {
 	if srcOffset%blocksize != dstOffset%blocksize {
-		return fmt.Errorf("reflink ranges not aligned between %s and %s", src.Name(), dst.Name())
+		return 0, 0, fmt.Errorf("reflink ranges not aligned between %s and %s", src.Name(), dst.Name())
 	}
 
 	srcAlignStart := (srcOffset/blocksize + 1) * blocksize
@@ -171,13 +170,18 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 	dstAlignEnd := dstAlignStart + alignLength
 
 	// fill the area before the first aligned block
-	if err := s.copy(dst, src, srcOffset, srcAlignStart-srcOffset, dstOffset); err != nil {
-		return err
+	var copied uint64
+	c1, _, err := s.copy(dst, src, srcOffset, srcAlignStart-srcOffset, dstOffset)
+	if err != nil {
+		return c1, 0, err
 	}
+	copied += c1
 	// fill the area after the last aligned block
-	if err := s.copy(dst, src, srcAlignEnd, srcOffset+srcLength-srcAlignEnd, dstAlignEnd); err != nil {
-		return err
+	c2, _, err := s.copy(dst, src, srcAlignEnd, srcOffset+srcLength-srcAlignEnd, dstAlignEnd)
+	if err != nil {
+		return copied + c2, 0, err
 	}
+	copied += c2
 	// close the aligned blocks
-	return CloneRange(dst, src, srcAlignStart, alignLength, dstAlignStart)
+	return copied, alignLength, CloneRange(dst, src, srcAlignStart, alignLength, dstAlignStart)
 }
