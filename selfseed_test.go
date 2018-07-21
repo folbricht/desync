@@ -106,6 +106,8 @@ func TestSelfSeed(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer dst.Close()
+			defer os.Remove(dst.Name())
 
 			// Extract the file
 			stats, err := AssembleFile(context.Background(), dst.Name(), idx, s, nil, 1, nil)

@@ -77,7 +77,7 @@ func TestExtract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	os.RemoveAll(out1.Name())
+	os.Remove(out1.Name())
 
 	// This one is a complete file matching what we exepct at the end
 	out2, err := ioutil.TempFile("", "out2")
@@ -88,7 +88,7 @@ func TestExtract(t *testing.T) {
 		t.Fatal(err)
 	}
 	out2.Close()
-	defer os.RemoveAll(out2.Name())
+	defer os.Remove(out2.Name())
 
 	// Incomplete or damaged file that has most but not all data
 	out3, err := ioutil.TempFile("", "out3")
@@ -102,7 +102,7 @@ func TestExtract(t *testing.T) {
 		t.Fatal(err)
 	}
 	out3.Close()
-	defer os.RemoveAll(out3.Name())
+	defer os.Remove(out3.Name())
 
 	// At this point we have the data needed for the test setup
 	// in - Temp file that represents the original input file
@@ -126,6 +126,7 @@ func TestExtract(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			defer os.Remove(test.outfile)
 			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil, 10, nil); err != nil {
 				t.Fatal(err)
 			}
