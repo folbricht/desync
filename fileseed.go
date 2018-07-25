@@ -120,8 +120,8 @@ func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint
 			return 0, 0, err
 		}
 	}
-	// Do a straight copy if reflinks are not supported
-	if !s.canReflink {
+	// Do a straight copy if reflinks are not supported or blocks aren't aligned
+	if !s.canReflink || s.chunks[0].Start%blocksize != offset%blocksize {
 		return s.copy(dst, src, s.chunks[0].Start, length, offset)
 	}
 	return s.clone(dst, src, s.chunks[0].Start, length, offset, blocksize)
