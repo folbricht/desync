@@ -40,9 +40,10 @@ func (s *selfSeed) add(segment indexSegment) {
 	for n := segment.first; n <= segment.last; n++ {
 		s.cache[n] = struct{}{}
 	}
-	// Advance pos until we find a chunk we don't yet have recorded. IDEA: If it was
-	// guaranteed that the numbers are only increasing, we could drop old numbers
-	// from the map to keep it's size to a minimum and only store out-of-sequence
+	// Advance pos until we find a chunk we don't yet have recorded while recording
+	// the chunk positions we do have in the position map used to find seed matches.
+	// Since it's guaranteed that the numbers are only increasing, we drop old numbers
+	// from the cache map to keep it's size to a minimum and only store out-of-sequence
 	// numbers
 	for {
 		if _, ok := s.cache[s.written]; !ok {
@@ -50,6 +51,7 @@ func (s *selfSeed) add(segment indexSegment) {
 		}
 		chunk := s.index.Chunks[s.written]
 		s.pos[chunk.ID] = append(s.pos[chunk.ID], s.written)
+		delete(s.cache, s.written)
 		s.written++
 	}
 }
