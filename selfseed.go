@@ -15,7 +15,7 @@ type selfSeed struct {
 	canReflink bool
 	written    int
 	mu         sync.RWMutex
-	cache      map[int]struct{}
+	cache      map[int]int
 }
 
 // newSelfSeed initializes a new seed based on the file being extracted
@@ -25,7 +25,7 @@ func newSelfSeed(file string, index Index) (*selfSeed, error) {
 		pos:        make(map[ChunkID][]int),
 		index:      index,
 		canReflink: CanClone(file, file),
-		cache:      make(map[int]struct{}),
+		cache:      make(map[int]int),
 	}
 	return &s, nil
 }
@@ -37,22 +37,31 @@ func newSelfSeed(file string, index Index) (*selfSeed, error) {
 func (s *selfSeed) add(segment indexSegment) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for n := segment.first; n <= segment.last; n++ {
-		s.cache[n] = struct{}{}
-	}
+
+	// Make a record of this segment in the cache since those could come in
+	// out-of-order
+	s.cache[segment.first] = segment.last + 1
+
 	// Advance pos until we find a chunk we don't yet have recorded while recording
 	// the chunk positions we do have in the position map used to find seed matches.
 	// Since it's guaranteed that the numbers are only increasing, we drop old numbers
 	// from the cache map to keep it's size to a minimum and only store out-of-sequence
 	// numbers
 	for {
-		if _, ok := s.cache[s.written]; !ok {
+		// See if we can advance the write pointer in the self-seed which requires
+		// consecutive chunks. If we don't have the next segment yet, just keep it
+		// in the cache until we do.
+		next, ok := s.cache[s.written]
+		if !ok {
 			break
 		}
-		chunk := s.index.Chunks[s.written]
-		s.pos[chunk.ID] = append(s.pos[chunk.ID], s.written)
+		// Record all chunks in this segment as written by adding them to the position map
+		for i := s.written; i < next; i++ {
+			chunk := s.index.Chunks[i]
+			s.pos[chunk.ID] = append(s.pos[chunk.ID], i)
+		}
 		delete(s.cache, s.written)
-		s.written++
+		s.written = next
 	}
 }
 

@@ -71,6 +71,11 @@ func TestSelfSeed(t *testing.T) {
 			minCloned: 4 * size,
 			maxCloned: 4 * size,
 		},
+		"repeating chunk sequence mid file": {
+			index:     []int{1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
+			minCloned: 7 * size,
+			maxCloned: 7 * size,
+		},
 		"repeating chunk sequence reversed": {
 			index:     []int{0, 1, 2, 2, 1, 0},
 			minCloned: 2 * size,
