@@ -108,8 +108,8 @@ func storeFromLocation(location string, opts storeOptions) (desync.Store, error)
 		h.SetErrorRetry(cfg.HTTPErrorRetry)
 		s = h
 	case "s3+http", "s3+https":
-		accesskey, secretkey := cfg.GetS3CredentialsFor(loc)
-		s, err = desync.NewS3Store(location, accesskey, secretkey)
+		s3Creds, region := cfg.GetS3CredentialsFor(loc)
+		s, err = desync.NewS3Store(location, s3Creds, region)
 		if err != nil {
 			return nil, err
 		}
