@@ -1,12 +1,9 @@
 package desync
 
 import (
-	"bytes"
 	"crypto/tls"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"net/http"
+	"net"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -15,6 +12,7 @@ import (
 	"crypto/x509"
 
 	"github.com/pkg/errors"
+	"github.com/valyala/fasthttp"
 )
 
 // TrustInsecure determines if invalid certs presented by HTTP stores should
@@ -24,7 +22,7 @@ var TrustInsecure bool
 // RemoteHTTP is a remote casync store accessed via HTTP.
 type RemoteHTTP struct {
 	location   *url.URL
-	client     *http.Client
+	client     *fasthttp.Client
 	errorRetry int
 }
 
@@ -40,7 +38,7 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 		u.Path = u.Path + "/"
 	}
 
-	var tr *http.Transport
+	var client *fasthttp.Client
 
 	if cert != "" && key != "" {
 		// Load client cert
@@ -52,34 +50,34 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CaCertPool")
 		}
-		tr = &http.Transport{
-			DisableCompression:  true,
-			MaxIdleConnsPerHost: n,
-			TLSClientConfig: &tls.Config{
+		client = &fasthttp.Client{
+			MaxConnsPerHost: n,
+			TLSConfig: &tls.Config{
 				InsecureSkipVerify: TrustInsecure,
 				Certificates:       []tls.Certificate{certificate},
 				RootCAs:            caCertPool,
 			},
 		}
-
 	} else {
 		// Build a client with the right size connection pool and optionally disable
 		// certificate verification.
-		tr = &http.Transport{
-			DisableCompression:  true,
-			MaxIdleConnsPerHost: n,
-			TLSClientConfig:     &tls.Config{InsecureSkipVerify: TrustInsecure},
+		client = &fasthttp.Client{
+			MaxIdleConnDuration: 2 * time.Second,
+			MaxConnsPerHost:     n,
+			TLSConfig:           &tls.Config{InsecureSkipVerify: TrustInsecure},
 		}
 	}
 
-	client := &http.Client{Transport: tr}
+	// client := &http.Client{Transport: tr}
 
 	return &RemoteHTTP{location: &u, client: client}, nil
 }
 
 // SetTimeout configures the timeout on the HTTP client for all requests
 func (r *RemoteHTTP) SetTimeout(timeout time.Duration) {
-	r.client.Timeout = timeout
+	r.client.ReadTimeout = timeout
+	r.client.WriteTimeout = timeout
+	r.client.Dial = dialFunc(timeout)
 }
 
 // SetErrorRetry defines how many HTTP errors are retried. This can be useful
@@ -96,34 +94,26 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
 
 	u, _ := r.location.Parse(p)
 	var (
-		resp    *http.Response
+		status  int
 		err     error
 		attempt int
 		b       []byte
 	)
 	for {
 		attempt++
-		resp, err = r.client.Get(u.String())
+		status, b, err = r.client.Get(nil, u.String())
 		if err != nil {
 			if attempt >= r.errorRetry {
 				return nil, errors.Wrap(err, u.String())
 			}
 			continue
 		}
-		defer resp.Body.Close()
-		switch resp.StatusCode {
-		case 200: // expected
-		case 404:
+		switch status {
+		case fasthttp.StatusOK: // expected
+		case fasthttp.StatusNotFound:
 			return nil, ChunkMissing{id}
 		default:
-			return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, p)
-		}
-		b, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			if attempt >= r.errorRetry {
-				return nil, errors.Wrap(err, u.String())
-			}
-			continue
+			return nil, fmt.Errorf("unexpected status code %d from %s", status, p)
 		}
 		break
 	}
@@ -137,23 +127,23 @@ func (r *RemoteHTTP) HasChunk(id ChunkID) bool {
 
 	u, _ := r.location.Parse(p)
 	var (
-		resp    *http.Response
+		req     = fasthttp.AcquireRequest()
+		resp    = fasthttp.AcquireResponse()
 		err     error
 		attempt int
 	)
+	req.SetRequestURI(u.String())
+	req.Header.SetMethod("HEAD")
 retry:
 	attempt++
-	resp, err = r.client.Head(u.String())
-	if err != nil {
+	if err = r.client.Do(req, resp); err != nil {
 		if attempt >= r.errorRetry {
 			return false
 		}
 		goto retry
 	}
-	io.Copy(ioutil.Discard, resp.Body)
-	resp.Body.Close()
-	switch resp.StatusCode {
-	case 200:
+	switch resp.StatusCode() {
+	case fasthttp.StatusOK:
 		return true
 	default:
 		return false
@@ -167,27 +157,24 @@ func (r *RemoteHTTP) StoreChunk(id ChunkID, b []byte) error {
 
 	u, _ := r.location.Parse(p)
 	var (
-		resp    *http.Response
 		err     error
 		attempt int
+		req     = fasthttp.AcquireRequest()
+		resp    = fasthttp.AcquireResponse()
 	)
+	req.SetRequestURI(u.String())
+	req.Header.SetMethod("PUT")
+	req.SetBody(b)
 retry:
 	attempt++
-	req, err := http.NewRequest("PUT", u.String(), bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	resp, err = r.client.Do(req)
-	if err != nil {
+	if err = r.client.Do(req, resp); err != nil {
 		if attempt >= r.errorRetry {
 			return err
 		}
 		goto retry
 	}
-	defer resp.Body.Close()
-	msg, _ := ioutil.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return errors.New(string(msg))
+	if resp.StatusCode() != fasthttp.StatusOK {
+		return errors.New(string(resp.Body()))
 	}
 	return nil
 }
@@ -197,3 +184,9 @@ func (r *RemoteHTTP) String() string {
 }
 
 func (s RemoteHTTP) Close() error { return nil }
+
+func dialFunc(timeout time.Duration) fasthttp.DialFunc {
+	return func(addr string) (net.Conn, error) {
+		return net.DialTimeout("tcp", addr, timeout)
+	}
+}

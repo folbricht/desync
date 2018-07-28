@@ -5,10 +5,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/valyala/fasthttp"
 )
 
 const serverUsage = `desync chunk-server [options]
@@ -94,7 +94,7 @@ func server(ctx context.Context, args []string) error {
 	}
 	defer s.Close()
 
-	http.Handle("/", desync.NewHTTPHandler(s, writable))
+	h := desync.NewHTTPHandler(s, writable)
 
 	// Run the server(s) in a goroutine, and use the main goroutine to wait for
 	// a signal or a failing server (ctx gets cancelled in that case)
@@ -103,12 +103,14 @@ func server(ctx context.Context, args []string) error {
 
 	for _, addr := range listenAddresses.list {
 		go func(a string) {
-			server := &http.Server{Addr: a}
+			server := &fasthttp.Server{
+				Handler: h.HandleFastHTTP,
+			}
 			var err error
 			if key == "" {
-				err = server.ListenAndServe()
+				err = server.ListenAndServe(a)
 			} else {
-				err = server.ListenAndServeTLS(cert, key)
+				err = server.ListenAndServeTLS(a, cert, key)
 			}
 			fmt.Fprintln(os.Stderr, err)
 			cancel()
