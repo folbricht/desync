@@ -60,7 +60,7 @@ func TestParallelChunking(t *testing.T) {
 				break
 			}
 			id := ChunkID(sha512.Sum512_256(buf))
-			expected = append(expected, IndexChunk{Start: start, Size: uint64(len(buf)), ID: id})
+			expected = append(expected, IndexChunk{Start: start, Size: uint64(len(buf)), ID: id, b: buf})
 		}
 
 		for n := 2; n < 3; n++ {

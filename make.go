@@ -170,7 +170,7 @@ func (c *pChunker) start(ctx context.Context) {
 		id := sha512.Sum512_256(b)
 
 		// Store it in our bucket
-		chunk := IndexChunk{Start: start, Size: uint64(len(b)), ID: id}
+		chunk := IndexChunk{Start: start, Size: uint64(len(b)), ID: id, b: b}
 		c.results <- chunk
 
 		// Check if the next worker already has this chunk, at which point we stop
