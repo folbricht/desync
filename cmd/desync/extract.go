@@ -5,11 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"github.com/folbricht/desync"
+	"github.com/folbricht/tempfile"
 )
 
 const extractUsage = `desync extract [options] <caibx> <output>
@@ -96,27 +96,20 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
-	tmpfile, err := ioutil.TempFile(filepath.Dir(name), "."+filepath.Base(name))
+	tmp, err := tempfile.NewMode(filepath.Dir(name), "."+filepath.Base(name), 0644)
 	if err != nil {
 		return err
 	}
-	tmpfile.Close()
-	defer os.Remove(tmpfile.Name())
+	tmp.Close()
+	defer os.Remove(tmp.Name())
 
 	// Build the blob from the chunks, writing everything into the tempfile
-	if err = writeInplace(ctx, tmpfile.Name(), idx, s, n); err != nil {
+	if err = writeInplace(ctx, tmp.Name(), idx, s, n); err != nil {
 		return err
 	}
 
 	// Rename the tempfile to the output file
-	if err := os.Rename(tmpfile.Name(), name); err != nil {
-		return err
-	}
-
-	// FIXME Unfortunately, tempfiles are created with 0600 perms and there doesn't
-	// appear a way to influence that, short of writing another function that
-	// generates a tempfile name. Set 0644 perms here after rename (ignoring umask)
-	return os.Chmod(name, 0644)
+	return os.Rename(tmp.Name(), name)
 }
 
 func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, n int) error {
