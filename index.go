@@ -127,7 +127,7 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	s := NewChunkStorage(ctx, cancel, n, ws, in, nil)
+	s := NewChunkStorage(ctx, cancel, "", n, ws, in, nil)
 	s.Start()
 	// Feed the workers, stop if there are any errors. To keep the index list in
 	// order, we calculate the checksum here before handing	them over to the

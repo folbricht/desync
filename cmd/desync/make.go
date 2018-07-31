@@ -77,7 +77,8 @@ func makeCmd(ctx context.Context, args []string) error {
 	// Chop up the file into chunks and store them in the target store if a store was given
 	if s != nil {
 		pb := NewProgressBar(len(index.Chunks), "Storing ")
-		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, pb); err != nil {
+		//  Data file not needed as it was read in previous step (desync.IndexFromFile)
+		if err := desync.ChopFile(ctx, "", index.Chunks, s, n, pb); err != nil {
 			return err
 		}
 	}

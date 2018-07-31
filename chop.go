@@ -12,7 +12,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	s := NewChunkStorage(ctx, cancel, n, ws, in, pb)
+	s := NewChunkStorage(ctx, cancel, name, n, ws, in, pb)
 	s.Start()
 
 	// Feed the workers, stop if there are any errors

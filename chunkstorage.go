@@ -8,6 +8,8 @@ import (
 	"os"
 	"sync"
 
+	"io"
+
 	"github.com/pkg/errors"
 )
 
@@ -18,29 +20,51 @@ type ChunkJob struct {
 
 type ChunkStorage struct {
 	sync.Mutex
-	ctx    context.Context
-	cancel context.CancelFunc
-	n      int
-	ws     WriteStore
-	in     <-chan ChunkJob
-	pb     ProgressBar
+	ctx      context.Context
+	cancel   context.CancelFunc
+	chopFile string
+	n        int
+	ws       WriteStore
+	in       <-chan ChunkJob
+	pb       ProgressBar
 
 	wg      sync.WaitGroup
 	results map[int]IndexChunk
 	pErr    error
 }
 
-func NewChunkStorage(ctx context.Context, cancel context.CancelFunc, n int, ws WriteStore, in <-chan ChunkJob, pb ProgressBar) *ChunkStorage {
+// Stores the chinks passed in the input channel. If chopFile is passed (non-blank string), then the chunks will be
+// read from that file. Otherwise it's assumed that the chunk contents are pre-loaded and passed via the input channel.
+func NewChunkStorage(ctx context.Context, cancel context.CancelFunc, chopFile string, n int, ws WriteStore, in <-chan ChunkJob, pb ProgressBar) *ChunkStorage {
 	return &ChunkStorage{
-		ctx:     ctx,
-		cancel:  cancel,
-		n:       n,
-		ws:      ws,
-		in:      in,
-		pb:      pb,
-		wg:      sync.WaitGroup{},
-		results: make(map[int]IndexChunk),
+		ctx:      ctx,
+		cancel:   cancel,
+		n:        n,
+		ws:       ws,
+		chopFile: chopFile,
+		in:       in,
+		pb:       pb,
+		wg:       sync.WaitGroup{},
+		results:  make(map[int]IndexChunk),
 	}
+}
+
+func readChunkFromFile(f *os.File, c IndexChunk) ([]byte, error) {
+	var err error
+	b := make([]byte, c.Size)
+
+	// Position the filehandle to the place where the chunk is meant to come
+	// from within the file
+	if _, err = f.Seek(int64(c.Start), io.SeekStart); err != nil {
+		return b, err
+	}
+	// Read the whole (uncompressed) chunk into memory
+
+	if _, err = io.ReadFull(f, b); err != nil {
+		return b, err
+	}
+
+	return b, nil
 }
 
 func (s *ChunkStorage) Start() {
@@ -73,7 +97,20 @@ func (s *ChunkStorage) Start() {
 	// storage (if required). Each job comes with a chunk number for sorting later
 	for i := 0; i < s.n; i++ {
 		s.wg.Add(1)
+
+		var f *os.File
+		var fErr error
+		// Check if we need to chop the file
+		if s.chopFile != "" {
+			f, fErr = os.Open(s.chopFile)
+			if fErr != nil {
+				recordError(fmt.Errorf("unable to open file %s, %s", s.chopFile, fErr))
+			}
+
+		}
+
 		go func() {
+			defer f.Close()
 			for j := range s.in {
 
 				// Update progress bar if any
@@ -87,6 +124,16 @@ func (s *ChunkStorage) Start() {
 				// Skip this chunk if the store already has it
 				if s.ws.HasChunk(j.chunk.ID) {
 					continue
+				}
+
+				// Check if we need to read the chunk from the data file
+				if s.chopFile != "" {
+					var err error
+					j.chunk.b, err = readChunkFromFile(f, j.chunk)
+					if err != nil {
+						recordError(err)
+						continue
+					}
 				}
 
 				// Calculate this chunks checksum and compare to what it's supposed to be
