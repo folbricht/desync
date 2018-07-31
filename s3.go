@@ -72,8 +72,10 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 		switch e.Code {
 		case "NoSuchBucket":
 			err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
-		default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+		case "NoSuchKey":
 			err = ChunkMissing{ID: id}
+		default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+			err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
 		}
 	}
 	return b, err
