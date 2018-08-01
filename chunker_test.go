@@ -53,28 +53,28 @@ func TestChunkerLargeFile(t *testing.T) {
 	}
 
 	for i, e := range expected {
-		start, buf, err := c.Next()
+		chunk, err := c.Next()
 		if err != nil {
 			t.Fatal(err)
 		}
-		hash := ChunkID(sha512.Sum512_256(buf)).String()
+		hash := ChunkID(sha512.Sum512_256(chunk.Data)).String()
 		if hash != e.ID {
 			t.Fatalf("chunk #%d, unexpected hash %s, expected %s", i+1, hash, e.ID)
 		}
-		if start != e.Start {
-			t.Fatalf("chunk #%d, unexpected start %d, expected %d", i+1, start, e.Start)
+		if chunk.Start != e.Start {
+			t.Fatalf("chunk #%d, unexpected start %d, expected %d", i+1, chunk.Start, e.Start)
 		}
-		if uint64(len(buf)) != e.Size {
-			t.Fatalf("chunk #%d, unexpected size %d, expected %d", i+1, uint64(len(buf)), e.Size)
+		if uint64(len(chunk.Data)) != e.Size {
+			t.Fatalf("chunk #%d, unexpected size %d, expected %d", i+1, uint64(len(chunk.Data)), e.Size)
 		}
 	}
 	// Should get a size of 0 at the end
-	_, buf, err := c.Next()
+	chunk, err := c.Next()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != 0 {
-		t.Fatalf("expected size 0 at the end, got %d", len(buf))
+	if len(chunk.Data) != 0 {
+		t.Fatalf("expected size 0 at the end, got %d", len(chunk.Data))
 	}
 }
 
@@ -84,15 +84,15 @@ func TestChunkerEmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start, buf, err := c.Next()
+	chunk, err := c.Next()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != 0 {
-		t.Fatalf("unexpected size %d, expected 0", len(buf))
+	if len(chunk.Data) != 0 {
+		t.Fatalf("unexpected size %d, expected 0", len(chunk.Data))
 	}
-	if start != 0 {
-		t.Fatalf("unexpected start position %d, expected 0", start)
+	if chunk.Start != 0 {
+		t.Fatalf("unexpected start position %d, expected 0", chunk.Start)
 	}
 }
 
@@ -104,15 +104,15 @@ func TestChunkerSmallFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	start, buf, err := c.Next()
+	chunk, err := c.Next()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != len(b) {
-		t.Fatalf("unexpected size %d, expected %d", len(buf), len(b))
+	if len(chunk.Data) != len(b) {
+		t.Fatalf("unexpected size %d, expected %d", len(chunk.Data), len(b))
 	}
-	if start != 0 {
-		t.Fatalf("unexpected start position %d, expected 0", start)
+	if chunk.Start != 0 {
+		t.Fatalf("unexpected start position %d, expected 0", chunk.Start)
 	}
 
 }
@@ -127,18 +127,18 @@ func TestChunkerNoBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	for {
-		start, buf, err := c.Next()
+		chunk, err := c.Next()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(buf) == 0 {
+		if len(chunk.Data) == 0 {
 			break
 		}
-		if uint64(len(buf)) != ChunkSizeMaxDefault {
-			t.Fatalf("unexpected size %d, expected %d", len(buf), ChunkSizeMaxDefault)
+		if uint64(len(chunk.Data)) != ChunkSizeMaxDefault {
+			t.Fatalf("unexpected size %d, expected %d", len(chunk.Data), ChunkSizeMaxDefault)
 		}
-		if start%ChunkSizeMaxDefault != 0 {
-			t.Fatalf("unexpected start position %d, expected 0", start)
+		if chunk.Start%ChunkSizeMaxDefault != 0 {
+			t.Fatalf("unexpected start position %d, expected 0", chunk.Start)
 		}
 	}
 }
@@ -172,15 +172,15 @@ func chunkFile(b *testing.B, name string) error {
 	}
 	b.StartTimer()
 	for {
-		start, buf, err := c.Next()
+		chunk, err := c.Next()
 		if err != nil {
 			return err
 		}
-		if len(buf) == 0 {
+		if len(chunk.Data) == 0 {
 			break
 		}
-		chunkStart = start
-		chunkBuf = buf
+		chunkStart = chunk.Start
+		chunkBuf = chunk.Data
 	}
 	return err
 }

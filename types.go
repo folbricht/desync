@@ -9,6 +9,12 @@ import (
 // ChunkID is the SHA512/256 in binary encoding
 type ChunkID [32]byte
 
+type Chunk struct {
+	Start uint64
+	ID    ChunkID
+	Data  []byte
+}
+
 // ChunkIDFromSlice converts a SHA512/256 encoded as byte slice into a ChunkID.
 // It's expected the slice is of the correct length
 func ChunkIDFromSlice(b []byte) (ChunkID, error) {

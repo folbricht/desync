@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"crypto/sha512"
 	"errors"
 	"fmt"
 	"io"
@@ -143,7 +144,7 @@ func (c *Chunker) fillBuffer() (n int, err error) {
 
 // Next returns the starting position as well as the chunk data. Returns
 // an empty byte slice when complete
-func (c *Chunker) Next() (uint64, []byte, error) {
+func (c *Chunker) Next() (Chunk, error) {
 	if len(c.buf) < int(c.max) {
 		n, err := c.fillBuffer()
 		if err != nil {
@@ -199,7 +200,7 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	}
 }
 
-func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
+func (c *Chunker) split(i int, err error) (Chunk, error) {
 	// save the remaining bytes (after the split position) for the next round
 	start := c.start
 	b := c.buf[:i]
@@ -209,7 +210,8 @@ func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
 	// reset the hash
 	c.hIdx = 0
 	c.hValue = 0
-	return start, b, err
+	id := sha512.Sum512_256(b)
+	return Chunk{ID: id, Start: start, Data: b}, err
 }
 
 // Min returns the minimum chunk size

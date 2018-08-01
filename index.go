@@ -3,9 +3,9 @@ package desync
 import (
 	"bufio"
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/pkg/errors"
 
@@ -25,7 +25,10 @@ type IndexChunk struct {
 	ID    ChunkID
 	Start uint64
 	Size  uint64
-	b     []byte // This value is not to be written to the index file and it's only for communication between functions
+}
+
+func NewChunkIndex(c Chunk) IndexChunk {
+	return IndexChunk{Start: c.Start, Size: uint64(len(c.Data)), ID: c.ID}
 }
 
 // IndexFromReader parses a caibx structure (from a reader) and returns a populated Caibx
@@ -121,19 +124,32 @@ func (i *Index) Length() int64 {
 func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, error) {
 
 	var (
-		stop bool
-		in   = make(chan ChunkJob)
+		stop    bool
+		in      = make(chan Chunk)
+		results = make(map[int]IndexChunk)
+		mu      sync.Mutex
 	)
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	s := NewChunkStorage(ctx, cancel, "", n, ws, in, nil)
-	s.Start()
+	s := NewChunkStorage(ctx, cancel, n, ws, in, nil)
+
 	// Feed the workers, stop if there are any errors. To keep the index list in
 	// order, we calculate the checksum here before handing	them over to the
 	// workers for compression and storage. That could probablybe optimized further
 	var num int // chunk #, so we can re-assemble the index in the right order later
+
 	for {
+		// All the chunks are processed in parallel, but we need to preserve the
+		// order for later. So add the chunking results to a map, indexed by
+		// the chunk number so we can rebuild it in the right order when done
+		recordResult := func(num int, r IndexChunk) {
+			mu.Lock()
+			defer mu.Unlock()
+			results[num] = r
+		}
+
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
@@ -141,26 +157,24 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 			break
 		default:
 		}
-		start, b, err := c.Next()
+		chunk, err := c.Next()
 		if err != nil {
 			return Index{}, err
 		}
-		if len(b) == 0 {
+		if len(chunk.Data) == 0 {
 			break
 		}
 
-		// Send it off for compression and storage
-		// Calculate the chunk ID
-		id := sha512.Sum512_256(b)
-		chunk := IndexChunk{Start: start, Size: uint64(len(b)), ID: id, b: b}
+		// Record the index row
+		recordResult(num, NewChunkIndex(chunk))
 
-		in <- ChunkJob{num: num, chunk: chunk}
+		// Send it off for compression and storage
+		in <- chunk
 		num++
 	}
 	close(in)
 
-	// s.GetResults() will block until all chunk jobs are processed
-	results, pErr := s.GetResults()
+	pErr := s.Wait()
 
 	// Everything has settled, now see if something happened that would invalidate
 	// the results. Either an error or an interrupt by the user. We don't just
