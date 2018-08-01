@@ -111,7 +111,7 @@ func (s *ChunkStorage) markAsStored(c Chunk) {
 func (s *ChunkStorage) StoreChunk(c Chunk) error {
 
 	// Check in-memory cache to see if chunk has been stored, if so, skip it
-	if s.stored[c.ID] {
+	if s.isChunkStored(c) {
 		return nil
 	}
 
