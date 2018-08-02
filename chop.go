@@ -16,7 +16,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 		wg   sync.WaitGroup
 		mu   sync.Mutex
 		pErr error
-		in   = make(chan IndexChunk) // Chopper channel
+		in   = make(chan IndexChunk)
 	)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -32,7 +32,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 		cancel()
 	}
 
-	s := NewChunkStorage(ctx, cancel, n, ws, nil, nil)
+	s := NewChunkStorage(ws)
 
 	// Start the workers, each having its own filehandle to read concurrently
 	for i := 0; i < n; i++ {
@@ -67,7 +67,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 					continue
 				}
 
-				if err := s.StoreChunk(Chunk{ID: c.ID, Data: b}); err != nil {
+				if err := s.StoreChunk(c.ID, b); err != nil {
 					recordError(err)
 					continue
 				}

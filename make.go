@@ -2,6 +2,7 @@ package desync
 
 import (
 	"context"
+	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -21,7 +22,6 @@ import (
 func IndexFromFile(ctx context.Context,
 	name string,
 	n int,
-	ws WriteStore,
 	min, avg, max uint64,
 	progress func(uint64),
 ) (Index, ChunkingStats, error) {
@@ -52,12 +52,6 @@ func IndexFromFile(ctx context.Context,
 	size := uint64(info.Size())
 	span := size / uint64(n) // initial spacing between chunkers
 
-	var storage *ChunkStorage
-	// Check if storage was requested
-	if ws != nil {
-		storage = NewChunkStorage(ctx, cancel, n, ws, nil, nil)
-	}
-
 	// Create/initialize the workers
 	worker := make([]*pChunker, n)
 	for i := 0; i < n; i++ {
@@ -81,7 +75,6 @@ func IndexFromFile(ctx context.Context,
 		}
 		p := &pChunker{
 			chunker: c,
-			s:       storage,
 			results: make(chan IndexChunk, mChunks),
 			done:    make(chan struct{}),
 			offset:  start,
@@ -137,9 +130,6 @@ type pChunker struct {
 	// single-stream chunker used by this worker
 	chunker Chunker
 
-	// If non-nil, chunks will be stored
-	s *ChunkStorage
-
 	// starting position in the stream for this worker, needed to calculate
 	// the absolute position of every boundry that is returned
 	offset uint64
@@ -165,32 +155,31 @@ func (c *pChunker) start(ctx context.Context) {
 			return
 		default: // We weren't asked to stop and weren't interrupted, carry on
 		}
-		chunk, err := c.chunker.Next()
+		start, b, err := c.chunker.Next()
 		if err != nil {
 			c.err = err
 			return
 		}
 		c.stats.incProduced()
-		chunk.Start += c.offset
-		if len(chunk.Data) == 0 {
+		start += c.offset
+		if len(b) == 0 {
 			// TODO: If this worker reached the end of the stream and it's not the
 			// last one, we should probable stop all following workers. Meh, shouldn't
 			// be happening for large file or save significant CPU for small ones.
 			c.eof = true
 			return
 		}
+		// Calculate the chunk ID
+		id := sha512.Sum512_256(b)
+
 		// Store it in our bucket
-		ci := NewChunkIndex(chunk)
-		c.results <- ci
+		chunk := IndexChunk{Start: start, Size: uint64(len(b)), ID: id}
+		c.results <- chunk
 
 		// Check if the next worker already has this chunk, at which point we stop
 		// here and let the next continue
-		if c.next != nil && c.next.syncWith(ci) {
+		if c.next != nil && c.next.syncWith(chunk) {
 			return
-		}
-
-		if c.s != nil {
-			c.err = c.s.StoreChunk(chunk)
 		}
 
 		// If the next worker has stopped and has no more chunks in its bucket,

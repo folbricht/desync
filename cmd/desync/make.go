@@ -68,11 +68,21 @@ func makeCmd(ctx context.Context, args []string) error {
 
 	// Split up the file and create and index from it
 	pc.Start()
-	index, stats, err := desync.IndexFromFile(ctx, dataFile, n, s, min, avg, max, func(v uint64) { pc.Set(int(v)) })
+	index, stats, err := desync.IndexFromFile(ctx, dataFile, n, min, avg, max, func(v uint64) { pc.Set(int(v)) })
 	if err != nil {
 		return err
 	}
 	pc.Stop()
+
+	// Chop up the file into chunks and store them in the target store if a store was given
+	if s != nil {
+		ps := NewProgressBar(len(index.Chunks), "Storing ")
+		ps.Start()
+		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, ps); err != nil {
+			return err
+		}
+		ps.Stop()
+	}
 
 	fmt.Println("Chunks produced:", stats.ChunksAccepted)
 	fmt.Println("Overhead:", stats.ChunksProduced-stats.ChunksAccepted)

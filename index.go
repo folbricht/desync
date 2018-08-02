@@ -3,6 +3,7 @@ package desync
 import (
 	"bufio"
 	"context"
+	"crypto/sha512"
 	"fmt"
 	"math"
 	"sync"
@@ -25,10 +26,6 @@ type IndexChunk struct {
 	ID    ChunkID
 	Start uint64
 	Size  uint64
-}
-
-func NewChunkIndex(c Chunk) IndexChunk {
-	return IndexChunk{Start: c.Start, Size: uint64(len(c.Data)), ID: c.ID}
 }
 
 // IndexFromReader parses a caibx structure (from a reader) and returns a populated Caibx
@@ -122,34 +119,70 @@ func (i *Index) Length() int64 {
 // populates a store with the chunks and returns an index. Hashing and compression
 // is performed in n goroutines while the hashing algorithm is performed serially.
 func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, error) {
-
+	type chunkJob struct {
+		num   int
+		start uint64
+		b     []byte
+	}
 	var (
 		stop    bool
-		in      = make(chan Chunk)
-		results = make(map[int]IndexChunk)
+		wg      sync.WaitGroup
 		mu      sync.Mutex
+		pErr    error
+		in      = make(chan chunkJob)
+		results = make(map[int]IndexChunk)
 	)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	s := NewChunkStorage(ctx, cancel, n, ws, in, nil)
+	s := NewChunkStorage(ws)
+
+	// Helper function to record and deal with any errors in the goroutines
+	recordError := func(err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if pErr == nil {
+			pErr = err
+		}
+		cancel()
+	}
+
+	// All the chunks are processed in parallel, but we need to preserve the
+	// order for later. So add the chunking results to a map, indexed by
+	// the chunk number so we can rebuild it in the right order when done
+	recordResult := func(num int, r IndexChunk) {
+		mu.Lock()
+		defer mu.Unlock()
+		results[num] = r
+	}
+
+	// Start the workers responsible for checksum calculation, compression and
+	// storage (if required). Each job comes with a chunk number for sorting later
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			for c := range in {
+				// Calculate the chunk ID
+				id := sha512.Sum512_256(c.b)
+
+				// Record the index row
+				chunk := IndexChunk{Start: c.start, Size: uint64(len(c.b)), ID: id}
+				recordResult(c.num, chunk)
+
+				if err := s.StoreChunk(id, c.b); err != nil {
+					recordError(err)
+					continue
+				}
+			}
+			wg.Done()
+		}()
+	}
 
 	// Feed the workers, stop if there are any errors. To keep the index list in
 	// order, we calculate the checksum here before handing	them over to the
 	// workers for compression and storage. That could probablybe optimized further
 	var num int // chunk #, so we can re-assemble the index in the right order later
-
 	for {
-		// All the chunks are processed in parallel, but we need to preserve the
-		// order for later. So add the chunking results to a map, indexed by
-		// the chunk number so we can rebuild it in the right order when done
-		recordResult := func(num int, r IndexChunk) {
-			mu.Lock()
-			defer mu.Unlock()
-			results[num] = r
-		}
-
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
@@ -157,26 +190,23 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 			break
 		default:
 		}
-		chunk, err := c.Next()
+		start, b, err := c.Next()
 		if err != nil {
 			return Index{}, err
 		}
-		if len(chunk.Data) == 0 {
+		if len(b) == 0 {
 			break
 		}
 
-		// Record the index row
-		recordResult(num, NewChunkIndex(chunk))
-
 		// Send it off for compression and storage
-		in <- chunk
+		in <- chunkJob{num: num, start: start, b: b}
+
 		num++
 	}
 	close(in)
+	wg.Wait()
 
-	pErr := s.Wait()
-
-	// Everything has settled, now see if something happened that would invalidate
+	// Everything has settled, now see if something happend that would invalidate
 	// the results. Either an error or an interrupt by the user. We don't just
 	// want to bail out when it happens and abandon any running goroutines that
 	// might still be writing/processing chunks. Only stop here it's safe like here.

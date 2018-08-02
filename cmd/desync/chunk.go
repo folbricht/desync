@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha512"
 	"flag"
 	"fmt"
 	"io"
@@ -69,13 +70,14 @@ func chunkCmd(ctx context.Context, args []string) error {
 			return nil
 		default:
 		}
-		chunk, err := c.Next()
+		start, b, err := c.Next()
 		if err != nil {
 			return err
 		}
-		if len(chunk.Data) == 0 {
+		if len(b) == 0 {
 			return nil
 		}
-		fmt.Printf("%d\t%d\t%x\n", chunk.Start+startPos, len(chunk.Data), chunk.ID)
+		sum := sha512.Sum512_256(b)
+		fmt.Printf("%d\t%d\t%x\n", start+startPos, len(b), sum)
 	}
 }

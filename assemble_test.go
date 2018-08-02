@@ -38,7 +38,6 @@ func TestExtract(t *testing.T) {
 		context.Background(),
 		in.Name(),
 		10,
-		nil,
 		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 		nil,
 	)

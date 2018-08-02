@@ -2,6 +2,7 @@ package desync
 
 import (
 	"context"
+	"crypto/sha512"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -51,14 +52,15 @@ func TestParallelChunking(t *testing.T) {
 		}
 		var expected []IndexChunk
 		for {
-			chunk, err := c.Next()
+			start, buf, err := c.Next()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(chunk.Data) == 0 {
+			if len(buf) == 0 {
 				break
 			}
-			expected = append(expected, NewChunkIndex(chunk))
+			id := ChunkID(sha512.Sum512_256(buf))
+			expected = append(expected, IndexChunk{Start: start, Size: uint64(len(buf)), ID: id})
 		}
 
 		for n := 2; n < 3; n++ {
@@ -68,7 +70,6 @@ func TestParallelChunking(t *testing.T) {
 					context.Background(),
 					name,
 					n,
-					nil,
 					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 					nil,
 				)

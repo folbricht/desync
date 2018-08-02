@@ -11,119 +11,56 @@ import (
 )
 
 type ChunkStorage struct {
-	sync.Mutex
-	ctx    context.Context
+	sync.RWMutex
 	cancel context.CancelFunc
 	n      int
 	ws     WriteStore
-	in     <-chan Chunk
 	pb     ProgressBar
-
 	wg     sync.WaitGroup
 	pErr   error
-	stored map[ChunkID]bool
+	stored map[ChunkID]struct{}
 }
 
 // Stores chunks passed in the input channel asynchronously. Wait() will wait for until the input channel is closed or
 // until there's an error, in which case it will return it.
-func NewChunkStorage(ctx context.Context, cancel context.CancelFunc, n int, ws WriteStore, in <-chan Chunk, pb ProgressBar) *ChunkStorage {
+func NewChunkStorage(ws WriteStore) *ChunkStorage {
 	s := &ChunkStorage{
-		ctx:    ctx,
-		cancel: cancel,
-		n:      n,
 		ws:     ws,
-		in:     in,
-		pb:     pb,
-		stored: make(map[ChunkID]bool),
-	}
-	if in != nil {
-		s.init()
+		stored: make(map[ChunkID]struct{}),
 	}
 	return s
 }
 
-// Initializes the chunk storage workers
-func (s *ChunkStorage) init() {
-
-	// Update progress bar if any
-	if s.pb != nil {
-		s.pb.Start()
-	}
-
-	// Helper function to record and deal with any errors in the goroutines
-	recordError := func(err error) {
-		s.Lock()
-		defer s.Unlock()
-		if s.pErr == nil {
-			s.pErr = err
-		}
-		s.cancel()
-	}
-
-	// Start the workers responsible for checksum calculation, compression and
-	// storage (if required). Each job comes with a chunk number for sorting later
-	for i := 0; i < s.n; i++ {
-		s.wg.Add(1)
-
-		go func() {
-			defer s.wg.Done()
-			for c := range s.in {
-
-				// Update progress bar if any
-				if s.pb != nil {
-					s.pb.Add(1)
-				}
-
-				if err := s.StoreChunk(c); err != nil {
-					recordError(err)
-					continue
-				}
-			}
-		}()
-	}
+func (s *ChunkStorage) isChunkStored(id ChunkID) bool {
+	s.RLock()
+	defer s.RUnlock()
+	_, ok := s.stored[id]
+	return ok
 }
 
-// Waits until the input channel is closed or an error occurs.
-func (s *ChunkStorage) Wait() error {
-	s.wg.Wait()
-
-	// Update progress bar if any
-	if s.pb != nil {
-		s.pb.Stop()
-	}
-
-	return s.pErr
-}
-
-func (s *ChunkStorage) isChunkStored(c Chunk) bool {
+func (s *ChunkStorage) markAsStored(id ChunkID) {
 	s.Lock()
 	defer s.Unlock()
-	return s.stored[c.ID]
-}
-
-func (s *ChunkStorage) markAsStored(c Chunk) {
-	s.Lock()
-	defer s.Unlock()
-	s.stored[c.ID] = true
+	s.stored[id] = struct{}{}
 }
 
 // Stores a single chunk in a synchronous manner.
-func (s *ChunkStorage) StoreChunk(c Chunk) error {
+func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) error {
 
 	// Check in-memory cache to see if chunk has been stored, if so, skip it
-	if s.isChunkStored(c) {
+	if s.isChunkStored(id) {
 		return nil
 	}
 
 	// Skip this chunk if the store already has it
-	if s.ws.HasChunk(c.ID) {
+	if s.ws.HasChunk(id) {
 		return nil
 	}
 
 	var retried bool
 retry:
 	// Compress the chunk
-	cb, err := Compress(c.Data)
+	cb, err := Compress(b)
 	if err != nil {
 		return err
 	}
@@ -138,7 +75,7 @@ retry:
 		return err
 	}
 
-	if !bytes.Equal(c.Data, db) {
+	if !bytes.Equal(b, db) {
 		if !retried {
 			fmt.Fprintln(os.Stderr, "zstd compression error detected, retrying")
 			retried = true
@@ -148,10 +85,10 @@ retry:
 	}
 
 	// Store the compressed chunk
-	if err = s.ws.StoreChunk(c.ID, cb); err != nil {
+	if err = s.ws.StoreChunk(id, cb); err != nil {
 		return err
 	}
 
-	s.markAsStored(c)
+	s.markAsStored(id)
 	return nil
 }
