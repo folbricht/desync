@@ -2,7 +2,6 @@ package desync
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -12,12 +11,7 @@ import (
 
 type ChunkStorage struct {
 	sync.RWMutex
-	cancel context.CancelFunc
-	n      int
 	ws     WriteStore
-	pb     ProgressBar
-	wg     sync.WaitGroup
-	pErr   error
 	stored map[ChunkID]struct{}
 }
 
