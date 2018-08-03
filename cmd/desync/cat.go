@@ -94,7 +94,7 @@ func cat(ctx context.Context, args []string) error {
 	defer s.Close()
 
 	// Read the input
-	c, err := readCaibxFile(inFile)
+	c, err := readCaibxFile(inFile, opts)
 	if err != nil {
 		return err
 	}

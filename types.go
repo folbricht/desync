@@ -3,6 +3,8 @@ package desync
 import (
 	"encoding/hex"
 
+	"io"
+
 	"github.com/pkg/errors"
 )
 
@@ -32,3 +34,9 @@ func ChunkIDFromString(id string) (ChunkID, error) {
 func (c ChunkID) String() string {
 	return hex.EncodeToString(c[:])
 }
+
+type ClosingByteReader struct {
+	io.Reader
+}
+
+func (c *ClosingByteReader) Close() error { return nil }

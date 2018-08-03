@@ -75,7 +75,7 @@ func mountIdx(ctx context.Context, args []string) error {
 	defer s.Close()
 
 	// Read the input
-	idx, err := readCaibxFile(indexFile)
+	idx, err := readCaibxFile(indexFile, opts)
 	if err != nil {
 		return err
 	}

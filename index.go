@@ -75,6 +75,10 @@ func IndexFromReader(r io.Reader) (c Index, err error) {
 	return
 }
 
+func (i *Index) Store(path string) (int64, error) {
+	return 0, nil
+}
+
 // WriteTo writes the index and chunk table into a stream
 func (i *Index) WriteTo(w io.Writer) (int64, error) {
 	index := FormatIndex{

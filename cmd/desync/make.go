@@ -23,6 +23,8 @@ func makeCmd(ctx context.Context, args []string) error {
 		storeLocation string
 		n             int
 		chunkSize     string
+		clientCert    string
+		clientKey     string
 	)
 	flags := flag.NewFlagSet("make", flag.ExitOnError)
 	flags.Usage = func() {
@@ -31,6 +33,8 @@ func makeCmd(ctx context.Context, args []string) error {
 	}
 	flags.StringVar(&storeLocation, "s", "", "Chunk store location")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.StringVar(&chunkSize, "m", "16:64:256", "Min/Avg/Max chunk size in kb")
 	flags.Parse(args)
 
@@ -39,6 +43,9 @@ func makeCmd(ctx context.Context, args []string) error {
 	}
 	if flags.NArg() > 2 {
 		return errors.New("Too many arguments. See -h for help.")
+	}
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
 	}
 
 	min, avg, max, err := parseChunkSizeParam(chunkSize)
@@ -49,10 +56,16 @@ func makeCmd(ctx context.Context, args []string) error {
 	indexFile := flags.Arg(0)
 	dataFile := flags.Arg(1)
 
+	sOpts := storeOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
+	}
+
 	// Open the target store if one was given
 	var s desync.WriteStore
 	if storeLocation != "" {
-		s, err = WritableStore(storeLocation, storeOptions{n: n})
+		s, err = WritableStore(storeLocation, sOpts)
 		if err != nil {
 			return err
 		}
@@ -87,14 +100,7 @@ func makeCmd(ctx context.Context, args []string) error {
 	fmt.Println("Chunks produced:", stats.ChunksAccepted)
 	fmt.Println("Overhead:", stats.ChunksProduced-stats.ChunksAccepted)
 
-	// Write the index to file
-	i, err := os.Create(indexFile)
-	if err != nil {
-		return err
-	}
-	defer i.Close()
-	_, err = index.WriteTo(i)
-	return err
+	return storeCaibxFile(index, indexFile, sOpts)
 }
 
 func parseChunkSizeParam(s string) (min, avg, max uint64, err error) {

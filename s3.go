@@ -14,23 +14,21 @@ import (
 )
 
 // S3Store is a read-write store with S3 backing
-type S3Store struct {
+type S3StoreBase struct {
 	Location string
 	client   *minio.Client
 	bucket   string
 	prefix   string
 }
 
-// NewS3Store creates an instance of a chunk store with S3 backing. The URL
-// should be provided like this: s3+http://host:port/bucket
-// Credentials are passed in via the environment variables S3_ACCESS_KEY
-// and S3S3_SECRET_KEY.
-func NewS3Store(location string, s3Creds *credentials.Credentials, region string) (S3Store, error) {
-	s := S3Store{Location: location}
-	u, err := url.Parse(location)
-	if err != nil {
-		return s, err
-	}
+// S3Store is a read-write store with S3 backing
+type S3Store struct {
+	S3StoreBase
+}
+
+func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string) (S3StoreBase, error) {
+	var err error
+	s := S3StoreBase{Location: u.String()}
 	if !strings.HasPrefix(u.Scheme, "s3+http") {
 		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http' or 's3+https'", u.Scheme)
 	}
@@ -40,22 +38,41 @@ func NewS3Store(location string, s3Creds *credentials.Credentials, region string
 	}
 
 	// Pull the bucket as well as the prefix from a path-style URL
-	path := strings.Trim(u.Path, "/")
-	if path == "" {
+	bPath := strings.Trim(u.Path, "/")
+	if bPath == "" {
 		return s, fmt.Errorf("expected bucket name in path of '%s'", u.Scheme)
 	}
-	f := strings.Split(path, "/")
+	f := strings.Split(bPath, "/")
 	s.bucket = f[0]
 	s.prefix = strings.Join(f[1:], "/")
+
 	if s.prefix != "" {
 		s.prefix += "/"
 	}
 
 	s.client, err = minio.NewWithCredentials(u.Host, s3Creds, useSSL, region)
 	if err != nil {
-		return s, errors.Wrap(err, location)
+		return s, errors.Wrap(err, u.String())
 	}
 	return s, nil
+}
+
+func (s S3StoreBase) String() string {
+	return s.Location
+}
+
+func (s S3StoreBase) Close() error { return nil }
+
+// NewS3Store creates a chunk store with S3 backing. The URL
+// should be provided like this: s3+http://host:port/bucket
+// Credentials are passed in via the environment variables S3_ACCESS_KEY
+// and S3S3_SECRET_KEY, or via the desync config file.
+func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region string) (s S3Store, e error) {
+	b, err := NewS3StoreBase(location, s3Creds, region)
+	if err != nil {
+		return s, err
+	}
+	return S3Store{b}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -133,12 +150,6 @@ func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	}
 	return nil
 }
-
-func (s S3Store) String() string {
-	return s.Location
-}
-
-func (s S3Store) Close() error { return nil }
 
 // Upgrade converts the storage layout in S3 from the old format (just a flat
 // layout) to the current layout which prefixes every chunk with the first 4
