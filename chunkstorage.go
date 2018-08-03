@@ -48,6 +48,8 @@ func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) error {
 
 	// Skip this chunk if the store already has it
 	if s.ws.HasChunk(id) {
+		// If actual store has the chunk, mar as stored as well
+		s.markAsStored(id)
 		return nil
 	}
 
