@@ -7,10 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/folbricht/desync"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-type ProgressBar struct {
+type ConsoleProgressBar struct {
 	prefix  string
 	mu      sync.Mutex
 	done    chan (struct{})
@@ -19,14 +20,14 @@ type ProgressBar struct {
 	fd      int
 }
 
-func NewProgressBar(total int, prefix string) *ProgressBar {
+func NewProgressBar(total int, prefix string) desync.ProgressBar {
 	if !terminal.IsTerminal(int(os.Stderr.Fd())) {
-		return nil
+		return desync.ProgressBar(nil)
 	}
-	return &ProgressBar{prefix: prefix, total: total, done: make(chan (struct{}))}
+	return &ConsoleProgressBar{prefix: prefix, total: total, done: make(chan (struct{}))}
 }
 
-func (p *ProgressBar) Add(n int) {
+func (p *ConsoleProgressBar) Add(n int) {
 	if p == nil {
 		return
 	}
@@ -38,7 +39,7 @@ func (p *ProgressBar) Add(n int) {
 	}
 }
 
-func (p *ProgressBar) Set(n int) {
+func (p *ConsoleProgressBar) Set(n int) {
 	if p == nil {
 		return
 	}
@@ -50,7 +51,7 @@ func (p *ProgressBar) Set(n int) {
 	}
 }
 
-func (p *ProgressBar) Start() {
+func (p *ConsoleProgressBar) Start() {
 	if p == nil {
 		return
 	}
@@ -68,7 +69,7 @@ func (p *ProgressBar) Start() {
 	}()
 }
 
-func (p *ProgressBar) Stop() {
+func (p *ConsoleProgressBar) Stop() {
 	if p == nil {
 		return
 	}
@@ -76,7 +77,7 @@ func (p *ProgressBar) Stop() {
 	close(p.done)
 }
 
-func (p *ProgressBar) draw() {
+func (p *ConsoleProgressBar) draw() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	width, _, err := terminal.GetSize(int(os.Stderr.Fd()))

@@ -118,7 +118,7 @@ func (i *Index) Length() int64 {
 // ChunkStream splits up a blob into chunks using the provided chunker (single stream),
 // populates a store with the chunks and returns an index. Hashing and compression
 // is performed in n goroutines while the hashing algorithm is performed serially.
-func ChunkStream(ctx context.Context, c Chunker, s WriteStore, n int) (Index, error) {
+func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, error) {
 	type chunkJob struct {
 		num   int
 		start uint64
@@ -134,6 +134,8 @@ func ChunkStream(ctx context.Context, c Chunker, s WriteStore, n int) (Index, er
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	s := NewChunkStorage(ws)
 
 	// Helper function to record and deal with any errors in the goroutines
 	recordError := func(err error) {
@@ -167,20 +169,7 @@ func ChunkStream(ctx context.Context, c Chunker, s WriteStore, n int) (Index, er
 				chunk := IndexChunk{Start: c.start, Size: uint64(len(c.b)), ID: id}
 				recordResult(c.num, chunk)
 
-				// Skip this chunk if the store already has it
-				if s.HasChunk(id) {
-					continue
-				}
-
-				// Compress the chunk
-				cb, err := Compress(c.b)
-				if err != nil {
-					recordError(err)
-					continue
-				}
-
-				// And store it
-				if err = s.StoreChunk(id, cb); err != nil {
+				if err := s.StoreChunk(id, c.b); err != nil {
 					recordError(err)
 					continue
 				}

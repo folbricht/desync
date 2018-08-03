@@ -78,7 +78,7 @@ func makeCmd(ctx context.Context, args []string) error {
 	if s != nil {
 		ps := NewProgressBar(len(index.Chunks), "Storing ")
 		ps.Start()
-		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, func() { ps.Add(1) }); err != nil {
+		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, ps); err != nil {
 			return err
 		}
 		ps.Stop()
