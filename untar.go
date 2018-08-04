@@ -214,7 +214,7 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 				// The the chunk is compressed. Decompress it here
 				db, err = Decompress(db, b)
 				if err != nil {
-					recordError(err)
+					recordError(errors.Wrap(err, r.chunk.ID.String()))
 					close(r.data)
 					continue
 				}

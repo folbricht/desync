@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/folbricht/tempfile"
+	"github.com/pkg/errors"
 )
 
 const chunkFileExt = ".cacnk"
@@ -193,7 +194,7 @@ func (s LocalStore) verifyChunk(id ChunkID) error {
 	// The the chunk is compressed. Decompress it here
 	db, err := Decompress(nil, b)
 	if err != nil {
-		return err
+		return errors.Wrap(err, id.String())
 	}
 	// Verify the checksum of the chunk matches the ID
 	sum := sha512.Sum512_256(db)

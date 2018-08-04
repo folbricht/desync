@@ -68,7 +68,7 @@ retry:
 	// again.
 	db, err := Decompress(nil, cb)
 	if err != nil {
-		return err
+		return errors.Wrap(err, id.String())
 	}
 
 	if !bytes.Equal(b, db) {

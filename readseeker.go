@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/pkg/errors"
 )
 
 // TODO: Implement WriterTo interface
@@ -106,7 +108,7 @@ func (ip *IndexPos) loadChunk() (err error) {
 
 	decompressedChunk, err = Decompress(nil, compressedChunk)
 	if err != nil {
-		return err
+		return errors.Wrap(err, ip.curChunkID.String())
 	}
 
 	ip.curChunk = decompressedChunk
