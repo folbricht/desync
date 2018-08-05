@@ -88,7 +88,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 ### Environment variables
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to a remote SSH or SFTP chunk store
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
-- `S3_ACCESS_KEY` and `S3_SECRET_KEY` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
+- `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
 
 ### Caching
 The `-c <store>` option can be used to either specify an existing store to act as cache or to populate a new store. Whenever a chunk is requested, it is first looked up in the cache before routing the request to the next (possibly remote) store. Any chunks downloaded from the main stores are added to the cache. In addition, when a chunk is read from the cache and it is a local store, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache store is expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), the operation will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
@@ -136,25 +136,49 @@ For most use cases, it is sufficient to use the tool's default configuration not
 Available configuration values:
 - `http-timeout` - HTTP request timeout used in HTTP stores (not S3) in nanoseconds
 - `http-error-retry` - Number of times to retry failed chunk requests from HTTP stores
-- `s3-credentials` - Defines credentials for use with S3 stores. Especially useful if more than one S3 store is used. The key in the config needs to be the URL scheme and host used for the store, excluding the path, but including the port number if used in the store URL.
+- `s3-credentials` - Defines credentials for use with S3 stores. Especially useful if more than one S3 store is used. The key in the config needs to be the URL scheme and host used for the store, excluding the path, but including the port number if used in the store URL. It is also possible to use a [standard aws credentials file](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) in order to store s3 credentials.
 
 **Example config**
 
-```json
+```
 {
   "http-timeout": 60000000000,
   "http-error-retry": 0,
   "s3-credentials": {
-    "http://localhost": {
-      "access-key": "MYACCESSKEY",
-      "secret-key": "MYSECRETKEY"
-    },
-    "https://127.0.0.1:9000": {
-      "access-key": "OTHERACCESSKEY",
-      "secret-key": "OTHERSECRETKEY"
-    }
+       "http://localhost": {
+           "access-key": "MYACCESSKEY",
+           "secret-key": "MYSECRETKEY"
+       },
+       "https://127.0.0.1:9000": {
+           "aws-credentials-file": "/Users/user/.aws/credentials",
+       },
+       "https://127.0.0.1:8000": {
+           "aws-credentials-file": "/Users/user/.aws/credentials",
+           "aws-profile": "profile_static"
+       },
+       "https://s3.us-west-2.amazonaws.com": {
+           "aws-credentials-file": "/Users/user/.aws/credentials",
+           "aws-region": "us-west-2",
+           "aws-profile": "profile_refreshable"
+       }
   }
 }
+```
+
+**Example aws credentials**
+```
+[default]
+aws_access_key_id = DEFAULT_PROFILE_KEY
+aws_secret_access_key = DEFAULT_PROFILE_SECRET
+
+[profile_static]
+aws_access_key_id = OTHERACCESSKEY
+aws_secret_access_key = OTHERSECRETKEY
+
+[profile_refreshable]
+aws_access_key_id = PROFILE_REFRESHABLE_KEY
+aws_secret_access_key = PROFILE_REFRESHABLE_SECRET
+aws_session_token = PROFILE_REFRESHABLE_TOKEN
 ```
 
 ### Examples:

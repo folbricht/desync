@@ -13,12 +13,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/minio/minio-go/pkg/credentials"
 	"github.com/pkg/errors"
 )
 
 type S3Creds struct {
-	AccessKey string `json:"access-key"`
-	SecretKey string `json:"secret-key"`
+	AccessKey          string `json:"access-key,omitempty"`
+	SecretKey          string `json:"secret-key,omitempty"`
+	AwsCredentialsFile string `json:"aws-credentials-file,omitempty"`
+	AwsProfile         string `json:"aws-profile,omitempty"`
+	// Having an explicit aws region makes minio slightly faster because it avoids url parsing
+	AwsRegion string `json:"aws-region,omitempty"`
 }
 
 type Config struct {
@@ -27,16 +32,17 @@ type Config struct {
 	S3Credentials  map[string]S3Creds `json:"s3-credentials"`
 }
 
-// GetS3CredentialsFor attempts to find creds for an S3 location in the config
-// and the environment (which takes precedence). Returns accessKey and secretKey
-// if found, or "" if not found. Uses the scheme, host and port which need to
-// match what's in the config file.
-func (c Config) GetS3CredentialsFor(u *url.URL) (string, string) {
+// GetS3CredentialsFor attempts to find creds and region for an S3 location in the
+// config and the environment (which takes precedence). Returns a minio credentials
+// struct and region string. If not found, the creds struct will return "" when invoked.
+// Uses the scheme, host and port which need to match what's in the config file.
+func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, string) {
 	// See if creds are defined in the ENV, if so, they take precedence
 	accessKey := os.Getenv("S3_ACCESS_KEY")
+	region := os.Getenv("S3_REGION")
 	secretKey := os.Getenv("S3_SECRET_KEY")
 	if accessKey != "" || secretKey != "" {
-		return accessKey, secretKey
+		return NewStaticCredentials(accessKey, secretKey), region
 	}
 
 	// Look in the config to find a match for scheme+host
@@ -44,8 +50,17 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (string, string) {
 		Scheme: strings.TrimPrefix(u.Scheme, "s3+"),
 		Host:   u.Host,
 	}
-	creds := c.S3Credentials[key.String()]
-	return creds.AccessKey, creds.SecretKey
+	credsConfig := c.S3Credentials[key.String()]
+	creds := NewStaticCredentials("", "")
+	region = credsConfig.AwsRegion
+
+	// if access access-key is present, it takes precedence
+	if credsConfig.AccessKey != "" {
+		creds = NewStaticCredentials(credsConfig.AccessKey, credsConfig.SecretKey)
+	} else if credsConfig.AwsCredentialsFile != "" {
+		creds = NewRefreshableSharedCredentials(credsConfig.AwsCredentialsFile, credsConfig.AwsProfile, time.Now)
+	}
+	return creds, region
 }
 
 // Global config in the main packe defining the defaults. Those can be

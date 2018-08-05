@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	minio "github.com/minio/minio-go"
+	"github.com/minio/minio-go/pkg/credentials"
 	"github.com/pkg/errors"
 )
 
@@ -24,7 +25,7 @@ type S3Store struct {
 // should be provided like this: s3+http://host:port/bucket
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3S3_SECRET_KEY.
-func NewS3Store(location, accessKey, secretKey string) (S3Store, error) {
+func NewS3Store(location string, s3Creds *credentials.Credentials, region string) (S3Store, error) {
 	s := S3Store{Location: location}
 	u, err := url.Parse(location)
 	if err != nil {
@@ -50,7 +51,7 @@ func NewS3Store(location, accessKey, secretKey string) (S3Store, error) {
 		s.prefix += "/"
 	}
 
-	s.client, err = minio.New(u.Host, accessKey, secretKey, useSSL)
+	s.client, err = minio.NewWithCredentials(u.Host, s3Creds, useSSL, region)
 	if err != nil {
 		return s, errors.Wrap(err, location)
 	}
@@ -71,8 +72,10 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 		switch e.Code {
 		case "NoSuchBucket":
 			err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
-		default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+		case "NoSuchKey":
 			err = ChunkMissing{ID: id}
+		default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+			err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
 		}
 	}
 	return b, err

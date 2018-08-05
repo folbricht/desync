@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"syscall"
+
+	"github.com/pkg/errors"
 )
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
@@ -162,7 +164,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				// The the chunk is compressed. Decompress it here
 				db, err = Decompress(db, b)
 				if err != nil {
-					recordError(err)
+					recordError(errors.Wrap(err, c.ID.String()))
 					continue
 				}
 				// Verify the checksum of the chunk matches the ID

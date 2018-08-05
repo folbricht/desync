@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/folbricht/tempfile"
+	"github.com/pkg/errors"
 )
 
 const chunkFileExt = ".cacnk"
@@ -65,17 +68,17 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 	if err := os.MkdirAll(d, 0755); err != nil {
 		return err
 	}
-	tmpfile, err := ioutil.TempFile(d, ".tmp-cacnk")
+	tmp, err := tempfile.NewMode(d, ".tmp-cacnk", 0644)
 	if err != nil {
 		return err
 	}
-	tmpfile.Close()
-	defer os.Remove(tmpfile.Name()) // in case we don't get to the rename, clean up
-	if err = ioutil.WriteFile(tmpfile.Name(), b, 0644); err != nil {
+	defer tmp.Close()
+	defer os.Remove(tmp.Name()) // in case we don't get to the rename, clean up
+	if _, err = tmp.Write(b); err != nil {
 		return err
 	}
 	p := filepath.Join(d, sID) + chunkFileExt
-	return os.Rename(tmpfile.Name(), p)
+	return os.Rename(tmp.Name(), p)
 }
 
 // Verify all chunks in the store. If repair is set true, bad chunks are deleted.
@@ -191,7 +194,7 @@ func (s LocalStore) verifyChunk(id ChunkID) error {
 	// The the chunk is compressed. Decompress it here
 	db, err := Decompress(nil, b)
 	if err != nil {
-		return err
+		return errors.Wrap(err, id.String())
 	}
 	// Verify the checksum of the chunk matches the ID
 	sum := sha512.Sum512_256(db)

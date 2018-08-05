@@ -26,6 +26,9 @@ func IndexFromFile(ctx context.Context,
 	pb ProgressBar,
 ) (Index, ChunkingStats, error) {
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	index := Index{
 		Index: FormatIndex{
 			FeatureFlags: CaFormatExcludeNoDump | CaFormatSHA512256,
@@ -47,7 +50,7 @@ func IndexFromFile(ctx context.Context,
 		n = nn
 	}
 	size := uint64(info.Size())
-	span := size / uint64(n) // intial spacing between chunkers
+	span := size / uint64(n) // initial spacing between chunkers
 
 	// Setup and start the progressbar if any
 	if pb != nil {

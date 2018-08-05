@@ -43,8 +43,8 @@ func upgradeS3(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	accesskey, secretkey := cfg.GetS3CredentialsFor(loc)
-	s, err := desync.NewS3Store(storeLocation, accesskey, secretkey)
+	s3Creds, region := cfg.GetS3CredentialsFor(loc)
+	s, err := desync.NewS3Store(storeLocation, s3Creds, region)
 	if err != nil {
 		return err
 	}
