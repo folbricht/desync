@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 
+	"strings"
+
 	"github.com/folbricht/desync"
 )
 
@@ -174,10 +176,17 @@ func handleIndexStore(writable bool, storeLocations *multiArg, opts storeOptions
 		s   desync.IndexStore
 		err error
 	)
+
+	// Making sure we have a "/" at the end
+	loc := storeLocations.list[0]
+	if !strings.HasSuffix(loc, "/") {
+		loc = loc + "/"
+	}
+
 	if writable {
-		s, _, err = writableIndexStore(storeLocations.list[0], opts)
+		s, _, err = writableIndexStore(loc, opts)
 	} else {
-		s, _, err = indexStoreFromLocation(storeLocations.list[0], opts)
+		s, _, err = indexStoreFromLocation(loc, opts)
 	}
 	if err != nil {
 		return nil, err
