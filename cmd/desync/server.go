@@ -29,7 +29,7 @@ reading from multiple local or remote stores as well as a local cache. If
 enables writing to this store, but this is only allowed when just one upstream
 chunk store is provided.`
 
-	indexServerUsage = `desync chunk-server [options]
+	indexServerUsage = `desync index-server [options]
 
 Starts an HTTP index server that can be used as remote store. It supports
 reading from a single local or remote store.
