@@ -45,7 +45,7 @@ func (s *SFTPIndexStore) GetIndex(name string) (i Index, e error) {
 }
 
 // StoreChunk adds a new chunk to the store
-func (s *SFTPStore) StoreIndex(name string, idx Index) error {
+func (s *SFTPIndexStore) StoreIndex(name string, idx Index) error {
 	r, w := io.Pipe()
 
 	go func() {

@@ -34,11 +34,7 @@ func NewLocaIndexlStore(path string) (LocalIndexStore, error) {
 
 // Get and Index Reader from a local store, returns an error if the specified index file does not exist.
 func (s LocalIndexStore) GetIndexReader(name string) (rdr io.ReadCloser, e error) {
-	f, err := os.Open(s.Path + name)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
+	return os.Open(s.Path + name)
 }
 
 // GetIndex returns an Index structure from the store

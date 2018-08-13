@@ -134,11 +134,7 @@ func readCaibxFile(location string, opts storeOptions) (c desync.Index, err erro
 	}
 	defer is.Close()
 
-	c, err = is.GetIndex(indexName)
-	if err != nil {
-		return c, err
-	}
-	return c, err
+	return is.GetIndex(indexName)
 }
 
 func storeCaibxFile(idx desync.Index, location string, opts storeOptions) error {

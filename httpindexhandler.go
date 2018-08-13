@@ -29,7 +29,7 @@ func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.put(indexName, w, r)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte("only GET is supported"))
+		w.Write([]byte("only GET, PUT and HEAD are supported"))
 	}
 }
 
@@ -47,7 +47,7 @@ func (h HTTPIndexHandler) get(indexName string, w http.ResponseWriter) {
 	b := new(bytes.Buffer)
 	_, err = b.ReadFrom(ir)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, err)
 		return
 	}
@@ -82,6 +82,7 @@ func (h HTTPIndexHandler) put(indexName string, w http.ResponseWriter, r *http.R
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, err)
+		return
 	}
 
 	// Store it upstream

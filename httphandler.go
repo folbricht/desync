@@ -40,7 +40,7 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.put(sid, w, r)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte("only GET is supported"))
+		w.Write([]byte("only GET, PUT and HEAD are supported"))
 	}
 }
 
