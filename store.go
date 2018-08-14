@@ -3,6 +3,7 @@ package desync
 import (
 	"context"
 	"fmt"
+	"io"
 )
 
 // Store is a generic interface implemented by read-only stores, like SSH or
@@ -10,7 +11,7 @@ import (
 type Store interface {
 	GetChunk(id ChunkID) ([]byte, error)
 	HasChunk(id ChunkID) bool
-	Close() error
+	io.Closer
 	fmt.Stringer
 }
 
@@ -25,4 +26,16 @@ type WriteStore interface {
 type PruneStore interface {
 	WriteStore
 	Prune(ctx context.Context, ids map[ChunkID]struct{}) error
+}
+
+type IndexStore interface {
+	GetIndexReader(name string) (io.ReadCloser, error)
+	GetIndex(name string) (Index, error)
+	io.Closer
+	fmt.Stringer
+}
+
+type IndexWriteStore interface {
+	IndexStore
+	StoreIndex(name string, idx Index) error
 }

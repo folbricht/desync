@@ -7,8 +7,17 @@ type ChunkMissing struct {
 	ID ChunkID
 }
 
+// NoSuchObject is returned by a store that can't find a requested object
+type NoSuchObject struct {
+	location string
+}
+
 func (e ChunkMissing) Error() string {
 	return fmt.Sprintf("chunk %s missing from store", e.ID)
+}
+
+func (e NoSuchObject) Error() string {
+	return fmt.Sprintf("object %s missing from store", e.location)
 }
 
 // ChunkInvalid means the hash of the chunk content doesn't match its ID
