@@ -22,7 +22,7 @@ type ConsoleProgressBar struct {
 
 func NewProgressBar(total int, prefix string) desync.ProgressBar {
 	if !terminal.IsTerminal(int(os.Stderr.Fd())) {
-		return desync.ProgressBar(nil)
+		return NullProgressBar{}
 	}
 	return &ConsoleProgressBar{prefix: prefix, total: total, done: make(chan (struct{}))}
 }
@@ -91,3 +91,13 @@ func (p *ConsoleProgressBar) draw() {
 	}
 	fmt.Printf("\r%s|%s%s|", p.prefix, strings.Repeat("=", progress), strings.Repeat(" ", blank))
 }
+
+type NullProgressBar struct{}
+
+func (p NullProgressBar) Add(n int) {}
+
+func (p NullProgressBar) Set(n int) {}
+
+func (p NullProgressBar) Start() {}
+
+func (p NullProgressBar) Stop() {}
