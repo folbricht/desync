@@ -10,10 +10,10 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const chopUsage = `desync chop [options] <caibx> <file>
+const chopUsage = `desync chop [options] <index> <file>
 
-Reads the index file and extracts all referenced chunks from the file
-into a local or S3 store.`
+Reads the index and extracts all referenced chunks from the file into a store,
+local or remote. Use '-' to read the index from STDIN.`
 
 func chop(ctx context.Context, args []string) error {
 	var (

@@ -15,7 +15,7 @@ const cacheUsage = `desync cache [options] <index> [<index>...]
 Read chunk IDs from caibx or caidx files from one or more stores without
 writing to disk. Can be used (with -c) to populate a store with desired chunks
 either to be used as cache, or to populate a store with chunks referenced in an
-index file.`
+index file. Use '-' to read (a single) index from STDIN.`
 
 func cache(ctx context.Context, args []string) error {
 	var (

@@ -10,9 +10,10 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const verifyIndexUsage = `desync verify-index [options] <caibx> <file>
+const verifyIndexUsage = `desync verify-index [options] <index> <file>
 
-Verifies an index file matches the content of a blob.
+Verifies an index file matches the content of a blob. Use '-' to read the index
+from STDIN.
 `
 
 func verifyIndex(ctx context.Context, args []string) error {

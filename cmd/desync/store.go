@@ -157,7 +157,7 @@ func writableIndexStore(location string, opts storeOptions) (desync.IndexWriteSt
 	}
 	store, ok := s.(desync.IndexWriteStore)
 	if !ok {
-		return nil, indexName, fmt.Errorf("store '%s' does not support writing", location)
+		return nil, indexName, fmt.Errorf("index store '%s' does not support writing", location)
 	}
 	return store, indexName, nil
 }
@@ -198,10 +198,13 @@ func indexStoreFromLocation(location string, opts storeOptions) (desync.IndexSto
 			return nil, "", err
 		}
 	case "":
-
-		s, err = desync.NewLocaIndexlStore(p.String())
-		if err != nil {
-			return nil, "", err
+		if location == "-" {
+			s, _ = desync.NewConsoleIndexStore()
+		} else {
+			s, err = desync.NewLocaIndexStore(p.String())
+			if err != nil {
+				return nil, "", err
+			}
 		}
 	default:
 		return nil, "", fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)

@@ -1,24 +1,22 @@
 package desync
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"strings"
-
-	"fmt"
-
-	"io"
 
 	"github.com/pkg/errors"
 )
 
-// LocalStore index store
+// LocalIndexStore is used to read/write index files on local disk
 type LocalIndexStore struct {
 	Path string
 }
 
 // NewLocalStore creates an instance of a local castore, it only checks presence
 // of the store
-func NewLocaIndexlStore(path string) (LocalIndexStore, error) {
+func NewLocaIndexStore(path string) (LocalIndexStore, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return LocalIndexStore{}, err
@@ -32,7 +30,8 @@ func NewLocaIndexlStore(path string) (LocalIndexStore, error) {
 	return LocalIndexStore{Path: path}, nil
 }
 
-// Get and Index Reader from a local store, returns an error if the specified index file does not exist.
+// GetIndexReader returns a reader of an index file in the store or an error if
+// the specified index file does not exist.
 func (s LocalIndexStore) GetIndexReader(name string) (rdr io.ReadCloser, e error) {
 	return os.Open(s.Path + name)
 }
@@ -51,7 +50,7 @@ func (s LocalIndexStore) GetIndex(name string) (i Index, e error) {
 	return idx, err
 }
 
-// GetIndex returns an Index structure from the store
+// StoreIndex stores an index in the index store with the given name.
 func (s LocalIndexStore) StoreIndex(name string, idx Index) error {
 	// Write the index to file
 	i, err := os.Create(s.Path + name)

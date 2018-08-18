@@ -13,7 +13,8 @@ import (
 const pruneUsage = `desync prune [options] <index> [<index>..]
 
 Read chunk IDs in from index files and delete any chunks from a local (or s3)
-store that are not referenced in the index files.`
+store that are not referenced in the index files. Use '-' to read a single index
+from STDIN.`
 
 func prune(ctx context.Context, args []string) error {
 	var (

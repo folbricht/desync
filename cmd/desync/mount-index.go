@@ -16,7 +16,8 @@ const mountIdxUsage = `desync mount-index [options] <index> <mountpoint>
 
 FUSE mount of the blob in the index file. It makes the (single) file in
 the index available for read access. Use 'extract' if the goal is to
-assemble the whole blob locally as that is more efficient.
+assemble the whole blob locally as that is more efficient. Use '-' to read
+the index from STDIN.
 `
 
 func mountIdx(ctx context.Context, args []string) error {

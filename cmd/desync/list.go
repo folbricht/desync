@@ -8,9 +8,10 @@ import (
 	"os"
 )
 
-const listUsage = `desync list-chunks <caibx>
+const listUsage = `desync list-chunks <index>
 
-Reads the index file and prints the list of chunk IDs in it.`
+Reads the index file and prints the list of chunk IDs in it. Use '-' to read
+the index from STDIN.`
 
 func list(ctx context.Context, args []string) error {
 	var (

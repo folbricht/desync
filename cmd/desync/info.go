@@ -17,7 +17,7 @@ const infoUsage = `desync info [-s <store>] <index>
 
 Displays information about the provided index, such as number of chunks. If a
 store is provided, it'll also show how many of the chunks are present in the
-store.`
+store. Use '-' to read the index from STDIN.`
 
 func info(ctx context.Context, args []string) error {
 	var (
