@@ -107,7 +107,7 @@ func printJSON(v interface{}) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(b))
+	fmt.Fprintln(os.Stderr, string(b))
 	return nil
 }
 
