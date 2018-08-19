@@ -15,8 +15,9 @@ import (
 const makeUsage = `desync make [options] <index> <file>
 
 Creates chunks from the input file and builds an index. If a chunk store is
-provided with -s, such as a local directory or S3 store, it split the input
-file according to the index and stores the chunks.`
+provided with -s, such as a local directory or S3 store, it splits the input
+file according to the index and stores the chunks. Use '-' to write the index
+from STDOUT.`
 
 func makeCmd(ctx context.Context, args []string) error {
 	var (
@@ -97,8 +98,8 @@ func makeCmd(ctx context.Context, args []string) error {
 		ps.Stop()
 	}
 
-	fmt.Println("Chunks produced:", stats.ChunksAccepted)
-	fmt.Println("Overhead:", stats.ChunksProduced-stats.ChunksAccepted)
+	fmt.Fprintln(os.Stderr, "Chunks produced:", stats.ChunksAccepted)
+	fmt.Fprintln(os.Stderr, "Overhead:", stats.ChunksProduced-stats.ChunksAccepted)
 
 	return storeCaibxFile(index, indexFile, sOpts)
 }

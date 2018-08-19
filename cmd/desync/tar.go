@@ -13,10 +13,11 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const tarUsage = `desync tar <catar|caidx> <source>
+const tarUsage = `desync tar <catar|index> <source>
 
 Encodes a directory tree into a catar archive or alternatively an index file
-with the archive chunked in a local or S3 store.`
+with the archive chunked in a local or S3 store. Use '-' to write the output,
+catar or index to STDOUT.`
 
 func tar(ctx context.Context, args []string) error {
 	var (
@@ -58,12 +59,18 @@ func tar(ctx context.Context, args []string) error {
 
 	// Just make the catar and stop if that's all that was required
 	if !makeIndex {
-		f, err := os.Create(output)
-		if err != nil {
-			return err
+		var w io.Writer
+		if output == "-" {
+			w = os.Stdout
+		} else {
+			f, err := os.Create(output)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			w = f
 		}
-		defer f.Close()
-		return desync.Tar(ctx, f, sourceDir)
+		return desync.Tar(ctx, w, sourceDir)
 	}
 
 	sOpts := storeOptions{

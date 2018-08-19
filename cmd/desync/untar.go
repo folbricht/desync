@@ -12,9 +12,10 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const untarUsage = `desync untar <catar|caidx> <target>
+const untarUsage = `desync untar <catar|index> <target>
 
-Extracts a directory tree from a catar file or an index file.`
+Extracts a directory tree from a catar file or an index. Use '-' to read the
+index from STDIN.`
 
 func untar(ctx context.Context, args []string) error {
 	var (

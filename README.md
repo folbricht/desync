@@ -21,6 +21,7 @@ Among the distinguishing factors:
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 - Allows FUSE mounting of blob indexes
 - S3 protocol support to access chunk stores for read operations and some some commands that write chunks
+- Stores and retrieves index files from remote index stores such as HTTP, SFTP and S3
 
 ## Parallel chunking
 One of the significant differences to casync is that desync attempts to make chunking faster by utilizing more CPU resources, chunking data in parallel. Depending on the chosen degree of concurrency, the file is split into N equal parts and each part is chunked independently. While the chunking of each part is ongoing, part1 is trying to align with part2, and part3 is trying to align with part4 and so on. Alignment is achieved once a common split point is found in the overlapping area. If a common split point is found, the process chunking the previous part stops, eg. part1 chunker stops, part2 chunker keeps going until it aligns with part3 and so on until all split points have been found. Once all split points have been determined, the file is opened again (N times) to read, compress and store the chunks. While in most cases this process achieves significantly reduced chunking times at the cost of CPU, there are edge cases where chunking is only about as fast as upstream casync (with more CPU usage). This is the case if no split points can be found in the data between min and max chunk size as is the case if most or all of the file consists of 0-bytes. In this situation, the concurrent chunking processes for each part will not align with each other and a lot of effort is wasted. The table below shows how the type of data that is being chunked can influence runtime of each operation. `make` refers to the process of chunking, while `extract` refers to re-assembly of blobs from chunks.
@@ -92,6 +93,15 @@ Not all types of stores support all operations. The table below lists the suppor
 | Use as cache | yes | yes | yes |yes | no |
 | Prune | yes | yes | no | yes | no |
 | Verify | yes | yes | no | no | no |
+
+### Remote indexes
+Indexes can be stored and retrieved from remote locations via SFTP, S3, and HTTP. Storing indexes remotely is optional and deliberately separate from chunk storage. While it's possible to store indexes in the same location as chunks in the case of SFTP and S3, this should only be done in secured environments. The built-in HTTP chunk store (`chunk-server` command) can not be used as index server. Use the `index-server` command instead to start an index server that serves indexes and can optionally store them as well (with `-w`).
+
+Using remote indexes, it is possible to use desync completely file-less. For example when wanting to share a large file with `mount-index`, one could read the index from an index store like this:
+```
+desync mount-index -s http://chunk.store/store http://index.store/myindex.caibx /mnt/image
+```
+No file would need to be stored on disk in this case.
 
 ### S3 chunk stores
 desync supports reading from and writing to chunk stores that offer an S3 API, for example hosted in AWS or running on a local server. When using such a store, credentials are passed into the tool either via environment variables `S3_ACCESS_KEY` and `S3_SECRET_KEY` or, if multiples are required, in the config file. Care is required when building those URLs. Below a few examples:
@@ -194,6 +204,11 @@ Extract a file in-place (`-k` option). If this operation fails, the file will re
 desync extract -k -s sftp://192.168.1.1/path/to/store file.caibx file.tar
 ```
 
+Extract a file using a remote index stored in an HTTP index store
+```
+desync extract -k -s sftp://192.168.1.1/path/to/store http://192.168.1.2/file.caibx file.tar
+```
+
 Verify a local cache. Errors will be reported to STDOUT, since `-r` is not given, nothing invalid will be removed.
 ```
 desync verify -s /some/local/store
@@ -250,6 +265,13 @@ Start a chunk server on port 8080 acting as proxy for other remote HTTP and SSH 
 desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -l :8080
 ```
 
+Start a writable index server, chunk a file and store the index.
+```
+server# desync index-server -s /mnt/indexes -w -l :8080
+
+client# desync make -s /some/store http://192.168.1.1:8080/file.vmdk.caibx file.vmdk
+```
+
 Copy all chunks referenced in an index file from a remote HTTP store to a remote SFTP store.
 ```
 desync cache -s ssh://192.168.1.2/store -c sftp://192.168.1.3/path/to/store /path/to/index.caibx
@@ -275,6 +297,11 @@ FUSE mount an index file. This will make the indexed blob available as file unde
 desync mount-index -s /some/local/store index.caibx /some/mnt
 ```
 
+FUSE mount a chunked and remote index file. First a (small) index file is read from the index-server which is used to re-assemble a larger index file and pipe it into the 2nd command that then mounts it.
+```
+desync cat -s http://192.168.1.1/store http://192.168.1.2/small.caibx | desync mount-index -s http://192.168.1.1/store - /mnt/point
+```
+
 Show information about an index file to see how many of its chunks are present in a local store or an S3 store. The local store is queried first, S3 is only queried if the chunk is not present in the local store. The output will be in JSON format (`-j`) for easier processing in scripts.
 ```
 desync info -j -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
@@ -286,5 +313,4 @@ desync info -j -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
 
 ## TODOs
 - Pre-allocate the output file to avoid fragmentation when using extract command
-- Support retrieval of index files from the chunk store
 - Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.

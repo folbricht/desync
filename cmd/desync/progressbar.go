@@ -89,7 +89,7 @@ func (p *ConsoleProgressBar) draw() {
 	if progress < 0 || blank < 0 { // No need to panic if anything's off
 		return
 	}
-	fmt.Printf("\r%s|%s%s|", p.prefix, strings.Repeat("=", progress), strings.Repeat(" ", blank))
+	fmt.Fprintf(os.Stderr, "\r%s|%s%s|", p.prefix, strings.Repeat("=", progress), strings.Repeat(" ", blank))
 }
 
 type NullProgressBar struct{}

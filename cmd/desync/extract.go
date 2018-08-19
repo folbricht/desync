@@ -12,12 +12,13 @@ import (
 	"github.com/folbricht/tempfile"
 )
 
-const extractUsage = `desync extract [options] <caibx> <output>
+const extractUsage = `desync extract [options] <index> <output>
 
-Read a caibx and build a blob reading chunks from one or more casync stores.
+Reads an index and builds a blob reading chunks from one or more chunk stores.
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
-failed prior extraction without having to retrieve completed chunks again.
+failed prior extraction without having to retrieve completed chunks again. Use
+'-' to read the index from STDIN.
 `
 
 func extract(ctx context.Context, args []string) error {

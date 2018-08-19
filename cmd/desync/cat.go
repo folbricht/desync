@@ -12,16 +12,18 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const catUsage = `desync cat [options] <caibx> [<outputfile>]
+const catUsage = `desync cat [options] <index> [<outputfile>]
 
-Stream a caibx to stdout or a file-like object, optionally seeking and limiting
+Stream a blob to stdout or a file-like object, optionally seeking and limiting
 the read length.
 
 Unlike extract, this supports output to FIFOs, named pipes, and other
 non-seekable destinations.
 
 This is inherently slower than extract as while multiple chunks can be
-retrieved concurrently, writing to stdout cannot be parallelized.`
+retrieved concurrently, writing to stdout cannot be parallelized.
+
+Use '-' to read the index from STDIN.`
 
 func cat(ctx context.Context, args []string) error {
 	var (
