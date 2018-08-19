@@ -12,9 +12,10 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const untarUsage = `desync untar <catar|caidx> <target>
+const untarUsage = `desync untar <catar|index> <target>
 
-Extracts a directory tree from a catar file or an index file.`
+Extracts a directory tree from a catar file or an index. Use '-' to read the
+index from STDIN.`
 
 func untar(ctx context.Context, args []string) error {
 	var (
@@ -58,24 +59,16 @@ func untar(ctx context.Context, args []string) error {
 	input := flags.Arg(0)
 	targetDir := flags.Arg(1)
 
-	f, err := os.Open(input)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
 	// If we got a catar file unpack that and exit
 	if !readIndex {
+		f, err := os.Open(input)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
 		return desync.UnTar(ctx, f, targetDir, opts)
 	}
 
-	// Apparently the input must be an index, read it whole
-	index, err := desync.IndexFromReader(f)
-	if err != nil {
-		return err
-	}
-
-	// Parse the store locations, open the stores and add a cache is requested
 	sOpts := storeOptions{
 		n:          n,
 		clientCert: clientCert,
@@ -86,6 +79,12 @@ func untar(ctx context.Context, args []string) error {
 		return err
 	}
 	defer s.Close()
+
+	// Apparently the input must be an index, read it whole
+	index, err := readCaibxFile(input, sOpts)
+	if err != nil {
+		return err
+	}
 
 	return desync.UnTarIndex(ctx, targetDir, index, s, n, opts)
 }

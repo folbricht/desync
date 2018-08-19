@@ -13,17 +13,17 @@ import (
 	"github.com/folbricht/tempfile"
 )
 
-const extractUsage = `desync extract [options] <caibx> <output>
+const extractUsage = `desync extract [options] <index> <output>
 
-Read a caibx and build a blob reading chunks from one or more casync stores.
+Reads an index and builds a blob reading chunks from one or more chunk stores.
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
 Muptiple optional seed indexes can be given with -seed. The matching blob needs
 to have the same name as the indexfile without the .caibx extension. If several
 seed files and indexes are available, the -seed-dir option can be used to
-automatically select call .caibx files in a directory as seeds.
-`
+automatically select call .caibx files in a directory as seeds. Use '-' to read
+the index from STDIN.`
 
 func extract(ctx context.Context, args []string) error {
 	var (
@@ -91,20 +91,20 @@ func extract(ctx context.Context, args []string) error {
 	}
 	defer s.Close()
 
-	// Read the target index
-	idx, err := readCaibxFile(inFile)
+	// Read the input
+	idx, err := readCaibxFile(inFile, opts)
 	if err != nil {
 		return err
 	}
 
 	// Build a list of seeds if any were given in the command line
-	seeds, err := readSeeds(outFile, seedLocations.list)
+	seeds, err := readSeeds(outFile, seedLocations.list, opts)
 	if err != nil {
 		return err
 	}
 
 	// Expand the list of seeds with all found in provided directories
-	dSeeds, err := readSeedDirs(outFile, inFile, seedDirLocations.list)
+	dSeeds, err := readSeedDirs(outFile, inFile, seedDirLocations.list, opts)
 	if err != nil {
 		return err
 	}
@@ -153,10 +153,10 @@ func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.S
 	return desync.AssembleFile(ctx, name, idx, s, seeds, n, pb)
 }
 
-func readSeeds(dstFile string, locations []string) ([]desync.Seed, error) {
+func readSeeds(dstFile string, locations []string, opts storeOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	for _, srcIndexFile := range locations {
-		srcIndex, err := readCaibxFile(srcIndexFile)
+		srcIndex, err := readCaibxFile(srcIndexFile, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +171,7 @@ func readSeeds(dstFile string, locations []string) ([]desync.Seed, error) {
 	return seeds, nil
 }
 
-func readSeedDirs(dstFile, dstIdxFile string, dirs []string) ([]desync.Seed, error) {
+func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts storeOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	absIn, err := filepath.Abs(dstIdxFile)
 	if err != nil {
@@ -202,7 +202,7 @@ func readSeedDirs(dstFile, dstIdxFile string, dirs []string) ([]desync.Seed, err
 				return nil
 			}
 			// Read the index and add it to the list of seeds
-			srcIndex, err := readCaibxFile(path)
+			srcIndex, err := readCaibxFile(path, opts)
 			if err != nil {
 				return err
 			}

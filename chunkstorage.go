@@ -10,48 +10,62 @@ import (
 )
 
 type ChunkStorage struct {
-	sync.RWMutex
-	ws     WriteStore
-	stored map[ChunkID]struct{}
+	sync.Mutex
+	ws        WriteStore
+	processed map[ChunkID]struct{}
 }
 
 // Stores chunks passed in the input channel asynchronously. Wait() will wait for until the input channel is closed or
 // until there's an error, in which case it will return it.
 func NewChunkStorage(ws WriteStore) *ChunkStorage {
 	s := &ChunkStorage{
-		ws:     ws,
-		stored: make(map[ChunkID]struct{}),
+		ws:        ws,
+		processed: make(map[ChunkID]struct{}),
 	}
 	return s
 }
 
-func (s *ChunkStorage) isChunkStored(id ChunkID) bool {
-	s.RLock()
-	defer s.RUnlock()
-	_, ok := s.stored[id]
+// Mark a chunk in the in-memory cache as having been processed and returns true
+// if it was already marked, and is therefore presumably already stored.
+func (s *ChunkStorage) markProcessed(id ChunkID) bool {
+	s.Lock()
+	defer s.Unlock()
+	_, ok := s.processed[id]
+	s.processed[id] = struct{}{}
 	return ok
 }
 
-func (s *ChunkStorage) markAsStored(id ChunkID) {
+// Unmark a chunk in the in-memory cache. This is used if a chunk is first
+// marked as processed, but then actually fails to be stored. Unmarking the
+// makes it eligible to be re-tried again in case of errors.
+func (s *ChunkStorage) unmarkProcessed(id ChunkID) {
 	s.Lock()
 	defer s.Unlock()
-	s.stored[id] = struct{}{}
+	delete(s.processed, id)
 }
 
 // Stores a single chunk in a synchronous manner.
-func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) error {
+func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) (err error) {
 
-	// Check in-memory cache to see if chunk has been stored, if so, skip it
-	if s.isChunkStored(id) {
+	// Mark this chunk as done so no other goroutine will attempt to store it
+	// at the same time. If this is the first time this chunk is marked, it'll
+	// return false and we need to continue processing/storing the chunk below.
+	if s.markProcessed(id) {
 		return nil
 	}
 
 	// Skip this chunk if the store already has it
 	if s.ws.HasChunk(id) {
-		// If actual store has the chunk, mar as stored as well
-		s.markAsStored(id)
 		return nil
 	}
+
+	// The chunk was marked as "processed" above. If there's a problem to actually
+	// store it, we need to unmark it again.
+	defer func() {
+		if err != nil {
+			s.unmarkProcessed(id)
+		}
+	}()
 
 	var retried bool
 retry:
@@ -81,10 +95,5 @@ retry:
 	}
 
 	// Store the compressed chunk
-	if err = s.ws.StoreChunk(id, cb); err != nil {
-		return err
-	}
-
-	s.markAsStored(id)
-	return nil
+	return s.ws.StoreChunk(id, cb)
 }

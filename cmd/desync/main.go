@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/folbricht/desync"
 	"github.com/pkg/errors"
 )
 
@@ -77,7 +76,8 @@ func main() {
 		"tar":          tar,
 		"untar":        untar,
 		"prune":        prune,
-		"chunk-server": server,
+		"chunk-server": chunkServer,
+		"index-server": indexServer,
 		"chunk":        chunkCmd,
 		"make":         makeCmd,
 		"mount-index":  mountIdx,
@@ -100,16 +100,6 @@ func help(ctx context.Context, args []string) error {
 	flag.Usage()
 	os.Exit(1)
 	return nil
-}
-
-func readCaibxFile(name string) (c desync.Index, err error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	c, err = desync.IndexFromReader(f)
-	return c, errors.Wrap(err, name)
 }
 
 func printJSON(v interface{}) error {

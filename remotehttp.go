@@ -22,15 +22,18 @@ import (
 var TrustInsecure bool
 
 // RemoteHTTP is a remote casync store accessed via HTTP.
-type RemoteHTTP struct {
+type RemoteHTTPBase struct {
 	location   *url.URL
 	client     *http.Client
 	errorRetry int
 }
 
-// NewRemoteHTTPStore initializes a new store that pulls chunks via HTTP(S) from
-// a remote web server. n defines the size of idle connections allowed.
-func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*RemoteHTTP, error) {
+// RemoteHTTP is a remote casync store accessed via HTTP.
+type RemoteHTTP struct {
+	*RemoteHTTPBase
+}
+
+func NewRemoteHTTPStoreBase(location *url.URL, n int, cert string, key string) (*RemoteHTTPBase, error) {
 	if location.Scheme != "http" && location.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected http or https", location.Scheme)
 	}
@@ -78,27 +81,30 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 
 	client := &http.Client{Transport: tr}
 
-	return &RemoteHTTP{location: &u, client: client}, nil
+	return &RemoteHTTPBase{location: location, client: client}, nil
 }
 
 // SetTimeout configures the timeout on the HTTP client for all requests
-func (r *RemoteHTTP) SetTimeout(timeout time.Duration) {
+func (r *RemoteHTTPBase) SetTimeout(timeout time.Duration) {
 	r.client.Timeout = timeout
 }
 
 // SetErrorRetry defines how many HTTP errors are retried. This can be useful
 // when dealing with unreliable networks that can timeout or where errors are
 // transient.
-func (r *RemoteHTTP) SetErrorRetry(n int) {
+func (r *RemoteHTTPBase) SetErrorRetry(n int) {
 	r.errorRetry = n
 }
 
-// GetChunk reads and returns one (compressed!) chunk from the store
-func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
-	sID := id.String()
-	p := filepath.Join(sID[0:4], sID) + chunkFileExt
+func (r *RemoteHTTPBase) String() string {
+	return r.location.String()
+}
 
-	u, _ := r.location.Parse(p)
+func (r *RemoteHTTPBase) Close() error { return nil }
+
+// GetObject reads and returns an object in the form of []byte from the store
+func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
+	u, _ := r.location.Parse(name)
 	var (
 		resp    *http.Response
 		err     error
@@ -118,9 +124,9 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
 		switch resp.StatusCode {
 		case 200: // expected
 		case 404:
-			return nil, ChunkMissing{id}
+			return nil, NoSuchObject{name}
 		default:
-			return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, p)
+			return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, name)
 		}
 		b, err = ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -132,6 +138,53 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
 		break
 	}
 	return b, err
+}
+
+// StoreObject stores an object to the store.
+func (r *RemoteHTTPBase) StoreObject(name string, rdr io.Reader) error {
+
+	u, _ := r.location.Parse(name)
+	var (
+		resp    *http.Response
+		err     error
+		attempt int
+	)
+retry:
+	attempt++
+	req, err := http.NewRequest("PUT", u.String(), rdr)
+	if err != nil {
+		return err
+	}
+	resp, err = r.client.Do(req)
+	if err != nil {
+		if attempt >= r.errorRetry {
+			return err
+		}
+		goto retry
+	}
+	defer resp.Body.Close()
+	msg, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return errors.New(string(msg))
+	}
+	return nil
+}
+
+// NewRemoteHTTPStore initializes a new store that pulls chunks via HTTP(S) from
+// a remote web server. n defines the size of idle connections allowed.
+func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*RemoteHTTP, error) {
+	b, err := NewRemoteHTTPStoreBase(location, n, cert, key)
+	if err != nil {
+		return nil, err
+	}
+	return &RemoteHTTP{b}, nil
+}
+
+// GetChunk reads and returns one (compressed!) chunk from the store
+func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
+	sID := id.String()
+	p := filepath.Join(sID[0:4], sID) + chunkFileExt
+	return r.GetObject(p)
 }
 
 // HasChunk returns true if the chunk is in the store
@@ -168,36 +221,5 @@ retry:
 func (r *RemoteHTTP) StoreChunk(id ChunkID, b []byte) error {
 	sID := id.String()
 	p := filepath.Join(sID[0:4], sID) + chunkFileExt
-
-	u, _ := r.location.Parse(p)
-	var (
-		resp    *http.Response
-		err     error
-		attempt int
-	)
-retry:
-	attempt++
-	req, err := http.NewRequest("PUT", u.String(), bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	resp, err = r.client.Do(req)
-	if err != nil {
-		if attempt >= r.errorRetry {
-			return err
-		}
-		goto retry
-	}
-	defer resp.Body.Close()
-	msg, _ := ioutil.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return errors.New(string(msg))
-	}
-	return nil
+	return r.StoreObject(p, bytes.NewReader(b))
 }
-
-func (r *RemoteHTTP) String() string {
-	return r.location.String()
-}
-
-func (s RemoteHTTP) Close() error { return nil }

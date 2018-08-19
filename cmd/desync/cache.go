@@ -15,7 +15,7 @@ const cacheUsage = `desync cache [options] <index> [<index>...]
 Read chunk IDs from caibx or caidx files from one or more stores without
 writing to disk. Can be used (with -c) to populate a store with desired chunks
 either to be used as cache, or to populate a store with chunks referenced in an
-index file.`
+index file. Use '-' to read (a single) index from STDIN.`
 
 func cache(ctx context.Context, args []string) error {
 	var (
@@ -55,10 +55,17 @@ func cache(ctx context.Context, args []string) error {
 		return errors.New("-clientKey and -clientCert options need to be provided together.")
 	}
 
+	// Parse the store locations, open the stores and add a cache is requested
+	opts := storeOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
+	}
+
 	// Read the input files and merge all chunk IDs in a map to de-dup them
 	idm := make(map[desync.ChunkID]struct{})
 	for _, name := range flags.Args() {
-		c, err := readCaibxFile(name)
+		c, err := readCaibxFile(name, opts)
 		if err != nil {
 			return err
 		}
@@ -73,12 +80,6 @@ func cache(ctx context.Context, args []string) error {
 		ids = append(ids, id)
 	}
 
-	// Parse the store locations, open the stores and add a cache is requested
-	opts := storeOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
-	}
 	s, err := multiStore(opts, storeLocations.list...)
 	if err != nil {
 		return err

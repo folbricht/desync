@@ -8,16 +8,24 @@ import (
 	"os"
 )
 
-const listUsage = `desync list-chunks <caibx>
+const listUsage = `desync list-chunks <index>
 
-Reads the index file from disk and prints the list of chunk IDs in it.`
+Reads the index file and prints the list of chunk IDs in it. Use '-' to read
+the index from STDIN.`
 
 func list(ctx context.Context, args []string) error {
+	var (
+		clientCert string
+		clientKey  string
+	)
+
 	flags := flag.NewFlagSet("list-chunks", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Fprintln(os.Stderr, listUsage)
 		flags.PrintDefaults()
 	}
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() < 1 {
@@ -27,8 +35,18 @@ func list(ctx context.Context, args []string) error {
 		return errors.New("Too many arguments. See -h for help.")
 	}
 
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
+	}
+
+	// Parse the store locations, open the stores and add a cache is requested
+	opts := storeOptions{
+		clientCert: clientCert,
+		clientKey:  clientKey,
+	}
+
 	// Read the input
-	c, err := readCaibxFile(flags.Arg(0))
+	c, err := readCaibxFile(flags.Arg(0), opts)
 	if err != nil {
 		return err
 	}

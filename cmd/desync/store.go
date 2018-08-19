@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"net/url"
 
+	"path"
+
 	"github.com/folbricht/desync"
+	"github.com/pkg/errors"
 )
 
 // storeOptions are used to pass additional options to store initalization
@@ -109,7 +112,7 @@ func storeFromLocation(location string, opts storeOptions) (desync.Store, error)
 		s = h
 	case "s3+http", "s3+https":
 		s3Creds, region := cfg.GetS3CredentialsFor(loc)
-		s, err = desync.NewS3Store(location, s3Creds, region)
+		s, err = desync.NewS3Store(loc, s3Creds, region)
 		if err != nil {
 			return nil, err
 		}
@@ -122,4 +125,89 @@ func storeFromLocation(location string, opts storeOptions) (desync.Store, error)
 		return nil, fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
 	}
 	return s, nil
+}
+
+func readCaibxFile(location string, opts storeOptions) (c desync.Index, err error) {
+	is, indexName, err := indexStoreFromLocation(location, opts)
+	if err != nil {
+		return c, err
+	}
+	defer is.Close()
+
+	return is.GetIndex(indexName)
+}
+
+func storeCaibxFile(idx desync.Index, location string, opts storeOptions) error {
+	is, indexName, err := writableIndexStore(location, opts)
+	if err != nil {
+		return err
+	}
+	defer is.Close()
+	return is.StoreIndex(indexName, idx)
+}
+
+// WritableIndexStore is used to parse a store location from the command line for
+// commands that expect to write indexes, such as make or tar. It determines
+// which type of writable store is needed, instantiates and returns a
+// single desync.IndexWriteStore.
+func writableIndexStore(location string, opts storeOptions) (desync.IndexWriteStore, string, error) {
+	s, indexName, err := indexStoreFromLocation(location, opts)
+	if err != nil {
+		return nil, indexName, err
+	}
+	store, ok := s.(desync.IndexWriteStore)
+	if !ok {
+		return nil, indexName, fmt.Errorf("index store '%s' does not support writing", location)
+	}
+	return store, indexName, nil
+}
+
+// Parse a single store URL or path and return an initialized instance of it
+func indexStoreFromLocation(location string, opts storeOptions) (desync.IndexStore, string, error) {
+	loc, err := url.Parse(location)
+	if err != nil {
+		return nil, "", fmt.Errorf("Unable to parse store location %s : %s", location, err)
+	}
+
+	indexName := path.Base(loc.Path)
+	// Remove file name from url path
+	p := *loc
+	p.Path = path.Dir(p.Path)
+
+	var s desync.IndexStore
+	switch loc.Scheme {
+	case "ssh":
+		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
+	case "sftp":
+		s, err = desync.NewSFTPIndexStore(loc)
+		if err != nil {
+			return nil, "", err
+		}
+	case "http", "https":
+		h, err := desync.NewRemoteHTTPIndexStore(&p, opts.n, opts.clientCert, opts.clientKey)
+		if err != nil {
+			return nil, "", err
+		}
+		h.SetTimeout(cfg.HTTPTimeout)
+		h.SetErrorRetry(cfg.HTTPErrorRetry)
+		s = h
+	case "s3+http", "s3+https":
+		s3Creds, region := cfg.GetS3CredentialsFor(&p)
+		s, err = desync.NewS3IndexStore(&p, s3Creds, region)
+		if err != nil {
+			return nil, "", err
+		}
+	case "":
+		if location == "-" {
+			s, _ = desync.NewConsoleIndexStore()
+		} else {
+			s, err = desync.NewLocaIndexStore(p.String())
+			if err != nil {
+				return nil, "", err
+			}
+		}
+	default:
+		return nil, "", fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
+	}
+	return s, indexName, nil
 }

@@ -8,10 +8,20 @@ import (
 	"net/http"
 	"os"
 
+	"strings"
+
 	"github.com/folbricht/desync"
 )
 
-const serverUsage = `desync chunk-server [options]
+type ServerType int
+
+const (
+	IndexServer = iota
+	ChunkServer
+)
+
+const (
+	chunkServerUsage = `desync chunk-server [options]
 
 Starts an HTTP chunk server that can be used as remote store. It supports
 reading from multiple local or remote stores as well as a local cache. If
@@ -19,7 +29,15 @@ reading from multiple local or remote stores as well as a local cache. If
 enables writing to this store, but this is only allowed when just one upstream
 chunk store is provided.`
 
-func server(ctx context.Context, args []string) error {
+	indexServerUsage = `desync index-server [options]
+
+Starts an HTTP index server that can be used as remote store. It supports
+reading from a single local or remote store.
+If -cert and -key are provided, the server will serve over HTTPS. The -w option
+enables writing to this store.`
+)
+
+func server(ctx context.Context, serverType ServerType, args []string) error {
 	var (
 		cacheLocation   string
 		n               int
@@ -32,12 +50,25 @@ func server(ctx context.Context, args []string) error {
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, serverUsage)
+		if serverType == ChunkServer {
+			fmt.Fprintln(os.Stderr, chunkServerUsage)
+		}
+
+		if serverType == IndexServer {
+			fmt.Fprintln(os.Stderr, indexServerUsage)
+		}
 		flags.PrintDefaults()
 	}
 
-	flags.Var(storeLocations, "s", "casync store location, can be multiples")
-	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
+	if serverType == ChunkServer {
+		flags.Var(storeLocations, "s", "casync store location, can be multiples")
+		flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
+	}
+
+	if serverType == IndexServer {
+		flags.Var(storeLocations, "s", "index store location")
+	}
+
 	flags.IntVar(&n, "n", 10, "number of goroutines, only used for remote SSH stores")
 	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
 	flags.Var(listenAddresses, "l", "listen address, can be multiples (default :http)")
@@ -66,7 +97,7 @@ func server(ctx context.Context, args []string) error {
 
 	// Checkout the store
 	if len(storeLocations.list) == 0 {
-		return errors.New("No casync store provided. See -h for help.")
+		return errors.New("No store provided. See -h for help.")
 	}
 
 	// When supporting writing, only one upstream store is possible
@@ -76,25 +107,28 @@ func server(ctx context.Context, args []string) error {
 
 	// Parse the store locations, open the stores and add a cache is requested
 	var (
-		s    desync.Store
-		err  error
 		opts = storeOptions{
 			n:          n,
 			clientCert: clientCert,
 			clientKey:  clientKey,
 		}
 	)
-	if writable {
-		s, err = WritableStore(storeLocations.list[0], opts)
-	} else {
-		s, err = MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
-	}
-	if err != nil {
-		return err
-	}
-	defer s.Close()
 
-	http.Handle("/", desync.NewHTTPHandler(s, writable))
+	if serverType == ChunkServer {
+		s, err := handleChunkStore(writable, storeLocations, opts, cacheLocation)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+	}
+
+	if serverType == IndexServer {
+		is, err := handleIndexStore(writable, storeLocations, opts, cacheLocation)
+		if err != nil {
+			return err
+		}
+		defer is.Close()
+	}
 
 	// Run the server(s) in a goroutine, and use the main goroutine to wait for
 	// a signal or a failing server (ctx gets cancelled in that case)
@@ -117,4 +151,47 @@ func server(ctx context.Context, args []string) error {
 	// wait for either INT/TERM or an issue with the server
 	<-ctx.Done()
 	return nil
+}
+
+func handleChunkStore(writable bool, storeLocations *multiArg, opts storeOptions, cacheLocation string) (desync.Store, error) {
+	var (
+		s   desync.Store
+		err error
+	)
+	if writable {
+		s, err = WritableStore(storeLocations.list[0], opts)
+	} else {
+		s, err = MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	http.Handle("/", desync.NewHTTPHandler(s, writable))
+	return s, err
+}
+
+func handleIndexStore(writable bool, storeLocations *multiArg, opts storeOptions, cacheLocation string) (desync.IndexStore, error) {
+	var (
+		s   desync.IndexStore
+		err error
+	)
+
+	// Making sure we have a "/" at the end
+	loc := storeLocations.list[0]
+	if !strings.HasSuffix(loc, "/") {
+		loc = loc + "/"
+	}
+
+	if writable {
+		s, _, err = writableIndexStore(loc, opts)
+	} else {
+		s, _, err = indexStoreFromLocation(loc, opts)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	http.Handle("/", desync.NewHTTPIndexHandler(s, writable))
+	return s, err
 }

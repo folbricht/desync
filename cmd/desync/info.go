@@ -16,11 +16,13 @@ const infoUsage = `desync info [-s <store>] <index>
 
 Displays information about the provided index, such as number of chunks. If a
 store is provided, it'll also show how many of the chunks are present in the
-store.`
+store. Use '-' to read the index from STDIN.`
 
 func info(ctx context.Context, args []string) error {
 	var (
 		n              int
+		clientCert     string
+		clientKey      string
 		storeLocations = new(multiArg)
 		showJSON       bool
 		results        struct {
@@ -37,6 +39,8 @@ func info(ctx context.Context, args []string) error {
 	}
 	flags.Var(storeLocations, "s", "store location, can be multiples")
 	flags.IntVar(&n, "n", 10, "number of goroutines")
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.BoolVar(&showJSON, "j", false, "show information in JSON format")
 	flags.Parse(args)
 
@@ -47,8 +51,18 @@ func info(ctx context.Context, args []string) error {
 		return errors.New("Too many arguments. See -h for help.")
 	}
 
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
+	}
+
+	opts := storeOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
+	}
+
 	// Read the index
-	c, err := readCaibxFile(flags.Arg(0))
+	c, err := readCaibxFile(flags.Arg(0), opts)
 	if err != nil {
 		return err
 	}

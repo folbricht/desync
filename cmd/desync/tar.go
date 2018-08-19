@@ -13,15 +13,18 @@ import (
 	"github.com/folbricht/desync"
 )
 
-const tarUsage = `desync tar <catar|caidx> <source>
+const tarUsage = `desync tar <catar|index> <source>
 
 Encodes a directory tree into a catar archive or alternatively an index file
-with the archive chunked in a local or S3 store.`
+with the archive chunked in a local or S3 store. Use '-' to write the output,
+catar or index to STDOUT.`
 
 func tar(ctx context.Context, args []string) error {
 	var (
 		makeIndex     bool
 		n             int
+		clientCert    string
+		clientKey     string
 		storeLocation string
 		chunkSize     string
 	)
@@ -33,6 +36,8 @@ func tar(ctx context.Context, args []string) error {
 	flags.BoolVar(&makeIndex, "i", false, "Create index file (caidx), not catar")
 	flags.StringVar(&storeLocation, "s", "", "Local or S3 casync store location (with -i)")
 	flags.IntVar(&n, "n", 10, "number of goroutines (with -i)")
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.StringVar(&chunkSize, "m", "16:64:256", "Min/Avg/Max chunk size in kb (with -i)")
 	flags.Parse(args)
 
@@ -45,19 +50,33 @@ func tar(ctx context.Context, args []string) error {
 	if makeIndex && storeLocation == "" {
 		return errors.New("-i requires a store (-s <location>)")
 	}
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
+	}
 
 	output := flags.Arg(0)
 	sourceDir := flags.Arg(1)
 
-	f, err := os.Create(output)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
 	// Just make the catar and stop if that's all that was required
 	if !makeIndex {
-		return desync.Tar(ctx, f, sourceDir)
+		var w io.Writer
+		if output == "-" {
+			w = os.Stdout
+		} else {
+			f, err := os.Create(output)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			w = f
+		}
+		return desync.Tar(ctx, w, sourceDir)
+	}
+
+	sOpts := storeOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
 	}
 
 	// An index is requested, so stream the output of the tar command directly
@@ -65,7 +84,7 @@ func tar(ctx context.Context, args []string) error {
 	r, w := io.Pipe()
 
 	// Open the target store
-	s, err := WritableStore(storeLocation, storeOptions{n: n})
+	s, err := WritableStore(storeLocation, sOpts)
 	if err != nil {
 		return err
 	}
@@ -100,12 +119,6 @@ func tar(ctx context.Context, args []string) error {
 		return tarErr
 	}
 
-	// Write the index to file
-	i, err := os.Create(output)
-	if err != nil {
-		return err
-	}
-	defer i.Close()
-	_, err = index.WriteTo(i)
-	return err
+	// Write the index
+	return storeCaibxFile(index, output, sOpts)
 }

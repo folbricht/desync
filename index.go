@@ -84,7 +84,9 @@ func (i *Index) WriteTo(w io.Writer) (int64, error) {
 		ChunkSizeAvg: i.Index.ChunkSizeAvg,
 		ChunkSizeMax: i.Index.ChunkSizeMax,
 	}
-	d := NewFormatEncoder(w)
+
+	bw := bufio.NewWriter(w)
+	d := NewFormatEncoder(bw)
 	n, err := d.Encode(index)
 	if err != nil {
 		return n, err
@@ -103,6 +105,10 @@ func (i *Index) WriteTo(w io.Writer) (int64, error) {
 		Items:        fChunks,
 	}
 	n1, err := d.Encode(table)
+
+	if err := bw.Flush(); err != nil {
+		return n + n1, err
+	}
 	return n + n1, err
 }
 

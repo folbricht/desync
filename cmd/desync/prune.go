@@ -13,12 +13,15 @@ import (
 const pruneUsage = `desync prune [options] <index> [<index>..]
 
 Read chunk IDs in from index files and delete any chunks from a local (or s3)
-store that are not referenced in the index files.`
+store that are not referenced in the index files. Use '-' to read a single index
+from STDIN.`
 
 func prune(ctx context.Context, args []string) error {
 	var (
 		storeLocation string
 		accepted      bool
+		clientCert    string
+		clientKey     string
 	)
 	flags := flag.NewFlagSet("prune", flag.ExitOnError)
 	flags.Usage = func() {
@@ -28,6 +31,8 @@ func prune(ctx context.Context, args []string) error {
 
 	flags.StringVar(&storeLocation, "s", "", "local or s3 store")
 	flags.BoolVar(&accepted, "y", false, "do not ask for confirmation")
+	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
+	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.Parse(args)
 
 	if flags.NArg() < 1 {
@@ -36,6 +41,16 @@ func prune(ctx context.Context, args []string) error {
 
 	if storeLocation == "" {
 		return errors.New("No store provided.")
+	}
+
+	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
+		return errors.New("-clientKey and -clientCert options need to be provided together.")
+	}
+
+	// Parse the store locations, open the stores and add a cache is requested
+	opts := storeOptions{
+		clientCert: clientCert,
+		clientKey:  clientKey,
 	}
 
 	// Open the target store
@@ -54,7 +69,7 @@ func prune(ctx context.Context, args []string) error {
 	// Read the input files and merge all chunk IDs in a map to de-dup them
 	ids := make(map[desync.ChunkID]struct{})
 	for _, name := range flags.Args() {
-		c, err := readCaibxFile(name)
+		c, err := readCaibxFile(name, opts)
 		if err != nil {
 			return err
 		}
