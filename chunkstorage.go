@@ -35,8 +35,17 @@ func (s *ChunkStorage) markProcessed(id ChunkID) bool {
 	return ok
 }
 
+// Unmark a chunk in the in-memory cache. This is used if a chunk is first
+// marked as processed, but then actually fails to be stored. Unmarking the
+// makes it eligible to be re-tried again in case of errors.
+func (s *ChunkStorage) unmarkProcessed(id ChunkID) {
+	s.Lock()
+	defer s.Unlock()
+	delete(s.processed, id)
+}
+
 // Stores a single chunk in a synchronous manner.
-func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) error {
+func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) (err error) {
 
 	// Mark this chunk as done so no other goroutine will attempt to store it
 	// at the same time. If this is the first time this chunk is marked, it'll
@@ -49,6 +58,14 @@ func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) error {
 	if s.ws.HasChunk(id) {
 		return nil
 	}
+
+	// The chunk was marked as "processed" above. If there's a problem to actually
+	// store it, we need to unmark it again.
+	defer func() {
+		if err != nil {
+			s.unmarkProcessed(id)
+		}
+	}()
 
 	var retried bool
 retry:
