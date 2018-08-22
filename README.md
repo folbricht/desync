@@ -22,6 +22,7 @@ Among the distinguishing factors:
 - Allows FUSE mounting of blob indexes
 - S3 protocol support to access chunk stores for read operations and some some commands that write chunks
 - Stores and retrieves index files from remote index stores such as HTTP, SFTP and S3
+- Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 
 ## Parallel chunking
 One of the significant differences to casync is that desync attempts to make chunking faster by utilizing more CPU resources, chunking data in parallel. Depending on the chosen degree of concurrency, the file is split into N equal parts and each part is chunked independently. While the chunking of each part is ongoing, part1 is trying to align with part2, and part3 is trying to align with part4 and so on. Alignment is achieved once a common split point is found in the overlapping area. If a common split point is found, the process chunking the previous part stops, eg. part1 chunker stops, part2 chunker keeps going until it aligns with part3 and so on until all split points have been found. Once all split points have been determined, the file is opened again (N times) to read, compress and store the chunks. While in most cases this process achieves significantly reduced chunking times at the cost of CPU, there are edge cases where chunking is only about as fast as upstream casync (with more CPU usage). This is the case if no split points can be found in the data between min and max chunk size as is the case if most or all of the file consists of 0-bytes. In this situation, the concurrent chunking processes for each part will not align with each other and a lot of effort is wasted. The table below shows how the type of data that is being chunked can influence runtime of each operation. `make` refers to the process of chunking, while `extract` refers to re-assembly of blobs from chunks.
@@ -30,6 +31,17 @@ Command | Mostly/All 0-bytes  | Typical data
 ------------ | ------------- | ------------
 make | Slow (worst-case) - Likely comparable to casync | Fast - Parallel chunking
 extract | Extremely fast - Effectively the speed of a truncate() syscall | Fast - Done in parallel, usually limited by I/O
+
+## Seeds and reflinks
+
+Copy-on-write filesystems such as Btrfs and XFS support cloning of blocks between files in order to save disk space as well as improve extraction performance. To utilize this feature, desync uses several seeds to clone sections of files rather than reading the data from chunk-stores and copying it in place:
+- A built-in seed for Null-chunks (a chunk of Max chunk site containing only 0 bytes). This can significantly reduce the disk usage of files with large 0-byte ranges, such as VM images. This will effectively turn an eager-zeroed VM disk into a sparse disk while retaining all the advantages of eager-zeroed disk images.
+- A build-in Self-seed. As chunks are being written to the destination file, the file itself becomes a seed. If one chunk, or a series of chunks is used again later in the file, it'll be cloned from the position written previously. This saves storage when the file contains several repetitive sections.
+- Seed files and their indexes can be provided when extracting a file. For this feature, it's necessary to already have the index plus its blob on disk. So for example `image-v1.vmdk` and `image-v1.vmdk.caibx` can be used as seed for the extract operation of `image-v2.vmdk`. The amount of additional disk space required to store `image-v2.vmdk` will be the delta between it and `image-v1.vmdk`.
+
+![](doc/seed.png)
+
+Even if cloning is not available, seeds are still useful. `desync` automatically determines if reflinks are available (and the block size used in the filesystem). If cloning is not supported, sections are copied instead of cloned. Copying still improves performance and reduces the load created by retrieving chunks over the network and decompressing them.
 
 ## Tool
 
@@ -43,7 +55,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 ```
 
 ### Subcommands
-- `extract`      - build a blob from an index file
+- `extract`      - build a blob from an index file, optionally using seed indexes+blobs
 - `verify`       - verify the integrity of a local store
 - `list-chunks`  - list all chunk IDs contained in an index file
 - `cache`        - populate a cache from index files without extracting a blob or archive
@@ -60,6 +72,8 @@ go get -u github.com/folbricht/desync/cmd/desync
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, `tar` and `prune` commands support updating chunk stores in S3, while `verify` only operates on a local store.
+- `-seed <indexfile>` Specifies a seed file and index for the `extract` command. The tool expects the matching file to be present and have the same name as the index file, without the `.caibx` extension.
+- `-seed-dir <dir>` Specifies a directory containing seed files and their indexes for the `extract` command. For each index file in the directory (`*.caibx`) there needs to be a matching blob without the extension.
 - `-c <store>` Location of a chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
@@ -187,6 +201,19 @@ desync extract -s ssh://192.168.1.1/path/to/casync.store/ -c /tmp/store somefile
 Use multiple stores, specify the local one first to improve performance.
 ```
 desync extract -s /some/local/store -s ssh://192.168.1.1/path/to/casync.store/ somefile.tar.caibx somefile.tar
+```
+
+Extract version 3 of a disk image using the previous 2 versions as seed for cloning (if supported), or copying. Note, when providing a seed like `-seed <file>.ext.caibx`, it is assumed that `<file>.ext` is available next to the index file, and matches the index.
+```
+desync extract -s /local/store \
+  -seed image-v1.qcow2.caibx \
+  -seed image-v2.qcow2.caibx \
+  image-v3.qcow2.caibx image-v3.qcow2
+```
+
+Extract an image using several seeds present in a directory. Each of the `.caibx` files in the directory needs to have a matching blob of the same name. It is possible for the source index file to be in the same directory also (it'll be skipped automatically).
+```
+desync extract -s /local/store -seed-dir /path/to/images image-v3.qcow2.caibx image-v3.qcow2
 ```
 
 Mix and match remote stores and use a local cache store to improve performance.

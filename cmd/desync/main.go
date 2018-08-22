@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/pkg/errors"
 )
 
 const usage = `desync <command> [options]
@@ -97,6 +99,15 @@ func main() {
 func help(ctx context.Context, args []string) error {
 	flag.Usage()
 	os.Exit(1)
+	return nil
+}
+
+func printJSON(v interface{}) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, string(b))
 	return nil
 }
 

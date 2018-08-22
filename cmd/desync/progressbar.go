@@ -1,103 +1,37 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/folbricht/desync"
 	"golang.org/x/crypto/ssh/terminal"
+	pb "gopkg.in/cheggaaa/pb.v1"
 )
 
-type ConsoleProgressBar struct {
-	prefix  string
-	mu      sync.Mutex
-	done    chan (struct{})
-	total   int
-	counter int
-	fd      int
-}
-
-func NewProgressBar(total int, prefix string) desync.ProgressBar {
+// NewProgressBar initializes a wrapper for a https://github.com/cheggaaa/pb
+// progressbar that implements desync.ProgressBar
+func NewProgressBar(prefix string) desync.ProgressBar {
 	if !terminal.IsTerminal(int(os.Stderr.Fd())) {
-		return NullProgressBar{}
+		return nil
 	}
-	return &ConsoleProgressBar{prefix: prefix, total: total, done: make(chan (struct{}))}
+	bar := pb.New(0).Prefix(prefix)
+	bar.ShowCounters = false
+	bar.Output = os.Stderr
+	return ProgressBar{bar}
 }
 
-func (p *ConsoleProgressBar) Add(n int) {
-	if p == nil {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.counter += n
-	if p.counter > p.total {
-		p.counter = p.total
-	}
+type ProgressBar struct {
+	*pb.ProgressBar
 }
 
-func (p *ConsoleProgressBar) Set(n int) {
-	if p == nil {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.counter = n
-	if p.counter > p.total {
-		p.counter = p.total
-	}
+func (p ProgressBar) SetTotal(total int) {
+	p.ProgressBar.SetTotal(total)
 }
 
-func (p *ConsoleProgressBar) Start() {
-	if p == nil {
-		return
-	}
-	ticker := time.NewTicker(time.Millisecond * 500)
-	go func() {
-	loop:
-		for {
-			select {
-			case <-p.done:
-				break loop
-			case <-ticker.C:
-				p.draw()
-			}
-		}
-	}()
+func (p ProgressBar) Start() {
+	p.ProgressBar.Start()
 }
 
-func (p *ConsoleProgressBar) Stop() {
-	if p == nil {
-		return
-	}
-	p.draw()
-	close(p.done)
+func (p ProgressBar) Set(current int) {
+	p.ProgressBar.Set(current)
 }
-
-func (p *ConsoleProgressBar) draw() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	width, _, err := terminal.GetSize(int(os.Stderr.Fd()))
-	if err != nil || width <= len(p.prefix)+2 { // Is that a terminal and big enough?
-		return
-	}
-	progress := (width - len(p.prefix) - 2) * p.counter / p.total
-	blank := width - len(p.prefix) - 2 - progress
-	if progress < 0 || blank < 0 { // No need to panic if anything's off
-		return
-	}
-	fmt.Fprintf(os.Stderr, "\r%s|%s%s|", p.prefix, strings.Repeat("=", progress), strings.Repeat(" ", blank))
-}
-
-type NullProgressBar struct{}
-
-func (p NullProgressBar) Add(n int) {}
-
-func (p NullProgressBar) Set(n int) {}
-
-func (p NullProgressBar) Start() {}
-
-func (p NullProgressBar) Stop() {}

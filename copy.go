@@ -9,7 +9,7 @@ import (
 // not already present in the dst store. The goal is to load chunks from remote
 // store to populate a cache. If progress is provided, it'll be called when a
 // chunk has been processed. Used to draw a progress bar, can be nil.
-func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, progress func()) error {
+func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, pb ProgressBar) error {
 	var (
 		wg   sync.WaitGroup
 		in   = make(chan ChunkID)
@@ -18,6 +18,13 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// Setup and start the progressbar if any
+	if pb != nil {
+		pb.SetTotal(len(ids))
+		pb.Start()
+		defer pb.Finish()
+	}
 
 	// Helper function to record and deal with any errors in the goroutines
 	recordError := func(err error) {
@@ -44,8 +51,8 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 						recordError(err)
 					}
 				}
-				if progress != nil {
-					progress()
+				if pb != nil {
+					pb.Increment()
 				}
 			}
 			wg.Done()

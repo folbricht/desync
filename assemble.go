@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/pkg/errors"
 )
@@ -18,17 +19,33 @@ import (
 // confirm if the data matches what is expected and only populate areas that
 // differ from the expected content. This can be used to complete partly
 // written files.
-func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, progress func()) error {
+func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, pb ProgressBar) (*ExtractStats, error) {
+	type Job struct {
+		segment indexSegment
+		source  SeedSegment
+	}
 	var (
-		wg        sync.WaitGroup
-		mu        sync.Mutex
-		pErr      error
-		in        = make(chan IndexChunk)
-		nullChunk = NewNullChunk(idx.Index.ChunkSizeMax)
-		isBlank   bool
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		pErr    error
+		in      = make(chan Job)
+		isBlank bool
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// Setup and start the progressbar if any
+	if pb != nil {
+		pb.SetTotal(len(idx.Chunks))
+		pb.Start()
+		defer pb.Finish()
+	}
+
+	// Initialize stats to be gathered during extraction
+	stats := &ExtractStats{
+		BytesTotal:  idx.Length(),
+		ChunksTotal: len(idx.Chunks),
+	}
 
 	// Helper function to record and deal with any errors in the goroutines
 	recordError := func(err error) {
@@ -46,7 +63,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 	case os.IsNotExist(err):
 		f, err := os.Create(name)
 		if err != nil {
-			return err
+			return stats, err
 		}
 		f.Close()
 		isBlank = true
@@ -58,33 +75,62 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 	// confirm there's enough disk space, but it allows for an optimization
 	// when dealing with the Null Chunk
 	if err := os.Truncate(name, idx.Length()); err != nil {
-		return err
+		return stats, err
 	}
 
-	// Keep a record of what's already been written to the file and can be
-	// re-used if there are duplicate chunks
-	var written fileChunks
+	// Determine the blocksize of the target file which is required for reflinking
+	blocksize := blocksizeOfFile(name)
+
+	// Prepend a nullchunk seed to the list of seeds to make sure we read that
+	// before any large null sections in other seed files
+	ns, err := newNullChunkSeed(name, blocksize, idx.Index.ChunkSizeMax)
+	if err != nil {
+		return stats, err
+	}
+	defer ns.close()
+
+	// Start a self-seed which will become usable once chunks are written contigously
+	// beginning at position 0.
+	ss, err := newSelfSeed(name, idx)
+	if err != nil {
+		return stats, err
+	}
+	seeds = append([]Seed{ns, ss}, seeds...)
+
+	// Record the total number of seeds and blocksize in the stats
+	stats.Seeds = len(seeds)
+	stats.Blocksize = blocksize
 
 	// Start the workers, each having its own filehandle to write concurrently
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		f, err := os.OpenFile(name, os.O_RDWR, 0666)
 		if err != nil {
-			return fmt.Errorf("unable to open file %s, %s", name, err)
+			return stats, fmt.Errorf("unable to open file %s, %s", name, err)
 		}
 		defer f.Close()
 		go func() {
-			for c := range in {
-				if progress != nil {
-					progress()
+			for job := range in {
+				if pb != nil {
+					pb.Add(job.segment.lengthChunks())
 				}
-				// See if we can skip the chunk retrieval and decompression if the
-				// null chunk is being requested. If a new file is truncated to the
-				// right size beforehand, there's nothing to do since everything
-				// defaults to 0 bytes.
-				if isBlank && c.ID == nullChunk.ID {
+				if job.source != nil {
+					stats.addChunksFromSeed(uint64(job.segment.lengthChunks()))
+					offset := job.segment.start()
+					length := job.segment.lengthBytes()
+					copied, cloned, err := job.source.WriteInto(f, offset, length, blocksize, isBlank)
+					if err != nil {
+						recordError(err)
+						continue
+					}
+					stats.addBytesCopied(copied)
+					stats.addBytesCloned(cloned)
+					// Record this segment's been written in the self-seed to make it
+					// available going forward
+					ss.add(job.segment)
 					continue
 				}
+				c := job.segment.chunks()[0]
 				// If we operate on an existing file there's a good chance we already
 				// have the data written for this chunk. Let's read it from disk and
 				// compare to what is expected.
@@ -96,19 +142,15 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 					}
 					sum := sha512.Sum512_256(b)
 					if sum == c.ID {
-						written.add(c)
+						// Record this chunk's been written in the self-seed
+						ss.add(job.segment)
+						// Record we kept this chunk in the file (when using in-place extract)
+						stats.incChunksInPlace()
 						continue
 					}
 				}
-				// Before pulling a chunk from the store, let's see if that same chunk's
-				// been written to the file already. If so, we can simply clone it from
-				// that location.
-				if cw, ok := written.get(c.ID); ok {
-					if err := cloneInFile(f, c, cw); err != nil {
-						recordError(err)
-					}
-					continue
-				}
+				// Record this chunk having been pulled from the store
+				stats.incChunksFromStore()
 				// Pull the (compressed) chunk from the store
 				b, err := s.GetChunk(c.ID)
 				if err != nil {
@@ -141,70 +183,45 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, n int, p
 					recordError(err)
 					continue
 				}
-				// Make a record of this chunk being available in the file now
-				written.add(c)
+				// Record this chunk's been written in the self-seed
+				ss.add(job.segment)
 			}
 			wg.Done()
 		}()
 	}
 
-	// Feed the workers, stop if there are any errors
+	// Let the sequencer break up the index into segments, feed the workers, and
+	// stop if there are any errors
+	seq := NewSeedSequencer(idx, seeds...)
 loop:
-	for _, c := range idx.Chunks {
+	for {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
 			break loop
 		default:
 		}
-		in <- c
+		chunks, from, done := seq.Next()
+		in <- Job{chunks, from}
+		if done {
+			break
+		}
 	}
 	close(in)
 
 	wg.Wait()
-	return pErr
+	return stats, pErr
 }
 
-// fileChunks acts as a kind of in-file cache for chunks already written to
-// the file being assembled. Every chunk ref that has been successfully written
-// into the file is added to it. If another write operation requires the same
-// (duplicate) chunk again, it can just copied out of the file to the new
-// position, rather than requesting it from a (possibly remote) store again
-// and decompressing it.
-type fileChunks struct {
-	mu     sync.RWMutex
-	chunks map[ChunkID]IndexChunk
-}
-
-func (f *fileChunks) add(c IndexChunk) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if len(f.chunks) == 0 {
-		f.chunks = make(map[ChunkID]IndexChunk)
+func blocksizeOfFile(name string) uint64 {
+	stat, err := os.Stat(name)
+	if err != nil {
+		return DefaultBlockSize
 	}
-	f.chunks[c.ID] = c
-}
-
-func (f *fileChunks) get(id ChunkID) (IndexChunk, bool) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	c, ok := f.chunks[id]
-	return c, ok
-}
-
-// cloneInFile copies a chunk from one position to another in the same file.
-// Used when duplicate chunks are used in a file. TODO: The current implementation
-// uses just the one given filehandle, copies into memory, then writes to disk.
-// It may be more efficient to open a 2nd filehandle, seek, and copy directly
-// with a io.LimitReader.
-func cloneInFile(f *os.File, dst, src IndexChunk) error {
-	if src.ID != dst.ID || src.Size != dst.Size {
-		return errors.New("internal error: different chunks requested for in-file copy")
+	switch sys := stat.Sys().(type) {
+	case *syscall.Stat_t:
+		return uint64(sys.Blksize)
+	default:
+		return DefaultBlockSize
 	}
-	b := make([]byte, int64(src.Size))
-	if _, err := f.ReadAt(b, int64(src.Start)); err != nil {
-		return err
-	}
-	_, err := f.WriteAt(b, int64(dst.Start))
-	return err
 }

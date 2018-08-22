@@ -73,29 +73,19 @@ func makeCmd(ctx context.Context, args []string) error {
 		defer s.Close()
 	}
 
-	// Progress bar based on file size for the chunking step
-	stat, err := os.Stat(dataFile)
-	if err != nil {
-		return err
-	}
-	pc := NewProgressBar(int(stat.Size()), "Chunking ")
-
 	// Split up the file and create and index from it
-	pc.Start()
-	index, stats, err := desync.IndexFromFile(ctx, dataFile, n, min, avg, max, func(v uint64) { pc.Set(int(v)) })
+	pb := NewProgressBar("Chunking ")
+	index, stats, err := desync.IndexFromFile(ctx, dataFile, n, min, avg, max, pb)
 	if err != nil {
 		return err
 	}
-	pc.Stop()
 
 	// Chop up the file into chunks and store them in the target store if a store was given
 	if s != nil {
-		ps := NewProgressBar(len(index.Chunks), "Storing ")
-		ps.Start()
-		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, ps); err != nil {
+		pb := NewProgressBar("Storing ")
+		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, n, pb); err != nil {
 			return err
 		}
-		ps.Stop()
 	}
 
 	fmt.Fprintln(os.Stderr, "Chunks produced:", stats.ChunksAccepted)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -115,11 +114,9 @@ func info(ctx context.Context, args []string) error {
 	}
 
 	if showJSON {
-		b, err := json.MarshalIndent(results, "", "  ")
-		if err != nil {
+		if err := printJSON(results); err != nil {
 			return err
 		}
-		fmt.Println(string(b))
 	} else {
 		fmt.Println("Blob size:", results.Size)
 		fmt.Println("Total chunks:", results.Total)

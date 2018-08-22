@@ -22,6 +22,13 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Setup and start the progressbar if any
+	if pb != nil {
+		pb.SetTotal(len(chunks))
+		pb.Start()
+		defer pb.Finish()
+	}
+
 	// Helper function to record and deal with any errors in the goroutines
 	recordError := func(err error) {
 		mu.Lock()
