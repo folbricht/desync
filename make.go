@@ -26,6 +26,8 @@ func IndexFromFile(ctx context.Context,
 	pb ProgressBar,
 ) (Index, ChunkingStats, error) {
 
+	stats := ChunkingStats{}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -38,7 +40,20 @@ func IndexFromFile(ctx context.Context,
 		},
 	}
 
-	stats := ChunkingStats{}
+	// If our input file has a catar header, copy its feature flags into the index
+	f, err := os.Open(name)
+	if err != nil {
+		return index, stats, err
+	}
+	fDecoder := NewFormatDecoder(f)
+	piece, err := fDecoder.Next()
+	if err == nil {
+		switch t := piece.(type) {
+		case FormatEntry:
+			index.Index.FeatureFlags |= t.FeatureFlags
+		}
+	}
+	f.Close()
 
 	// Adjust n if it's a small file that doesn't have n*max bytes
 	info, err := os.Stat(name)
