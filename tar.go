@@ -13,6 +13,18 @@ import (
 	"syscall"
 )
 
+// TODO: Find out what CaFormatWithPermissions is as that's not set in
+// casync-produced catar archives
+const DesyncTarFeatureFlags uint64 = CaFormatWith32BitUIDs |
+		CaFormatWithNSecTime |
+		CaFormatWithPermissions |
+		CaFormatWithSymlinks |
+		CaFormatWithDeviceNodes |
+		CaFormatWithFIFOs |
+		CaFormatWithSockets |
+		CaFormatSHA512256 |
+		CaFormatExcludeNoDump
+
 // Tar implements the tar command which recursively parses a directory tree,
 // and produces a stream of encoded casync format elements (catar file).
 func Tar(ctx context.Context, w io.Writer, src string) error {
@@ -60,22 +72,10 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 		return 0, nil
 	}
 
-	// TODO: Find out what CaFormatWithPermissions is as that's not set in
-	// casync-produced catar archives
-	var featureFlags uint64 = CaFormatWith32BitUIDs |
-		CaFormatWithNSecTime |
-		CaFormatWithPermissions |
-		CaFormatWithSymlinks |
-		CaFormatWithDeviceNodes |
-		CaFormatWithFIFOs |
-		CaFormatWithSockets |
-		CaFormatSHA512256 |
-		CaFormatExcludeNoDump
-
 	// CaFormatEntry
 	entry := FormatEntry{
 		FormatHeader: FormatHeader{Size: 64, Type: CaFormatEntry},
-		FeatureFlags: featureFlags,
+		FeatureFlags: DesyncTarFeatureFlags,
 		UID:          uid,
 		GID:          gid,
 		Mode:         os.FileMode(mode),
