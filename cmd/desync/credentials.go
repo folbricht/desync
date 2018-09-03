@@ -50,7 +50,7 @@ func NewStaticCredentials(accessKey, secretKey string) *credentials.Credentials 
 	return credentials.New(p)
 }
 
-// A SharedCredentialsProvider retrieves credentials from the current user's home
+// RefreshableSharedCredentialsProvider retrieves credentials from the current user's home
 // directory, and keeps track if those credentials are expired.
 //
 // Profile ini file example: $HOME/.aws/credentials

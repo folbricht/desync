@@ -9,11 +9,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+// SFTPIndexStore is an index store backed by SFTP over SSH
 type SFTPIndexStore struct {
 	*SFTPStoreBase
 }
 
-// NewSFTPIndexStore establishes up to n connections with a casync index server
+// NewSFTPIndexStore initializes and index store backed by SFTP over SSH.
 func NewSFTPIndexStore(location *url.URL) (*SFTPIndexStore, error) {
 	b, err := newSFTPStoreBase(location)
 	if err != nil {
@@ -22,7 +23,8 @@ func NewSFTPIndexStore(location *url.URL) (*SFTPIndexStore, error) {
 	return &SFTPIndexStore{b}, nil
 }
 
-// Get and Index Reader from  an SFTP store, returns an error if the specified index file does not exist.
+// GetIndexReader returns a reader of an index from an SFTP store. Fails if the specified
+// index file does not exist.
 func (s *SFTPIndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 	f, err := s.client.Open(name)
 	if err != nil {
@@ -34,7 +36,7 @@ func (s *SFTPIndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) 
 	return f, nil
 }
 
-// Get and Index from  an SFTP store, returns an error if the specified index file does not exist.
+// GetIndex reads an index from an SFTP store, returns an error if the specified index file does not exist.
 func (s *SFTPIndexStore) GetIndex(name string) (i Index, e error) {
 	f, err := s.GetIndexReader(name)
 	if err != nil {
@@ -44,7 +46,7 @@ func (s *SFTPIndexStore) GetIndex(name string) (i Index, e error) {
 	return IndexFromReader(f)
 }
 
-// StoreChunk adds a new chunk to the store
+// StoreIndex adds a new index to the store
 func (s *SFTPIndexStore) StoreIndex(name string, idx Index) error {
 	r, w := io.Pipe()
 

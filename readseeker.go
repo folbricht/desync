@@ -25,6 +25,7 @@ type IndexPos struct {
 	nullChunk      *NullChunk
 }
 
+// NewIndexReadSeeker initializes a ReadSeeker for indexes.
 func NewIndexReadSeeker(i Index, s Store) *IndexPos {
 	return &IndexPos{
 		Store:      s,
@@ -46,7 +47,7 @@ func (ip *IndexPos) findOffset(newPos int64) (int64, error) {
 	var newChunkIdx int
 	var newChunkOffset int64
 	var delta int64
-	var err error = nil
+	var err error
 
 	// Degenerate case: Seeking to existing position
 	delta = newPos - ip.pos
@@ -115,6 +116,7 @@ func (ip *IndexPos) loadChunk() (err error) {
 	return nil
 }
 
+// Seek implements the io.Seeker interface. Sets the offset for the next Read operation.
 func (ip *IndexPos) Seek(offset int64, whence int) (int64, error) {
 	var newPos int64
 	var err error

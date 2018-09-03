@@ -13,17 +13,18 @@ import (
 	"syscall"
 )
 
-// TODO: Find out what CaFormatWithPermissions is as that's not set in
-// casync-produced catar archives
-const DesyncTarFeatureFlags uint64 = CaFormatWith32BitUIDs |
-		CaFormatWithNSecTime |
-		CaFormatWithPermissions |
-		CaFormatWithSymlinks |
-		CaFormatWithDeviceNodes |
-		CaFormatWithFIFOs |
-		CaFormatWithSockets |
-		CaFormatSHA512256 |
-		CaFormatExcludeNoDump
+// TarFeatureFlags are used as feature flags in the header of catar archives. These
+// should be used in index files when chunking a catar as well. TODO: Find out what
+// CaFormatWithPermissions is as that's not set incasync-produced catar archives.
+const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
+	CaFormatWithNSecTime |
+	CaFormatWithPermissions |
+	CaFormatWithSymlinks |
+	CaFormatWithDeviceNodes |
+	CaFormatWithFIFOs |
+	CaFormatWithSockets |
+	CaFormatSHA512256 |
+	CaFormatExcludeNoDump
 
 // Tar implements the tar command which recursively parses a directory tree,
 // and produces a stream of encoded casync format elements (catar file).
@@ -75,7 +76,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 	// CaFormatEntry
 	entry := FormatEntry{
 		FormatHeader: FormatHeader{Size: 64, Type: CaFormatEntry},
-		FeatureFlags: DesyncTarFeatureFlags,
+		FeatureFlags: TarFeatureFlags,
 		UID:          uid,
 		GID:          gid,
 		Mode:         os.FileMode(mode),

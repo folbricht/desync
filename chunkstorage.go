@@ -9,14 +9,15 @@ import (
 	"github.com/pkg/errors"
 )
 
+// ChunkStorage stores chunks in a writable store. It can be safely used by multiple goroutines and
+// contains an internal cache of what chunks have been store previously.
 type ChunkStorage struct {
 	sync.Mutex
 	ws        WriteStore
 	processed map[ChunkID]struct{}
 }
 
-// Stores chunks passed in the input channel asynchronously. Wait() will wait for until the input channel is closed or
-// until there's an error, in which case it will return it.
+// NewChunkStorage initializes a ChunkStorage object.
 func NewChunkStorage(ws WriteStore) *ChunkStorage {
 	s := &ChunkStorage{
 		ws:        ws,
@@ -44,7 +45,7 @@ func (s *ChunkStorage) unmarkProcessed(id ChunkID) {
 	delete(s.processed, id)
 }
 
-// Stores a single chunk in a synchronous manner.
+// StoreChunk stores a single chunk in a synchronous manner.
 func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) (err error) {
 
 	// Mark this chunk as done so no other goroutine will attempt to store it

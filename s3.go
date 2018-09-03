@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// S3Store is a read-write store with S3 backing
+// S3StoreBase is the base object for all chunk and index stores with S3 backing
 type S3StoreBase struct {
 	Location string
 	client   *minio.Client
@@ -26,6 +26,7 @@ type S3Store struct {
 	S3StoreBase
 }
 
+// NewS3StoreBase initializes a base object used for chunk or index stores backed by S3.
 func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string) (S3StoreBase, error) {
 	var err error
 	s := S3StoreBase{Location: u.String()}
@@ -61,6 +62,7 @@ func (s S3StoreBase) String() string {
 	return s.Location
 }
 
+// Close the S3 base store. NOP opertation but needed to implement the store interface.
 func (s S3StoreBase) Close() error { return nil }
 
 // NewS3Store creates a chunk store with S3 backing. The URL

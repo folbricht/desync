@@ -245,6 +245,7 @@ func (c *pChunker) syncWith(chunk IndexChunk) bool {
 	return chunk.Start == c.sync.Start && chunk.Size == c.sync.Size
 }
 
+// ChunkingStats is used to report statistics of a parallel chunking operation.
 type ChunkingStats struct {
 	ChunksAccepted uint64
 	ChunksProduced uint64

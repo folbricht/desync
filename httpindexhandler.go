@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 )
 
+// HTTPIndexHandler is the HTTP handler for index stores.
 type HTTPIndexHandler struct {
 	HTTPHandlerBase
 	s IndexStore
 }
 
+// NewHTTPIndexHandler initializes an HTTP index store handler
 func NewHTTPIndexHandler(s IndexStore, writable bool) http.Handler {
 	return HTTPIndexHandler{HTTPHandlerBase{"index", writable}, s}
 }

@@ -21,6 +21,7 @@ type IndexMountFS struct {
 	pathfs.FileSystem
 }
 
+// NewIndexMountFS initializes a FUSE filesystem mount based on an index and a chunk store.
 func NewIndexMountFS(idx Index, name string, s Store) *IndexMountFS {
 	return &IndexMountFS{
 		FName:      name,
@@ -30,6 +31,7 @@ func NewIndexMountFS(idx Index, name string, s Store) *IndexMountFS {
 	}
 }
 
+// GetAttr returns file attributes of a file or directory in a FUSE mount.
 func (me *IndexMountFS) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
 	switch name {
 	case me.FName:
@@ -44,6 +46,7 @@ func (me *IndexMountFS) GetAttr(name string, context *fuse.Context) (*fuse.Attr,
 	return nil, fuse.ENOENT
 }
 
+// OpenDir is called when a directory is opened in FUSE.
 func (me *IndexMountFS) OpenDir(name string, context *fuse.Context) (c []fuse.DirEntry, code fuse.Status) {
 	if name == "" {
 		c = []fuse.DirEntry{{Name: me.FName, Mode: fuse.S_IFREG}}
@@ -52,6 +55,7 @@ func (me *IndexMountFS) OpenDir(name string, context *fuse.Context) (c []fuse.Di
 	return nil, fuse.ENOENT
 }
 
+// Open a file in a FUSE mount.
 func (me *IndexMountFS) Open(name string, flags uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
 	if name != me.FName {
 		return nil, fuse.ENOENT
@@ -74,6 +78,7 @@ type IndexMountFile struct {
 	mu sync.Mutex
 }
 
+// NewIndexMountFile initializes a blob file opened in a FUSE mount.
 func NewIndexMountFile(idx Index, s Store) *IndexMountFile {
 	return &IndexMountFile{
 		r:    NewIndexReadSeeker(idx, s),
@@ -81,6 +86,7 @@ func NewIndexMountFile(idx Index, s Store) *IndexMountFile {
 	}
 }
 
+// Read from a blob file in a FUSE mount.
 func (f *IndexMountFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -96,12 +102,15 @@ func (f *IndexMountFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Sta
 	return fuse.ReadResultData(dest[:n]), fuse.OK
 }
 
+// GetAttr returns attributes of a blob file in a FUSE mount.
 func (f *IndexMountFile) GetAttr(out *fuse.Attr) fuse.Status {
 	out.Mode = fuse.S_IFREG | 0444
 	out.Size = uint64(f.r.Length)
 	return fuse.OK
 }
 
+// MountIndex mounts an index file under a FUSE mount point. The mount will only expose a single
+// blob file as represented by the index.
 func MountIndex(ctx context.Context, idx Index, path, name string, s Store, n int) error {
 	ifs := NewIndexMountFS(idx, name, s)
 	fs := pathfs.NewPathNodeFs(ifs, nil)

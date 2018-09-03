@@ -34,7 +34,7 @@ func newSelfSeed(file string, index Index) (*selfSeed, error) {
 // ranges of chunks are considered and writing happens concurrently, the segment
 // written here will not be usable until all earlier chunks have been written as
 // well.
-func (s *selfSeed) add(segment indexSegment) {
+func (s *selfSeed) add(segment IndexSegment) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

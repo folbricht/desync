@@ -21,7 +21,7 @@ import (
 // be accepted.
 var TrustInsecure bool
 
-// RemoteHTTP is a remote casync store accessed via HTTP.
+// RemoteHTTPBase is the base object for a remote, HTTP-based chunk or index stores.
 type RemoteHTTPBase struct {
 	location   *url.URL
 	client     *http.Client
@@ -33,6 +33,7 @@ type RemoteHTTP struct {
 	*RemoteHTTPBase
 }
 
+// NewRemoteHTTPStoreBase initializes a base object for HTTP index or chunk stores.
 func NewRemoteHTTPStoreBase(location *url.URL, n int, cert string, key string) (*RemoteHTTPBase, error) {
 	if location.Scheme != "http" && location.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected http or https", location.Scheme)
@@ -100,6 +101,7 @@ func (r *RemoteHTTPBase) String() string {
 	return r.location.String()
 }
 
+// Close the HTTP store. NOP operation but needed to implement the interface.
 func (r *RemoteHTTPBase) Close() error { return nil }
 
 // GetObject reads and returns an object in the form of []byte from the store

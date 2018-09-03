@@ -56,6 +56,7 @@ func (c Cache) String() string {
 	return fmt.Sprintf("store:%s with cache %s", c.s, c.l)
 }
 
+// Close the underlying writable chunk store
 func (c Cache) Close() error {
 	c.l.Close()
 	return c.s.Close()

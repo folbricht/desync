@@ -28,6 +28,7 @@ type PruneStore interface {
 	Prune(ctx context.Context, ids map[ChunkID]struct{}) error
 }
 
+// IndexStore is implemented by stores that hold indexes.
 type IndexStore interface {
 	GetIndexReader(name string) (io.ReadCloser, error)
 	GetIndex(name string) (Index, error)
@@ -35,6 +36,7 @@ type IndexStore interface {
 	fmt.Stringer
 }
 
+// IndexWriteStore is used by stores that support reading and writing of indexes.
 type IndexWriteStore interface {
 	IndexStore
 	StoreIndex(name string, idx Index) error

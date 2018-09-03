@@ -19,7 +19,7 @@ import (
 	"github.com/pkg/sftp"
 )
 
-// SFTPStore is a remote store that uses SFTP over SSH to access chunks
+// SFTPStoreBase is the base object for SFTP chunk and index stores.
 type SFTPStoreBase struct {
 	location *url.URL
 	path     string
@@ -27,6 +27,7 @@ type SFTPStoreBase struct {
 	cancel   context.CancelFunc
 }
 
+// SFTPStore is a chunk store that uses SFTP over SSH.
 type SFTPStore struct {
 	*SFTPStoreBase
 }
@@ -51,23 +52,27 @@ func newSFTPStoreBase(location *url.URL) (*SFTPStoreBase, error) {
 	c.Stderr = os.Stderr
 	r, err := c.StdoutPipe()
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	w, err := c.StdinPipe()
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	if err = c.Start(); err != nil {
+		cancel()
 		return nil, err
 	}
 	client, err := sftp.NewClientPipe(r, w)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	return &SFTPStoreBase{location, path, client, cancel}, nil
 }
 
-// StoreChunk adds a new chunk to the store
+// StoreObject adds a new object to a writable index or chunk store.
 func (s *SFTPStoreBase) StoreObject(name string, r io.Reader) error {
 	// Write to a tempfile on the remote server. This is not 100% guaranteed to not
 	// conflict between gorouties, there's no tempfile() function for remote servers.
@@ -111,7 +116,7 @@ func (s *SFTPStoreBase) String() string {
 	return s.location.String()
 }
 
-// NewRemoteSSHStore establishes up to n connections with a casync chunk server
+// NewSFTPStore initializes a chunk store using SFTP over SSH.
 func NewSFTPStore(location *url.URL) (*SFTPStore, error) {
 	b, err := newSFTPStoreBase(location)
 	if err != nil {
@@ -120,7 +125,7 @@ func NewSFTPStore(location *url.URL) (*SFTPStore, error) {
 	return &SFTPStore{b}, nil
 }
 
-// Get a chunk from an SFTP store, returns ChunkMissing if the file does not exist
+// GetChunk returns a chunk from an SFTP store, returns ChunkMissing if the file does not exist
 func (s *SFTPStore) GetChunk(id ChunkID) ([]byte, error) {
 	name := s.nameFromID(id)
 	f, err := s.client.Open(name)

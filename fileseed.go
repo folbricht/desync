@@ -95,12 +95,12 @@ func newFileSeedSegment(file string, chunks []IndexChunk, canReflink, needValida
 	}
 }
 
-func (f *fileSeedSegment) Size() uint64 {
-	if len(f.chunks) == 0 {
+func (s *fileSeedSegment) Size() uint64 {
+	if len(s.chunks) == 0 {
 		return 0
 	}
-	last := f.chunks[len(f.chunks)-1]
-	return last.Start + last.Size - f.chunks[0].Start
+	last := s.chunks[len(s.chunks)-1]
+	return last.Start + last.Size - s.chunks[0].Start
 }
 
 func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) (uint64, uint64, error) {

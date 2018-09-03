@@ -21,7 +21,7 @@ import (
 // written files.
 func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, pb ProgressBar) (*ExtractStats, error) {
 	type Job struct {
-		segment indexSegment
+		segment IndexSegment
 		source  SeedSegment
 	}
 	var (

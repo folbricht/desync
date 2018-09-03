@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// NodeDirectory represents a directory in a catar archive
 type NodeDirectory struct {
 	Name  string
 	UID   int
@@ -17,6 +18,7 @@ type NodeDirectory struct {
 	MTime time.Time
 }
 
+// NodeFile holds file permissions and data in a catar archive
 type NodeFile struct {
 	UID   int
 	GID   int
@@ -26,6 +28,7 @@ type NodeFile struct {
 	Data  io.Reader
 }
 
+// NodeSymlink holds symlink information in a catar archive
 type NodeSymlink struct {
 	Name   string
 	UID    int
@@ -35,6 +38,7 @@ type NodeSymlink struct {
 	Target string
 }
 
+// NodeDevice holds device information in a catar archive
 type NodeDevice struct {
 	Name  string
 	UID   int
@@ -45,12 +49,14 @@ type NodeDevice struct {
 	MTime time.Time
 }
 
+// ArchiveDecoder is used to decode a catar archive.
 type ArchiveDecoder struct {
 	d    FormatDecoder
 	dir  string
 	last interface{}
 }
 
+// NewArchiveDecoder initializes a decoder for a catar archive.
 func NewArchiveDecoder(r io.Reader) ArchiveDecoder {
 	return ArchiveDecoder{d: NewFormatDecoder(r), dir: "."}
 }

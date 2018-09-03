@@ -81,6 +81,7 @@ var hashTable = []uint32{
 	0x7bf7cabc, 0xf9c18d66, 0x593ade65, 0xd95ddf11,
 }
 
+// Chunker is used to break up a data stream into chunks of data.
 type Chunker struct {
 	r             io.Reader
 	min, avg, max uint64
@@ -97,6 +98,7 @@ type Chunker struct {
 	hDiscriminator uint32
 }
 
+// NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
 func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 	if min < ChunkerWindowSize {
 		return Chunker{}, fmt.Errorf("min chunk size too small, must be over %d", ChunkerWindowSize)

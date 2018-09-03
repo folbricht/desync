@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// HTTPHandlerBase is the base object for a HTTP chunk or index store.
 type HTTPHandlerBase struct {
 	handlerType string
 	writable    bool

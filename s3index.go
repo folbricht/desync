@@ -12,12 +12,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-// S3Store is a read-write store with S3 backing
+// S3IndexStore is a read-write index store with S3 backing
 type S3IndexStore struct {
 	S3StoreBase
 }
 
-// NewS3Store creates an index store with S3 backing. The URL
+// NewS3IndexStore creates an index store with S3 backing. The URL
 // should be provided like this: s3+http://host:port/bucket
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3S3_SECRET_KEY, or via the desync config file.
@@ -29,7 +29,8 @@ func NewS3IndexStore(location *url.URL, s3Creds *credentials.Credentials, region
 	return S3IndexStore{b}, nil
 }
 
-// Get and Index Reader from an S3 store, returns an error if the specified index file does not exist.
+// GetIndexReader returns a reader for an index from an S3 store. Fails if the specified index
+// file does not exist.
 func (s S3IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 	obj, err := s.client.GetObject(s.bucket, s.prefix+name, minio.GetObjectOptions{})
 	if err != nil {

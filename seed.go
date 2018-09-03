@@ -4,7 +4,7 @@ import (
 	"os"
 )
 
-// Filesystem block size
+// DefaultBlockSize is used when the actual filesystem block size cannot be determined automatically
 const DefaultBlockSize = 4096
 
 // Seed represent a source of chunks other than the store. Typically a seed is
@@ -22,29 +22,29 @@ type SeedSegment interface {
 	WriteInto(dst *os.File, offset, end, blocksize uint64, isBlank bool) (copied uint64, cloned uint64, err error)
 }
 
-// indexSegment represents a contiguous section of an index which is used when
+// IndexSegment represents a contiguous section of an index which is used when
 // assembling a file from seeds. first/last are positions in the index.
-type indexSegment struct {
+type IndexSegment struct {
 	index       Index
 	first, last int
 }
 
-func (s indexSegment) lengthChunks() int {
+func (s IndexSegment) lengthChunks() int {
 	return s.last - s.first + 1
 }
 
-func (s indexSegment) lengthBytes() uint64 {
+func (s IndexSegment) lengthBytes() uint64 {
 	return s.end() - s.start()
 }
 
-func (s indexSegment) start() uint64 {
+func (s IndexSegment) start() uint64 {
 	return s.index.Chunks[s.first].Start
 }
 
-func (s indexSegment) end() uint64 {
+func (s IndexSegment) end() uint64 {
 	return s.index.Chunks[s.last].Start + s.index.Chunks[s.last].Size
 }
 
-func (s indexSegment) chunks() []IndexChunk {
+func (s IndexSegment) chunks() []IndexChunk {
 	return s.index.Chunks[s.first : s.last+1]
 }

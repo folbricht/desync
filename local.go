@@ -218,4 +218,5 @@ func (s LocalStore) String() string {
 	return s.Base
 }
 
+// Close the store. NOP opertation, needed to implement Store interface.
 func (s LocalStore) Close() error { return nil }

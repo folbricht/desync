@@ -14,9 +14,9 @@ type LocalIndexStore struct {
 	Path string
 }
 
-// NewLocalStore creates an instance of a local castore, it only checks presence
+// NewLocalIndexStore creates an instance of a local castore, it only checks presence
 // of the store
-func NewLocaIndexStore(path string) (LocalIndexStore, error) {
+func NewLocalIndexStore(path string) (LocalIndexStore, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return LocalIndexStore{}, err
@@ -62,8 +62,9 @@ func (s LocalIndexStore) StoreIndex(name string, idx Index) error {
 	return err
 }
 
-func (r LocalIndexStore) String() string {
-	return r.Path
+func (s LocalIndexStore) String() string {
+	return s.Path
 }
 
+// Close the index store. NOP operation, needed to implement IndexStore interface
 func (s LocalIndexStore) Close() error { return nil }

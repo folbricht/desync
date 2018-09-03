@@ -201,7 +201,7 @@ func indexStoreFromLocation(location string, opts storeOptions) (desync.IndexSto
 		if location == "-" {
 			s, _ = desync.NewConsoleIndexStore()
 		} else {
-			s, err = desync.NewLocaIndexStore(p.String())
+			s, err = desync.NewLocalIndexStore(p.String())
 			if err != nil {
 				return nil, "", err
 			}

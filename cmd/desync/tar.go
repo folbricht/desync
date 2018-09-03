@@ -114,7 +114,7 @@ func tar(ctx context.Context, args []string) error {
 		return err
 	}
 
-	index.Index.FeatureFlags |= desync.DesyncTarFeatureFlags
+	index.Index.FeatureFlags |= desync.TarFeatureFlags
 
 	// See if Tar encountered an error along the way
 	if tarErr != nil {

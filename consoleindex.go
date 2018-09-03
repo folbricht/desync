@@ -10,7 +10,7 @@ import (
 // ConsoleIndexStore is used for writing/reading indexes from STDOUT/STDIN
 type ConsoleIndexStore struct{}
 
-// NewConsoleStore creates an instance of an indexStore that reads/writes to and
+// NewConsoleIndexStore creates an instance of an indexStore that reads/writes to and
 // from console
 func NewConsoleIndexStore() (ConsoleIndexStore, error) {
 	return ConsoleIndexStore{}, nil
@@ -32,8 +32,9 @@ func (s ConsoleIndexStore) StoreIndex(name string, idx Index) error {
 	return err
 }
 
-func (r ConsoleIndexStore) String() string {
+func (s ConsoleIndexStore) String() string {
 	return "-"
 }
 
+// Close the index store.
 func (s ConsoleIndexStore) Close() error { return nil }

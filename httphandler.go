@@ -10,11 +10,13 @@ import (
 	"strings"
 )
 
+// HTTPHandler is the server-side handler for a HTTP chunk store.
 type HTTPHandler struct {
 	HTTPHandlerBase
 	s Store
 }
 
+// NewHTTPHandler initializes and returns a new HTTP handler for a chunks erver.
 func NewHTTPHandler(s Store, writable bool) http.Handler {
 	return HTTPHandler{HTTPHandlerBase{"chunk", writable}, s}
 }
@@ -44,7 +46,7 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h HTTPHandler) parseChunkId(sid string, w http.ResponseWriter) (ChunkID, error) {
+func (h HTTPHandler) parseChunkID(sid string, w http.ResponseWriter) (ChunkID, error) {
 	// Parse the ID and verify the format
 	cid, err := ChunkIDFromString(sid)
 	if err != nil {
@@ -56,7 +58,7 @@ func (h HTTPHandler) parseChunkId(sid string, w http.ResponseWriter) (ChunkID, e
 }
 
 func (h HTTPHandler) get(sid string, w http.ResponseWriter) {
-	cid, err := h.parseChunkId(sid, w)
+	cid, err := h.parseChunkID(sid, w)
 	if err != nil {
 		return
 	}
@@ -65,7 +67,7 @@ func (h HTTPHandler) get(sid string, w http.ResponseWriter) {
 }
 
 func (h HTTPHandler) head(sid string, w http.ResponseWriter) {
-	cid, err := h.parseChunkId(sid, w)
+	cid, err := h.parseChunkID(sid, w)
 	if err != nil {
 		return
 	}
@@ -82,7 +84,7 @@ func (h HTTPHandler) put(sid string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cid, err := h.parseChunkId(sid, w)
+	cid, err := h.parseChunkID(sid, w)
 	if err != nil {
 		return
 	}
