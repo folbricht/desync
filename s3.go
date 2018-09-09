@@ -78,7 +78,7 @@ func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region stri
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
-func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
+func (s S3Store) GetChunk(id ChunkID) (*Chunk, error) {
 	name := s.nameFromID(id)
 	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
@@ -97,7 +97,10 @@ func (s S3Store) GetChunk(id ChunkID) ([]byte, error) {
 			err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
 		}
 	}
-	return b, err
+	if err != nil {
+		return nil, err
+	}
+	return NewChunkWithID(id, nil, b)
 }
 
 // StoreChunk adds a new chunk to the store

@@ -52,7 +52,7 @@ func (s *ProtocolServer) Serve(ctx context.Context) error {
 			if err != nil {
 				return errors.Wrap(err, "unable to decode requested chunk id")
 			}
-			b, err := s.store.GetChunk(id)
+			chunk, err := s.store.GetChunk(id)
 			if err != nil {
 				if _, ok := err.(ChunkMissing); ok {
 					if err = s.p.SendMissing(id); err != nil {
@@ -61,7 +61,11 @@ func (s *ProtocolServer) Serve(ctx context.Context) error {
 				}
 				return errors.Wrap(err, "unable to read chunk from store")
 			}
-			if err := s.p.SendProtocolChunk(id, CaProtocolChunkCompressed, b); err != nil {
+			b, err := chunk.Compressed()
+			if err != nil {
+				return err
+			}
+			if err := s.p.SendProtocolChunk(chunk.ID(), CaProtocolChunkCompressed, b); err != nil {
 				return errors.Wrap(err, "failed to send chunk data")
 			}
 		case CaProtocolAbort:

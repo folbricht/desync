@@ -23,25 +23,25 @@ func NewCache(s Store, l WriteStore) Cache {
 
 // GetChunk first asks the local store for the chunk and then the remote one.
 // If we get a chunk from the remote, it's stored locally too.
-func (c Cache) GetChunk(id ChunkID) ([]byte, error) {
-	b, err := c.l.GetChunk(id)
+func (c Cache) GetChunk(id ChunkID) (*Chunk, error) {
+	chunk, err := c.l.GetChunk(id)
 	switch err.(type) {
 	case nil:
-		return b, nil
+		return chunk, nil
 	case ChunkMissing:
 	default:
-		return nil, err
+		return chunk, err
 	}
 	// At this point we failed to find it in the local cache. Ask the remote
-	b, err = c.s.GetChunk(id)
+	chunk, err = c.s.GetChunk(id)
 	if err != nil {
-		return nil, err
+		return chunk, err
 	}
 	// Got the chunk. Store it in the local cache for next time
-	if err = c.l.StoreChunk(id, b); err != nil {
-		return nil, errors.Wrap(err, "failed to store in local cache")
+	if err = c.l.StoreChunk(chunk); err != nil {
+		return chunk, errors.Wrap(err, "failed to store in local cache")
 	}
-	return b, nil
+	return chunk, nil
 }
 
 // HasChunk first checks the cache for the chunk, then the store.

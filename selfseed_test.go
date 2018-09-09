@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/rand"
-	"crypto/sha512"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -35,15 +34,11 @@ func TestSelfSeed(t *testing.T) {
 	for i := 0; i < numChunks; i++ {
 		b := make([]byte, size)
 		rand.Read(b)
-		id := sha512.Sum512_256(b)
-		chunks[i] = rawChunk{id, b}
-		b, err := Compress(b)
-		if err != nil {
+		chunk := NewChunk(b, nil)
+		if err = s.StoreChunk(chunk); err != nil {
 			t.Fatal(err)
 		}
-		if err = s.StoreChunk(id, b); err != nil {
-			t.Fatal(err)
-		}
+		chunks[i] = rawChunk{chunk.ID(), b}
 	}
 
 	// Define tests with files with different content, by building files out

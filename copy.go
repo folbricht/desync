@@ -42,12 +42,12 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 		go func() {
 			for id := range in {
 				if !dst.HasChunk(id) {
-					b, err := src.GetChunk(id)
+					chunk, err := src.GetChunk(id)
 					if err != nil {
 						recordError(err)
 						continue
 					}
-					if err := dst.StoreChunk(id, b); err != nil {
+					if err := dst.StoreChunk(chunk); err != nil {
 						recordError(err)
 					}
 				}

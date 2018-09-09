@@ -1,12 +1,7 @@
 package desync
 
 import (
-	"bytes"
-	"fmt"
-	"os"
 	"sync"
-
-	"github.com/pkg/errors"
 )
 
 // ChunkStorage stores chunks in a writable store. It can be safely used by multiple goroutines and
@@ -46,17 +41,17 @@ func (s *ChunkStorage) unmarkProcessed(id ChunkID) {
 }
 
 // StoreChunk stores a single chunk in a synchronous manner.
-func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) (err error) {
+func (s *ChunkStorage) StoreChunk(chunk *Chunk) (err error) {
 
 	// Mark this chunk as done so no other goroutine will attempt to store it
 	// at the same time. If this is the first time this chunk is marked, it'll
 	// return false and we need to continue processing/storing the chunk below.
-	if s.markProcessed(id) {
+	if s.markProcessed(chunk.ID()) {
 		return nil
 	}
 
 	// Skip this chunk if the store already has it
-	if s.ws.HasChunk(id) {
+	if s.ws.HasChunk(chunk.ID()) {
 		return nil
 	}
 
@@ -64,37 +59,10 @@ func (s *ChunkStorage) StoreChunk(id ChunkID, b []byte) (err error) {
 	// store it, we need to unmark it again.
 	defer func() {
 		if err != nil {
-			s.unmarkProcessed(id)
+			s.unmarkProcessed(chunk.ID())
 		}
 	}()
 
-	var retried bool
-retry:
-	// Compress the chunk
-	cb, err := Compress(b)
-	if err != nil {
-		return err
-	}
-
-	// The zstd library appears to fail to compress correctly in some cases, to
-	// avoid storing invalid chunks, verify the chunk again by decompressing
-	// and comparing. See https://github.com/folbricht/desync/issues/37.
-	// Ideally the code below should be removed once zstd library can be trusted
-	// again.
-	db, err := Decompress(nil, cb)
-	if err != nil {
-		return errors.Wrap(err, id.String())
-	}
-
-	if !bytes.Equal(b, db) {
-		if !retried {
-			fmt.Fprintln(os.Stderr, "zstd compression error detected, retrying")
-			retried = true
-			goto retry
-		}
-		return errors.New("too many zstd compression errors, aborting")
-	}
-
 	// Store the compressed chunk
-	return s.ws.StoreChunk(id, cb)
+	return s.ws.StoreChunk(chunk)
 }

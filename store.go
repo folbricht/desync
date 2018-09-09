@@ -9,7 +9,7 @@ import (
 // Store is a generic interface implemented by read-only stores, like SSH or
 // HTTP remote stores currently.
 type Store interface {
-	GetChunk(id ChunkID) ([]byte, error)
+	GetChunk(id ChunkID) (*Chunk, error)
 	HasChunk(id ChunkID) bool
 	io.Closer
 	fmt.Stringer
@@ -19,7 +19,7 @@ type Store interface {
 // such as a local store or an S3 store.
 type WriteStore interface {
 	Store
-	StoreChunk(id ChunkID, b []byte) error
+	StoreChunk(c *Chunk) error
 }
 
 // PruneStore is a store that supports pruning of chunks

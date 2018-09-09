@@ -134,7 +134,7 @@ func (p *Protocol) SendGoodbye() error {
 // RequestChunk sends a request for a specific chunk to the server, waits for
 // the response and returns the bytes in the chunk. Returns an error if the
 // server reports the chunk as missing
-func (p *Protocol) RequestChunk(id ChunkID) ([]byte, error) {
+func (p *Protocol) RequestChunk(id ChunkID) (*Chunk, error) {
 	if !p.initialized {
 		return nil, errors.New("protocol not initialized")
 	}
@@ -153,15 +153,8 @@ func (p *Protocol) RequestChunk(id ChunkID) ([]byte, error) {
 		if len(m.Body) < 40 {
 			return nil, errors.New("received chunk too small")
 		}
-		cid, err := ChunkIDFromSlice(m.Body[8:40])
-		if err != nil {
-			return nil, err
-		}
-		if cid != id {
-			return nil, fmt.Errorf("requested chunk %s from server, but got %s", id, cid)
-		}
 		// The rest should be the chunk data
-		return m.Body[40:], nil
+		return NewChunkWithID(id, nil, m.Body[40:])
 	default:
 		return nil, fmt.Errorf("unexpected protocol message type %x", m.Type)
 	}

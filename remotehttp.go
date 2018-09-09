@@ -183,10 +183,14 @@ func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*Rem
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
-func (r *RemoteHTTP) GetChunk(id ChunkID) ([]byte, error) {
+func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 	sID := id.String()
 	p := filepath.Join(sID[0:4], sID) + chunkFileExt
-	return r.GetObject(p)
+	b, err := r.GetObject(p)
+	if err != nil {
+		return nil, err
+	}
+	return NewChunkWithID(id, nil, b)
 }
 
 // HasChunk returns true if the chunk is in the store
@@ -220,8 +224,12 @@ retry:
 }
 
 // StoreChunk adds a new chunk to the store
-func (r *RemoteHTTP) StoreChunk(id ChunkID, b []byte) error {
-	sID := id.String()
+func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
+	sID := chunk.ID().String()
 	p := filepath.Join(sID[0:4], sID) + chunkFileExt
+	b, err := chunk.Compressed()
+	if err != nil {
+		return err
+	}
 	return r.StoreObject(p, bytes.NewReader(b))
 }

@@ -62,7 +62,15 @@ func (h HTTPHandler) get(sid string, w http.ResponseWriter) {
 	if err != nil {
 		return
 	}
-	b, err := h.s.GetChunk(cid)
+	var b []byte
+	chunk, err := h.s.GetChunk(cid)
+	if err == nil {
+		var e error
+		b, e = chunk.Uncompressed()
+		if e != nil {
+			err = e
+		}
+	}
 	h.HTTPHandlerBase.get(sid, b, err, w)
 }
 
@@ -105,10 +113,16 @@ func (h HTTPHandler) put(sid string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Turn it into a chunk, and validate the ID while doing so
+	chunk, err := NewChunkWithID(cid, nil, b.Bytes())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// Store it upstream
-	if err := s.StoreChunk(cid, b.Bytes()); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, err)
+	if err := s.StoreChunk(chunk); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)

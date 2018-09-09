@@ -126,7 +126,7 @@ func NewSFTPStore(location *url.URL) (*SFTPStore, error) {
 }
 
 // GetChunk returns a chunk from an SFTP store, returns ChunkMissing if the file does not exist
-func (s *SFTPStore) GetChunk(id ChunkID) ([]byte, error) {
+func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 	name := s.nameFromID(id)
 	f, err := s.client.Open(name)
 	if err != nil {
@@ -136,7 +136,11 @@ func (s *SFTPStore) GetChunk(id ChunkID) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return ioutil.ReadAll(f)
+	b, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to read from %s", name)
+	}
+	return NewChunkWithID(id, nil, b)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -150,8 +154,13 @@ func (s *SFTPStore) RemoveChunk(id ChunkID) error {
 }
 
 // StoreChunk adds a new chunk to the store
-func (s *SFTPStore) StoreChunk(id ChunkID, b []byte) error {
-	return s.StoreObject(s.nameFromID(id), bytes.NewReader(b))
+func (s *SFTPStore) StoreChunk(chunk Chunk) error {
+	name := s.nameFromID(chunk.ID())
+	b, err := chunk.Compressed()
+	if err != nil {
+		return err
+	}
+	return s.StoreObject(name, bytes.NewReader(b))
 }
 
 // HasChunk returns true if the chunk is in the store

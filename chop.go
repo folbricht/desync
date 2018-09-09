@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -66,15 +65,13 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 					continue
 				}
 
-				// Calculate this chunks checksum and compare to what it's supposed to be
-				// according to the index
-				sum := sha512.Sum512_256(b)
-				if sum != c.ID {
-					recordError(fmt.Errorf("chunk %s checksum does not match", c.ID))
+				chunk, err := NewChunkWithID(c.ID, b, nil)
+				if err != nil {
+					recordError(err)
 					continue
 				}
 
-				if err := s.StoreChunk(c.ID, b); err != nil {
+				if err := s.StoreChunk(chunk); err != nil {
 					recordError(err)
 					continue
 				}

@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -11,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/folbricht/tempfile"
-	"github.com/pkg/errors"
 )
 
 const chunkFileExt = ".cacnk"
@@ -39,7 +37,7 @@ func NewLocalStore(dir string) (LocalStore, error) {
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
-func (s LocalStore) GetChunk(id ChunkID) ([]byte, error) {
+func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 	sID := id.String()
 	p := filepath.Join(s.Base, sID[0:4], sID) + chunkFileExt
 
@@ -47,7 +45,7 @@ func (s LocalStore) GetChunk(id ChunkID) ([]byte, error) {
 	if os.IsNotExist(err) {
 		err = ChunkMissing{id}
 	}
-	return b, err
+	return NewChunkWithID(id, nil, b)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -62,9 +60,13 @@ func (s LocalStore) RemoveChunk(id ChunkID) error {
 }
 
 // StoreChunk adds a new chunk to the store
-func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
-	sID := id.String()
+func (s LocalStore) StoreChunk(chunk *Chunk) error {
+	sID := chunk.ID().String()
 	d := filepath.Join(s.Base, sID[0:4])
+	b, err := chunk.Compressed()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(d, 0755); err != nil {
 		return err
 	}
@@ -92,7 +94,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
 		wg.Add(1)
 		go func() {
 			for id := range ids {
-				err := s.verifyChunk(id)
+				_, err := s.GetChunk(id)
 				switch err.(type) {
 				case ChunkInvalid: // bad chunk, report and delete (if repair=true)
 					msg := err.Error()
@@ -182,26 +184,6 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		return nil
 	})
 	return err
-}
-
-// Unpack a chunk, calculate the checksum of its content and return nil if
-// they match.
-func (s LocalStore) verifyChunk(id ChunkID) error {
-	b, err := s.GetChunk(id)
-	if err != nil {
-		return err
-	}
-	// The the chunk is compressed. Decompress it here
-	db, err := Decompress(nil, b)
-	if err != nil {
-		return errors.Wrap(err, id.String())
-	}
-	// Verify the checksum of the chunk matches the ID
-	sum := sha512.Sum512_256(db)
-	if sum != id {
-		return ChunkInvalid{ID: id, Sum: sum}
-	}
-	return nil
 }
 
 // HasChunk returns true if the chunk is in the store

@@ -34,11 +34,11 @@ func NewRemoteSSHStore(location *url.URL, n int) (*RemoteSSH, error) {
 // GetChunk requests a chunk from the server and returns a (compressed) one.
 // It uses any of the n sessions this store maintains in its pool. Blocks until
 // one session becomes available
-func (r *RemoteSSH) GetChunk(id ChunkID) ([]byte, error) {
+func (r *RemoteSSH) GetChunk(id ChunkID) (*Chunk, error) {
 	client := <-r.pool
-	b, err := client.RequestChunk(id)
+	chunk, err := client.RequestChunk(id)
 	r.pool <- client
-	return b, err
+	return chunk, err
 }
 
 // Close terminates all client connections
