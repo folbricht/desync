@@ -25,7 +25,7 @@ type LocalStore struct {
 
 // NewLocalStore creates an instance of a local castore, it only checks presence
 // of the store
-func NewLocalStore(dir string) (LocalStore, error) {
+func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return LocalStore{}, err

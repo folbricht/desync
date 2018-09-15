@@ -107,7 +107,7 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 
 	// Parse the store locations, open the stores and add a cache is requested
 	var (
-		opts = storeOptions{
+		opts = cmdStoreOptions{
 			n:          n,
 			clientCert: clientCert,
 			clientKey:  clientKey,
@@ -153,7 +153,7 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 	return nil
 }
 
-func handleChunkStore(writable bool, storeLocations *multiArg, opts storeOptions, cacheLocation string) (desync.Store, error) {
+func handleChunkStore(writable bool, storeLocations *multiArg, opts cmdStoreOptions, cacheLocation string) (desync.Store, error) {
 	var (
 		s   desync.Store
 		err error
@@ -171,7 +171,7 @@ func handleChunkStore(writable bool, storeLocations *multiArg, opts storeOptions
 	return s, err
 }
 
-func handleIndexStore(writable bool, storeLocations *multiArg, opts storeOptions, cacheLocation string) (desync.IndexStore, error) {
+func handleIndexStore(writable bool, storeLocations *multiArg, opts cmdStoreOptions, cacheLocation string) (desync.IndexStore, error) {
 	var (
 		s   desync.IndexStore
 		err error

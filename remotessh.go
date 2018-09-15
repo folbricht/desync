@@ -18,10 +18,10 @@ type RemoteSSH struct {
 }
 
 // NewRemoteSSHStore establishes up to n connections with a casync chunk server
-func NewRemoteSSHStore(location *url.URL, n int) (*RemoteSSH, error) {
-	remote := RemoteSSH{location: location, pool: make(chan *Protocol, n), n: n}
+func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) {
+	remote := RemoteSSH{location: location, pool: make(chan *Protocol, opt.N), n: opt.N}
 	// Start n sessions and put them into the pool (buffered channel)
-	for i := 0; i < n; i++ {
+	for i := 0; i < remote.n; i++ {
 		s, err := StartProtocol(location)
 		if err != nil {
 			return &remote, errors.Wrap(err, "failed to start chunk server command")

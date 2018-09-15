@@ -17,7 +17,7 @@ func TestSelfSeed(t *testing.T) {
 	}
 	defer os.RemoveAll(store)
 
-	s, err := NewLocalStore(store)
+	s, err := NewLocalStore(store, StoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

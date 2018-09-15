@@ -117,7 +117,7 @@ func (s *SFTPStoreBase) String() string {
 }
 
 // NewSFTPStore initializes a chunk store using SFTP over SSH.
-func NewSFTPStore(location *url.URL) (*SFTPStore, error) {
+func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
 	b, err := newSFTPStoreBase(location)
 	if err != nil {
 		return nil, err

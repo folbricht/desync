@@ -69,7 +69,7 @@ func (s S3StoreBase) Close() error { return nil }
 // should be provided like this: s3+http://host:port/bucket
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3S3_SECRET_KEY, or via the desync config file.
-func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region string) (s S3Store, e error) {
+func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions) (s S3Store, e error) {
 	b, err := NewS3StoreBase(location, s3Creds, region)
 	if err != nil {
 		return s, err

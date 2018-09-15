@@ -31,7 +31,7 @@ func pull(ctx context.Context, args []string) error {
 	storeLocation := flags.Arg(3)
 
 	// Open the local store to serve chunks from
-	s, err := desync.NewLocalStore(storeLocation)
+	s, err := desync.NewLocalStore(storeLocation, cfg.GetStoreOptionsFor(storeLocation))
 	if err != nil {
 		return err
 	}

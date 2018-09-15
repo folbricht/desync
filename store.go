@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 )
 
 // Store is a generic interface implemented by read-only stores, like SSH or
@@ -40,4 +41,24 @@ type IndexStore interface {
 type IndexWriteStore interface {
 	IndexStore
 	StoreIndex(name string, idx Index) error
+}
+
+// StoreOptions provide additional common settings used in chunk stores, such as compression
+// error retry or timeouts. Not all options available are applicable to all types of stores.
+type StoreOptions struct {
+	// Concurrency used in the store. Depending on store type, it's used for
+	// the number of goroutines, processes, or connection pool size.
+	N int `json:"n,omitempty"`
+
+	// Cert file name for HTTP SSL connections that require mutual SSL.
+	ClientCert string `json:"client-cert,omitempty"`
+	// Key file name for HTTP SSL connections that require mutual SSL.
+	ClientKey string `json:"client-key,omitempty"`
+
+	// Timeout for waiting for objects to be retrieved. Default: 1 minute
+	Timeout time.Duration `json:"timeout,omitempty"`
+
+	// Number of times object retrieval should be attempted on error. Useful when dealing
+	// with unreliable connections. Default: 0
+	ErrorRetry int `json:"error-retry,omitempty"`
 }

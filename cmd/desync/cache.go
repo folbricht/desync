@@ -56,7 +56,7 @@ func cache(ctx context.Context, args []string) error {
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	opts := storeOptions{
+	opts := cmdStoreOptions{
 		n:          n,
 		clientCert: clientCert,
 		clientKey:  clientKey,

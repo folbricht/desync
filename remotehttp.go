@@ -34,7 +34,7 @@ type RemoteHTTP struct {
 }
 
 // NewRemoteHTTPStoreBase initializes a base object for HTTP index or chunk stores.
-func NewRemoteHTTPStoreBase(location *url.URL, n int, cert string, key string) (*RemoteHTTPBase, error) {
+func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBase, error) {
 	if location.Scheme != "http" && location.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected http or https", location.Scheme)
 	}
@@ -46,11 +46,11 @@ func NewRemoteHTTPStoreBase(location *url.URL, n int, cert string, key string) (
 
 	var tr *http.Transport
 
-	if cert != "" && key != "" {
+	if opt.ClientCert != "" && opt.ClientKey != "" {
 		// Load client cert
-		certificate, err := tls.LoadX509KeyPair(cert, key)
+		certificate, err := tls.LoadX509KeyPair(opt.ClientCert, opt.ClientKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load client certificate from %s", cert)
+			return nil, fmt.Errorf("failed to load client certificate from %s", opt.ClientCert)
 		}
 		caCertPool, err := x509.SystemCertPool()
 		if err != nil {
@@ -59,7 +59,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, n int, cert string, key string) (
 		tr = &http.Transport{
 			Proxy:               http.ProxyFromEnvironment,
 			DisableCompression:  true,
-			MaxIdleConnsPerHost: n,
+			MaxIdleConnsPerHost: opt.N,
 			IdleConnTimeout:     60 * time.Second,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: TrustInsecure,
@@ -74,27 +74,19 @@ func NewRemoteHTTPStoreBase(location *url.URL, n int, cert string, key string) (
 		tr = &http.Transport{
 			Proxy:               http.ProxyFromEnvironment,
 			DisableCompression:  true,
-			MaxIdleConnsPerHost: n,
+			MaxIdleConnsPerHost: opt.N,
 			IdleConnTimeout:     60 * time.Second,
 			TLSClientConfig:     &tls.Config{InsecureSkipVerify: TrustInsecure},
 		}
 	}
 
-	client := &http.Client{Transport: tr}
+	timeout := opt.Timeout
+	if timeout == 0 {
+		timeout = time.Minute
+	}
+	client := &http.Client{Transport: tr, Timeout: timeout}
 
-	return &RemoteHTTPBase{location: location, client: client}, nil
-}
-
-// SetTimeout configures the timeout on the HTTP client for all requests
-func (r *RemoteHTTPBase) SetTimeout(timeout time.Duration) {
-	r.client.Timeout = timeout
-}
-
-// SetErrorRetry defines how many HTTP errors are retried. This can be useful
-// when dealing with unreliable networks that can timeout or where errors are
-// transient.
-func (r *RemoteHTTPBase) SetErrorRetry(n int) {
-	r.errorRetry = n
+	return &RemoteHTTPBase{location: location, client: client, errorRetry: opt.ErrorRetry}, nil
 }
 
 func (r *RemoteHTTPBase) String() string {
@@ -174,8 +166,8 @@ retry:
 
 // NewRemoteHTTPStore initializes a new store that pulls chunks via HTTP(S) from
 // a remote web server. n defines the size of idle connections allowed.
-func NewRemoteHTTPStore(location *url.URL, n int, cert string, key string) (*RemoteHTTP, error) {
-	b, err := NewRemoteHTTPStoreBase(location, n, cert, key)
+func NewRemoteHTTPStore(location *url.URL, opt StoreOptions) (*RemoteHTTP, error) {
+	b, err := NewRemoteHTTPStoreBase(location, opt)
 	if err != nil {
 		return nil, err
 	}

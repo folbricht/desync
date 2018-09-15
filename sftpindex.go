@@ -15,7 +15,7 @@ type SFTPIndexStore struct {
 }
 
 // NewSFTPIndexStore initializes and index store backed by SFTP over SSH.
-func NewSFTPIndexStore(location *url.URL) (*SFTPIndexStore, error) {
+func NewSFTPIndexStore(location *url.URL, opt StoreOptions) (*SFTPIndexStore, error) {
 	b, err := newSFTPStoreBase(location)
 	if err != nil {
 		return nil, err

@@ -69,7 +69,7 @@ func untar(ctx context.Context, args []string) error {
 		return desync.UnTar(ctx, f, targetDir, opts)
 	}
 
-	sOpts := storeOptions{
+	sOpts := cmdStoreOptions{
 		n:          n,
 		clientCert: clientCert,
 		clientKey:  clientKey,

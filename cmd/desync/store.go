@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"path"
 
@@ -10,24 +11,38 @@ import (
 	"github.com/pkg/errors"
 )
 
-// storeOptions are used to pass additional options to store initalization
-type storeOptions struct {
+// cmdStoreOptions are used to pass additional options to store initalization from the
+// commandline. These generally override settings from the config file.
+type cmdStoreOptions struct {
 	n          int
 	clientCert string
 	clientKey  string
+}
+
+// MergeWith takes store options as read from the config, and applies command-line
+// provided options on top of them and returns the merged result.
+func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions {
+	opt.N = o.n
+	if o.clientCert != "" {
+		opt.ClientCert = o.clientCert
+	}
+	if o.clientKey != "" {
+		opt.ClientKey = o.clientKey
+	}
+	return opt
 }
 
 // MultiStoreWithCache is used to parse store and cache locations given in the
 // command line.
 // cacheLocation - Place of the local store used for caching, can be blank
 // storeLocation - URLs or paths to remote or local stores that should be queried in order
-func MultiStoreWithCache(opts storeOptions, cacheLocation string, storeLocations ...string) (desync.Store, error) {
+func MultiStoreWithCache(cmdOpt cmdStoreOptions, cacheLocation string, storeLocations ...string) (desync.Store, error) {
 	var (
 		store  desync.Store
 		stores []desync.Store
 	)
 	for _, location := range storeLocations {
-		s, err := storeFromLocation(location, opts)
+		s, err := storeFromLocation(location, cmdOpt)
 		if err != nil {
 			return store, err
 		}
@@ -40,7 +55,7 @@ func MultiStoreWithCache(opts storeOptions, cacheLocation string, storeLocations
 	// See if we want to use a writable store as cache, if so, attach a cache to
 	// the router
 	if cacheLocation != "" {
-		cache, err := WritableStore(cacheLocation, opts)
+		cache, err := WritableStore(cacheLocation, cmdOpt)
 		if err != nil {
 			return store, err
 		}
@@ -55,10 +70,10 @@ func MultiStoreWithCache(opts storeOptions, cacheLocation string, storeLocations
 
 // multiStoreWithCache is used to parse store locations, and return a store
 // router instance containing them all for reading, in the order they're given
-func multiStore(opts storeOptions, storeLocations ...string) (desync.Store, error) {
+func multiStore(cmdOpt cmdStoreOptions, storeLocations ...string) (desync.Store, error) {
 	var stores []desync.Store
 	for _, location := range storeLocations {
-		s, err := storeFromLocation(location, opts)
+		s, err := storeFromLocation(location, cmdOpt)
 		if err != nil {
 			return nil, err
 		}
@@ -72,8 +87,8 @@ func multiStore(opts storeOptions, storeLocations ...string) (desync.Store, erro
 // commands that expect to write chunks, such as make or tar. It determines
 // which type of writable store is needed, instantiates and returns a
 // single desync.WriteStore.
-func WritableStore(location string, opts storeOptions) (desync.WriteStore, error) {
-	s, err := storeFromLocation(location, opts)
+func WritableStore(location string, cmdOpt cmdStoreOptions) (desync.WriteStore, error) {
+	s, err := storeFromLocation(location, cmdOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -85,39 +100,51 @@ func WritableStore(location string, opts storeOptions) (desync.WriteStore, error
 }
 
 // Parse a single store URL or path and return an initialized instance of it
-func storeFromLocation(location string, opts storeOptions) (desync.Store, error) {
+func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 	loc, err := url.Parse(location)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to parse store location %s : %s", location, err)
 	}
+
+	// Get any store options from the config if present and overwrite with settings from
+	// the command line
+	opt := cmdOpt.MergedWith(cfg.GetStoreOptionsFor(location))
+
 	var s desync.Store
 	switch loc.Scheme {
 	case "ssh":
-		s, err = desync.NewRemoteSSHStore(loc, opts.n)
+		s, err = desync.NewRemoteSSHStore(loc, opt)
 		if err != nil {
 			return nil, err
 		}
 	case "sftp":
-		s, err = desync.NewSFTPStore(loc)
+		s, err = desync.NewSFTPStore(loc, opt)
 		if err != nil {
 			return nil, err
 		}
 	case "http", "https":
-		h, err := desync.NewRemoteHTTPStore(loc, opts.n, opts.clientCert, opts.clientKey)
+		// This is for backwards compatibility only, to support http-timeout and
+		// http-error-retry in the config file for a bit longer. If those are
+		// set, and the options for the store aren't, then use the old values.
+		// TODO: Remove this code and drop these config options in the future.
+		if opt.Timeout == 0 && cfg.HTTPTimeout > 0 {
+			opt.Timeout = cfg.HTTPTimeout
+		}
+		if opt.ErrorRetry == 0 && cfg.HTTPErrorRetry > 0 {
+			opt.ErrorRetry = cfg.HTTPErrorRetry
+		}
+		s, err = desync.NewRemoteHTTPStore(loc, opt)
 		if err != nil {
 			return nil, err
 		}
-		h.SetTimeout(cfg.HTTPTimeout)
-		h.SetErrorRetry(cfg.HTTPErrorRetry)
-		s = h
 	case "s3+http", "s3+https":
 		s3Creds, region := cfg.GetS3CredentialsFor(loc)
-		s, err = desync.NewS3Store(loc, s3Creds, region)
+		s, err = desync.NewS3Store(loc, s3Creds, region, opt)
 		if err != nil {
 			return nil, err
 		}
 	case "":
-		s, err = desync.NewLocalStore(loc.Path)
+		s, err = desync.NewLocalStore(loc.Path, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -127,8 +154,8 @@ func storeFromLocation(location string, opts storeOptions) (desync.Store, error)
 	return s, nil
 }
 
-func readCaibxFile(location string, opts storeOptions) (c desync.Index, err error) {
-	is, indexName, err := indexStoreFromLocation(location, opts)
+func readCaibxFile(location string, cmdOpt cmdStoreOptions) (c desync.Index, err error) {
+	is, indexName, err := indexStoreFromLocation(location, cmdOpt)
 	if err != nil {
 		return c, err
 	}
@@ -137,8 +164,8 @@ func readCaibxFile(location string, opts storeOptions) (c desync.Index, err erro
 	return is.GetIndex(indexName)
 }
 
-func storeCaibxFile(idx desync.Index, location string, opts storeOptions) error {
-	is, indexName, err := writableIndexStore(location, opts)
+func storeCaibxFile(idx desync.Index, location string, cmdOpt cmdStoreOptions) error {
+	is, indexName, err := writableIndexStore(location, cmdOpt)
 	if err != nil {
 		return err
 	}
@@ -150,8 +177,8 @@ func storeCaibxFile(idx desync.Index, location string, opts storeOptions) error 
 // commands that expect to write indexes, such as make or tar. It determines
 // which type of writable store is needed, instantiates and returns a
 // single desync.IndexWriteStore.
-func writableIndexStore(location string, opts storeOptions) (desync.IndexWriteStore, string, error) {
-	s, indexName, err := indexStoreFromLocation(location, opts)
+func writableIndexStore(location string, cmdOpt cmdStoreOptions) (desync.IndexWriteStore, string, error) {
+	s, indexName, err := indexStoreFromLocation(location, cmdOpt)
 	if err != nil {
 		return nil, indexName, err
 	}
@@ -163,7 +190,7 @@ func writableIndexStore(location string, opts storeOptions) (desync.IndexWriteSt
 }
 
 // Parse a single store URL or path and return an initialized instance of it
-func indexStoreFromLocation(location string, opts storeOptions) (desync.IndexStore, string, error) {
+func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.IndexStore, string, error) {
 	loc, err := url.Parse(location)
 	if err != nil {
 		return nil, "", fmt.Errorf("Unable to parse store location %s : %s", location, err)
@@ -174,26 +201,38 @@ func indexStoreFromLocation(location string, opts storeOptions) (desync.IndexSto
 	p := *loc
 	p.Path = path.Dir(p.Path)
 
+	// Get any store options from the config if present and overwrite with settings from
+	// the command line. FIXME: This way of breaking off the file path from an index URL
+	// won't work on Windows when working with local stores.
+	opt := cmdOpt.MergedWith(cfg.GetStoreOptionsFor(location[:strings.LastIndex(location, "/")]))
+
 	var s desync.IndexStore
 	switch loc.Scheme {
 	case "ssh":
 		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
 	case "sftp":
-		s, err = desync.NewSFTPIndexStore(loc)
+		s, err = desync.NewSFTPIndexStore(loc, opt)
 		if err != nil {
 			return nil, "", err
 		}
 	case "http", "https":
-		h, err := desync.NewRemoteHTTPIndexStore(&p, opts.n, opts.clientCert, opts.clientKey)
+		// This is for backwards compatibility only, to support http-timeout and
+		// http-error-retry in the config file for a bit longer. If those are
+		// set, and the options for the store aren't, then use the old values.
+		// TODO: Remove this code and drop these config options in the future.
+		if opt.Timeout == 0 && cfg.HTTPTimeout > 0 {
+			opt.Timeout = cfg.HTTPTimeout
+		}
+		if opt.ErrorRetry == 0 && cfg.HTTPErrorRetry > 0 {
+			opt.ErrorRetry = cfg.HTTPErrorRetry
+		}
+		s, err = desync.NewRemoteHTTPIndexStore(&p, opt)
 		if err != nil {
 			return nil, "", err
 		}
-		h.SetTimeout(cfg.HTTPTimeout)
-		h.SetErrorRetry(cfg.HTTPErrorRetry)
-		s = h
 	case "s3+http", "s3+https":
 		s3Creds, region := cfg.GetS3CredentialsFor(&p)
-		s, err = desync.NewS3IndexStore(&p, s3Creds, region)
+		s, err = desync.NewS3IndexStore(&p, s3Creds, region, opt)
 		if err != nil {
 			return nil, "", err
 		}

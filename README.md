@@ -144,16 +144,19 @@ Before April 2018, chunks in S3 stores were kept in a flat layout, with the name
 For most use cases, it is sufficient to use the tool's default configuration not requiring a config file. Having a config file `$HOME/.config/desync/config.json` allows for further customization of timeouts, error retry behaviour or credentials that can't be set via command-line options or environment variables. To view the current configuration, use `desync config`. If no config file is present, this will show the defaults. To create a config file allowing custom values, use `desync config -w` which will write the current configuration to the file, then edit the file.
 
 Available configuration values:
-- `http-timeout` - HTTP request timeout used in HTTP stores (not S3) in nanoseconds
-- `http-error-retry` - Number of times to retry failed chunk requests from HTTP stores
+- `http-timeout` *DEPRECATED, see `store-options.<Location>.timeout`* - HTTP request timeout used in HTTP stores (not S3) in nanoseconds
+- `http-error-retry` *DEPRECATED, see `store-options.<Location>.error-retry` - Number of times to retry failed chunk requests from HTTP stores
 - `s3-credentials` - Defines credentials for use with S3 stores. Especially useful if more than one S3 store is used. The key in the config needs to be the URL scheme and host used for the store, excluding the path, but including the port number if used in the store URL. It is also possible to use a [standard aws credentials file](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) in order to store s3 credentials.
+- `store-options` - Allows customization of chunk and index stores, for example comression settings, timeouts, retry behavior and keys. Not all options are applicable to every store, some of these like `timeout` are ignored for local stores. Some of these options, such as the client certificates are overwritten with any values set in the command line. Note that the store location used in the command line needs to match the key under `store-options` exactly for these options to be used. Watch out for trailing `/` in URLs.
+  - `timeout` - Time limit for chunk read or write operation in nanoseconds. Default: 1 minute.
+  - `error-retry` - Number of times to retry failed chunk requests. Default: 0.
+  - `client-cert` - Cerificate file to be used for stores where the server requires mutual SSL.
+  - `client-key` - Key file to be used for stores where the server requires mutual SSL.
 
 **Example config**
 
-```
+```json
 {
-  "http-timeout": 60000000000,
-  "http-error-retry": 0,
   "s3-credentials": {
        "http://localhost": {
            "access-key": "MYACCESSKEY",
@@ -171,6 +174,13 @@ Available configuration values:
            "aws-region": "us-west-2",
            "aws-profile": "profile_refreshable"
        }
+  },
+  "store-options": {
+    "https://192.168.1.1/store": {
+      "client-cert": "/path/to/crt",
+      "client-key": "/path/to/key",
+      "error-retry": 1
+    }
   }
 }
 ```
@@ -337,7 +347,3 @@ desync info -j -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
 ## Links
 - casync - https://github.com/systemd/casync
 - GoDoc for desync library - https://godoc.org/github.com/folbricht/desync
-
-## TODOs
-- Pre-allocate the output file to avoid fragmentation when using extract command
-- Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.
