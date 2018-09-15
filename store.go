@@ -61,4 +61,12 @@ type StoreOptions struct {
 	// Number of times object retrieval should be attempted on error. Useful when dealing
 	// with unreliable connections. Default: 0
 	ErrorRetry int `json:"error-retry,omitempty"`
+
+	// If SkipVerify is true, this store will not verfiy the data it reads and serves up. This is
+	// helpful when a store is merely a proxy and the data will pass through additional stores
+	// before being used. Verifying the checksum of a chunk requires it be uncompressed, so if
+	// a compressed chunkstore is being proxied, all chunks would have to be decompressed first.
+	// This setting avoids the extra overhead. While this could be used in other cases, it's not
+	// recommended as a damaged chunk might be processed further leading to unpredictable results.
+	SkipVerify bool `json:"skip-verify,omitempty"`
 }

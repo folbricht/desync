@@ -21,6 +21,8 @@ type LocalStore struct {
 	// When accessing chunks, should mtime be updated? Useful when this is
 	// a cache. Old chunks can be identified and removed from the store that way
 	UpdateTimes bool
+
+	opt StoreOptions
 }
 
 // NewLocalStore creates an instance of a local castore, it only checks presence
@@ -33,7 +35,7 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if !info.IsDir() {
 		return LocalStore{}, fmt.Errorf("%s is not a directory", dir)
 	}
-	return LocalStore{Base: dir}, nil
+	return LocalStore{Base: dir, opt: opt}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -43,9 +45,9 @@ func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 	b, err := ioutil.ReadFile(p)
 	if os.IsNotExist(err) {
-		err = ChunkMissing{id}
+		return nil, ChunkMissing{id}
 	}
-	return NewChunkWithID(id, nil, b)
+	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.

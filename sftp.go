@@ -25,6 +25,7 @@ type SFTPStoreBase struct {
 	path     string
 	client   *sftp.Client
 	cancel   context.CancelFunc
+	opt      StoreOptions
 }
 
 // SFTPStore is a chunk store that uses SFTP over SSH.
@@ -33,7 +34,7 @@ type SFTPStore struct {
 }
 
 // Creates a base sftp client
-func newSFTPStoreBase(location *url.URL) (*SFTPStoreBase, error) {
+func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, error) {
 	sshCmd := os.Getenv("CASYNC_SSH_PATH")
 	if sshCmd == "" {
 		sshCmd = "ssh"
@@ -69,7 +70,7 @@ func newSFTPStoreBase(location *url.URL) (*SFTPStoreBase, error) {
 		cancel()
 		return nil, err
 	}
-	return &SFTPStoreBase{location, path, client, cancel}, nil
+	return &SFTPStoreBase{location, path, client, cancel, opt}, nil
 }
 
 // StoreObject adds a new object to a writable index or chunk store.
@@ -118,7 +119,7 @@ func (s *SFTPStoreBase) String() string {
 
 // NewSFTPStore initializes a chunk store using SFTP over SSH.
 func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
-	b, err := newSFTPStoreBase(location)
+	b, err := newSFTPStoreBase(location, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +141,7 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to read from %s", name)
 	}
-	return NewChunkWithID(id, nil, b)
+	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -154,7 +155,7 @@ func (s *SFTPStore) RemoveChunk(id ChunkID) error {
 }
 
 // StoreChunk adds a new chunk to the store
-func (s *SFTPStore) StoreChunk(chunk Chunk) error {
+func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 	name := s.nameFromID(chunk.ID())
 	b, err := chunk.Compressed()
 	if err != nil {

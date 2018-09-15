@@ -19,6 +19,7 @@ type S3StoreBase struct {
 	client   *minio.Client
 	bucket   string
 	prefix   string
+	opt      StoreOptions
 }
 
 // S3Store is a read-write store with S3 backing
@@ -27,9 +28,9 @@ type S3Store struct {
 }
 
 // NewS3StoreBase initializes a base object used for chunk or index stores backed by S3.
-func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string) (S3StoreBase, error) {
+func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions) (S3StoreBase, error) {
 	var err error
-	s := S3StoreBase{Location: u.String()}
+	s := S3StoreBase{Location: u.String(), opt: opt}
 	if !strings.HasPrefix(u.Scheme, "s3+http") {
 		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http' or 's3+https'", u.Scheme)
 	}
@@ -70,7 +71,7 @@ func (s S3StoreBase) Close() error { return nil }
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3S3_SECRET_KEY, or via the desync config file.
 func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions) (s S3Store, e error) {
-	b, err := NewS3StoreBase(location, s3Creds, region)
+	b, err := NewS3StoreBase(location, s3Creds, region, opt)
 	if err != nil {
 		return s, err
 	}
@@ -100,14 +101,18 @@ func (s S3Store) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewChunkWithID(id, nil, b)
+	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
 }
 
 // StoreChunk adds a new chunk to the store
-func (s S3Store) StoreChunk(id ChunkID, b []byte) error {
+func (s S3Store) StoreChunk(chunk *Chunk) error {
 	contentType := "application/zstd"
-	name := s.nameFromID(id)
-	_, err := s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
+	name := s.nameFromID(chunk.ID())
+	b, err := chunk.Compressed()
+	if err != nil {
+		return err
+	}
+	_, err = s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	return errors.Wrap(err, s.String())
 }
 

@@ -13,12 +13,13 @@ import (
 // HTTPHandler is the server-side handler for a HTTP chunk store.
 type HTTPHandler struct {
 	HTTPHandlerBase
-	s Store
+	s               Store
+	SkipVerifyWrite bool
 }
 
 // NewHTTPHandler initializes and returns a new HTTP handler for a chunks erver.
-func NewHTTPHandler(s Store, writable bool) http.Handler {
-	return HTTPHandler{HTTPHandlerBase{"chunk", writable}, s}
+func NewHTTPHandler(s Store, writable, skipVerifyWrite bool) http.Handler {
+	return HTTPHandler{HTTPHandlerBase{"chunk", writable}, s, skipVerifyWrite}
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +67,7 @@ func (h HTTPHandler) get(sid string, w http.ResponseWriter) {
 	chunk, err := h.s.GetChunk(cid)
 	if err == nil {
 		var e error
-		b, e = chunk.Uncompressed()
+		b, e = chunk.Compressed()
 		if e != nil {
 			err = e
 		}
@@ -113,8 +114,8 @@ func (h HTTPHandler) put(sid string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Turn it into a chunk, and validate the ID while doing so
-	chunk, err := NewChunkWithID(cid, nil, b.Bytes())
+	// Turn it into a chunk, and validate the ID unless verification is disabled
+	chunk, err := NewChunkWithID(cid, nil, b.Bytes(), h.SkipVerifyWrite)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

@@ -23,9 +23,9 @@ var TrustInsecure bool
 
 // RemoteHTTPBase is the base object for a remote, HTTP-based chunk or index stores.
 type RemoteHTTPBase struct {
-	location   *url.URL
-	client     *http.Client
-	errorRetry int
+	location *url.URL
+	client   *http.Client
+	opt      StoreOptions
 }
 
 // RemoteHTTP is a remote casync store accessed via HTTP.
@@ -86,7 +86,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	}
 	client := &http.Client{Transport: tr, Timeout: timeout}
 
-	return &RemoteHTTPBase{location: location, client: client, errorRetry: opt.ErrorRetry}, nil
+	return &RemoteHTTPBase{location: location, client: client, opt: opt}, nil
 }
 
 func (r *RemoteHTTPBase) String() string {
@@ -109,7 +109,7 @@ func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 		attempt++
 		resp, err = r.client.Get(u.String())
 		if err != nil {
-			if attempt >= r.errorRetry {
+			if attempt >= r.opt.ErrorRetry {
 				return nil, errors.Wrap(err, u.String())
 			}
 			continue
@@ -124,7 +124,7 @@ func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 		}
 		b, err = ioutil.ReadAll(resp.Body)
 		if err != nil {
-			if attempt >= r.errorRetry {
+			if attempt >= r.opt.ErrorRetry {
 				return nil, errors.Wrap(err, u.String())
 			}
 			continue
@@ -151,7 +151,7 @@ retry:
 	}
 	resp, err = r.client.Do(req)
 	if err != nil {
-		if attempt >= r.errorRetry {
+		if attempt >= r.opt.ErrorRetry {
 			return err
 		}
 		goto retry
@@ -182,7 +182,7 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewChunkWithID(id, nil, b)
+	return NewChunkWithID(id, nil, b, r.opt.SkipVerify)
 }
 
 // HasChunk returns true if the chunk is in the store
@@ -200,7 +200,7 @@ retry:
 	attempt++
 	resp, err = r.client.Head(u.String())
 	if err != nil {
-		if attempt >= r.errorRetry {
+		if attempt >= r.opt.ErrorRetry {
 			return false
 		}
 		goto retry

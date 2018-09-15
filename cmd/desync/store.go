@@ -17,6 +17,7 @@ type cmdStoreOptions struct {
 	n          int
 	clientCert string
 	clientKey  string
+	skipVerify bool
 }
 
 // MergeWith takes store options as read from the config, and applies command-line
@@ -28,6 +29,9 @@ func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions
 	}
 	if o.clientKey != "" {
 		opt.ClientKey = o.clientKey
+	}
+	if o.skipVerify {
+		opt.SkipVerify = true
 	}
 	return opt
 }

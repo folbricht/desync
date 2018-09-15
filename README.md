@@ -152,6 +152,7 @@ Available configuration values:
   - `error-retry` - Number of times to retry failed chunk requests. Default: 0.
   - `client-cert` - Cerificate file to be used for stores where the server requires mutual SSL.
   - `client-key` - Key file to be used for stores where the server requires mutual SSL.
+  - `skip-verify` - Disables data integrity verification when reading chunks to improve performance. Only recommended when chaining chunk stores with the `chunk-server` command using compressed stores.
 
 **Example config**
 

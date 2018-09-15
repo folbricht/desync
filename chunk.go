@@ -25,8 +25,11 @@ func NewChunk(uncompressed, compressed []byte) *Chunk {
 // (or both if available). It also expects an ID and validates that it matches
 // the uncompressed data. If called with just compressed data, it'll decompress
 // it for the ID validation.
-func NewChunkWithID(id ChunkID, uncompressed, compressed []byte) (*Chunk, error) {
-	c := &Chunk{uncompressed: uncompressed, compressed: compressed}
+func NewChunkWithID(id ChunkID, uncompressed, compressed []byte, noVerify bool) (*Chunk, error) {
+	c := &Chunk{id: id, uncompressed: uncompressed, compressed: compressed}
+	if noVerify {
+		return c, nil
+	}
 	sum := c.ID()
 	if sum != id {
 		return nil, ChunkInvalid{ID: id, Sum: sum}

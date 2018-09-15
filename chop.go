@@ -65,7 +65,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 					continue
 				}
 
-				chunk, err := NewChunkWithID(c.ID, b, nil)
+				chunk, err := NewChunkWithID(c.ID, b, nil, false)
 				if err != nil {
 					recordError(err)
 					continue
