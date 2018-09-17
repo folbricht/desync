@@ -141,6 +141,9 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to read from %s", name)
 	}
+	if s.opt.Uncompressed {
+		return NewChunkWithID(id, b, nil, s.opt.SkipVerify)
+	}
 	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
 }
 
@@ -157,7 +160,15 @@ func (s *SFTPStore) RemoveChunk(id ChunkID) error {
 // StoreChunk adds a new chunk to the store
 func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 	name := s.nameFromID(chunk.ID())
-	b, err := chunk.Compressed()
+	var (
+		b   []byte
+		err error
+	)
+	if s.opt.Uncompressed {
+		b, err = chunk.Uncompressed()
+	} else {
+		b, err = chunk.Compressed()
+	}
 	if err != nil {
 		return err
 	}
@@ -191,12 +202,25 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			continue
 		}
 		path := walker.Path()
-		if !strings.HasSuffix(path, chunkFileExt) { // Skip files without chunk extension
+		if !strings.HasSuffix(path, CompressedChunkExt) { // Skip files without chunk extension
 			continue
+		}
+		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
+		var sID string
+		if s.opt.Uncompressed {
+			if !strings.HasSuffix(path, UncompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), UncompressedChunkExt)
+		} else {
+			if !strings.HasSuffix(path, CompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), CompressedChunkExt)
 		}
 		// Convert the name into a checksum, if that fails we're probably not looking
 		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(strings.TrimSuffix(filepath.Base(path), ".cacnk"))
+		id, err := ChunkIDFromString(sID)
 		if err != nil {
 			continue
 		}
@@ -213,5 +237,11 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 func (s *SFTPStore) nameFromID(id ChunkID) string {
 	sID := id.String()
-	return s.path + sID[0:4] + "/" + sID + chunkFileExt
+	name := s.path + sID[0:4] + "/" + sID
+	if s.opt.Uncompressed {
+		name += UncompressedChunkExt
+	} else {
+		name += CompressedChunkExt
+	}
+	return name
 }

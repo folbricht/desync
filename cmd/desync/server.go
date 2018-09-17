@@ -29,7 +29,9 @@ reading from multiple local or remote stores as well as a local cache. If
 enables writing to this store, but this is only allowed when just one upstream
 chunk store is provided. The option -skip-verify-write disables validation of
 chunks written to this server which bypasses checksum validation as well as
-the necessary decompression step to calculate it.`
+the necessary decompression step to calculate it. If -u is used, only
+uncompressed chunks are being served (and accepted). If the upstream store
+serves compressed chunks, everything will have to be decompressed server-side.`
 
 	indexServerUsage = `desync index-server [options]
 
@@ -50,6 +52,7 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 		clientKey       string
 		writable        bool
 		skipVerifyWrite bool
+		uncompressed    bool
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
@@ -81,6 +84,7 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.BoolVar(&writable, "w", false, "support writing")
 	flags.BoolVar(&skipVerifyWrite, "skip-verify-write", false, "Don't verify chunk data written to this server (faster)")
+	flags.BoolVar(&uncompressed, "u", false, "Serve uncompressed chunks")
 	flags.Parse(args)
 
 	if flags.NArg() > 0 {
@@ -120,7 +124,7 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 	}
 
 	if serverType == ChunkServer {
-		s, err := handleChunkStore(writable, skipVerifyWrite, storeLocations, opts, cacheLocation)
+		s, err := handleChunkStore(writable, skipVerifyWrite, uncompressed, storeLocations, opts, cacheLocation)
 		if err != nil {
 			return err
 		}
@@ -158,7 +162,7 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 	return nil
 }
 
-func handleChunkStore(writable, skipVerifyWrite bool, storeLocations *multiArg, opts cmdStoreOptions, cacheLocation string) (desync.Store, error) {
+func handleChunkStore(writable, skipVerifyWrite, uncompressed bool, storeLocations *multiArg, opts cmdStoreOptions, cacheLocation string) (desync.Store, error) {
 	var (
 		s   desync.Store
 		err error
@@ -172,7 +176,7 @@ func handleChunkStore(writable, skipVerifyWrite bool, storeLocations *multiArg, 
 		return nil, err
 	}
 
-	http.Handle("/", desync.NewHTTPHandler(s, writable, skipVerifyWrite))
+	http.Handle("/", desync.NewHTTPHandler(s, writable, skipVerifyWrite, uncompressed))
 	return s, err
 }
 

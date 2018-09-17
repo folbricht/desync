@@ -136,3 +136,9 @@ var (
 		CaFormatTableTailMarker:   "CaFormatTableTailMarker",
 	}
 )
+
+// CompressedChunkExt is the file extension used for compressed chunks
+const CompressedChunkExt = ".cacnk"
+
+// UncompressedChunkExt is the file extension of uncompressed chunks
+const UncompressedChunkExt = ""

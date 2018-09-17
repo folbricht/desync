@@ -174,22 +174,22 @@ func NewRemoteHTTPStore(location *url.URL, opt StoreOptions) (*RemoteHTTP, error
 	return &RemoteHTTP{b}, nil
 }
 
-// GetChunk reads and returns one (compressed!) chunk from the store
+// GetChunk reads and returns one chunk from the store
 func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
-	sID := id.String()
-	p := filepath.Join(sID[0:4], sID) + chunkFileExt
+	p := r.nameFromID(id)
 	b, err := r.GetObject(p)
 	if err != nil {
 		return nil, err
+	}
+	if r.opt.Uncompressed {
+		return NewChunkWithID(id, b, nil, r.opt.SkipVerify)
 	}
 	return NewChunkWithID(id, nil, b, r.opt.SkipVerify)
 }
 
 // HasChunk returns true if the chunk is in the store
 func (r *RemoteHTTP) HasChunk(id ChunkID) bool {
-	sID := id.String()
-	p := filepath.Join(sID[0:4], sID) + chunkFileExt
-
+	p := r.nameFromID(id)
 	u, _ := r.location.Parse(p)
 	var (
 		resp    *http.Response
@@ -217,11 +217,29 @@ retry:
 
 // StoreChunk adds a new chunk to the store
 func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
-	sID := chunk.ID().String()
-	p := filepath.Join(sID[0:4], sID) + chunkFileExt
-	b, err := chunk.Compressed()
+	p := r.nameFromID(chunk.ID())
+	var (
+		b   []byte
+		err error
+	)
+	if r.opt.Uncompressed {
+		b, err = chunk.Uncompressed()
+	} else {
+		b, err = chunk.Compressed()
+	}
 	if err != nil {
 		return err
 	}
 	return r.StoreObject(p, bytes.NewReader(b))
+}
+
+func (r *RemoteHTTP) nameFromID(id ChunkID) string {
+	sID := id.String()
+	name := filepath.Join(sID[0:4], sID)
+	if r.opt.Uncompressed {
+		name += UncompressedChunkExt
+	} else {
+		name += CompressedChunkExt
+	}
+	return name
 }

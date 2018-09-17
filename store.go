@@ -69,4 +69,7 @@ type StoreOptions struct {
 	// This setting avoids the extra overhead. While this could be used in other cases, it's not
 	// recommended as a damaged chunk might be processed further leading to unpredictable results.
 	SkipVerify bool `json:"skip-verify,omitempty"`
+
+	// Store and read chunks uncompressed, without chunk file extension
+	Uncompressed bool `json:"uncompressed"`
 }
