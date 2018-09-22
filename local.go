@@ -72,11 +72,12 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 	if err != nil {
 		return err
 	}
-	defer tmp.Close()
-	defer os.Remove(tmp.Name()) // in case we don't get to the rename, clean up
 	if _, err = tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name()) // clean up
 		return err
 	}
+	tmp.Close() // Windows can't rename open files, close explicitly
 	p := filepath.Join(d, sID) + chunkFileExt
 	return os.Rename(tmp.Name(), p)
 }
