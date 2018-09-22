@@ -15,7 +15,7 @@ func TestProtocol(t *testing.T) {
 
 	// Test data
 	uncompressed := []byte{0, 0, 1, 1, 2, 2}
-	inChunk := NewChunk(uncompressed, nil)
+	inChunk := NewChunkFromUncompressed(uncompressed)
 	compressed, _ := inChunk.Compressed()
 	cID := inChunk.ID()
 

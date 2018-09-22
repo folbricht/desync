@@ -3,7 +3,6 @@ package desync
 import (
 	"bytes"
 	"context"
-	"crypto/sha512"
 	"io"
 	"testing"
 )
@@ -16,8 +15,9 @@ func TestProtocolServer(t *testing.T) {
 
 	// Test data
 	uncompressed := []byte{4, 3, 2, 1}
-	compressed, _ := Compress(uncompressed)
-	id := ChunkID(sha512.Sum512_256(uncompressed))
+	chunkIn := NewChunkFromUncompressed(uncompressed)
+	compressed, _ := chunkIn.Compressed()
+	id := chunkIn.ID()
 	store := TestStore{
 		id: compressed,
 	}

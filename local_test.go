@@ -24,7 +24,7 @@ func TestLocalStoreCompressed(t *testing.T) {
 	// Make up some data and store it
 	dataIn := []byte("some data")
 
-	chunkIn := NewChunk(dataIn, nil)
+	chunkIn := NewChunkFromUncompressed(dataIn)
 	id := chunkIn.ID()
 	if err := s.StoreChunk(chunkIn); err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestLocalStoreUncompressed(t *testing.T) {
 	// Make up some data and store it
 	dataIn := []byte("some data")
 
-	chunkIn := NewChunk(dataIn, nil)
+	chunkIn := NewChunkFromUncompressed(dataIn)
 	id := chunkIn.ID()
 	if err := s.StoreChunk(chunkIn); err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestLocalStoreErrorHandling(t *testing.T) {
 	// Make up some data and store it
 	dataIn := []byte("some data")
 
-	chunkIn := NewChunk(dataIn, nil)
+	chunkIn := NewChunkFromUncompressed(dataIn)
 	id := chunkIn.ID()
 	if err := s.StoreChunk(chunkIn); err != nil {
 		t.Fatal(err)
@@ -171,9 +171,7 @@ func TestLocalStoreErrorHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Disable verification then run the verify with repair enabled which should get
-	// rid of the invalid and blank chunks
-	s.opt.SkipVerify = true
+	// Run the verify with repair enabled which should get rid of the invalid and blank chunks
 	if err := s.Verify(context.Background(), 1, true, ioutil.Discard); err != nil {
 		t.Fatal(err)
 	}

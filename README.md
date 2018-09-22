@@ -12,7 +12,7 @@ Among the distinguishing factors:
 - Where the upstream command has chosen to optimize for storage efficiency (f/e, being able to use local files as "seeds", building temporary indexes into them), this command chooses to optimize for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at cost to storage efficiency.
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
 - SHA512/256 is currently the only supported hash function.
-- Only chunk store using zstd compression are supported at this point.
+- Only chunk stores using zstd compression as well uncompressed are supported at this point.
 - Supports local stores as well as remote stores (as client) over SSH, SFTP and HTTP
 - Built-in HTTP(S) chunk server that can proxy multiple local or remote stores and also supports caching.
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
@@ -22,6 +22,7 @@ Among the distinguishing factors:
 - Allows FUSE mounting of blob indexes
 - S3 protocol support to access chunk stores for read operations and some some commands that write chunks
 - Stores and retrieves index files from remote index stores such as HTTP, SFTP and S3
+- Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 
 ## Parallel chunking

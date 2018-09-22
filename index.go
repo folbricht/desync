@@ -168,7 +168,7 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 		go func() {
 			for c := range in {
 				// Create a chunk object, needed to calculate the checksum
-				chunk := NewChunk(c.b, nil)
+				chunk := NewChunkFromUncompressed(c.b)
 
 				// Record the index row
 				idxChunk := IndexChunk{Start: c.start, Size: uint64(len(c.b)), ID: chunk.ID()}

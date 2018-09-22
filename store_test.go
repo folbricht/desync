@@ -7,7 +7,7 @@ func (s TestStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if !ok {
 		return nil, ChunkMissing{id}
 	}
-	return NewChunk(nil, b), nil
+	return &Chunk{compressed: b}, nil
 }
 
 func (s TestStore) HasChunk(id ChunkID) bool {

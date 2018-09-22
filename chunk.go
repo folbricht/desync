@@ -16,18 +16,19 @@ type Chunk struct {
 	idCalculated             bool
 }
 
-// NewChunk creates a new chunk from uncompressed data, compressed data, or both.
-func NewChunk(uncompressed, compressed []byte) *Chunk {
-	return &Chunk{uncompressed: uncompressed, compressed: compressed}
+// NewChunkFromUncompressed creates a new chunk from uncompressed data.
+func NewChunkFromUncompressed(b []byte) *Chunk {
+	return &Chunk{uncompressed: b}
 }
 
 // NewChunkWithID creates a new chunk from either compressed or uncompressed data
 // (or both if available). It also expects an ID and validates that it matches
-// the uncompressed data. If called with just compressed data, it'll decompress
-// it for the ID validation.
-func NewChunkWithID(id ChunkID, uncompressed, compressed []byte, noVerify bool) (*Chunk, error) {
+// the uncompressed data unless skipVerify is true. If called with just compressed
+// data, it'll decompress it for the ID validation.
+func NewChunkWithID(id ChunkID, uncompressed, compressed []byte, skipVerify bool) (*Chunk, error) {
 	c := &Chunk{id: id, uncompressed: uncompressed, compressed: compressed}
-	if noVerify {
+	if skipVerify {
+		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
 	}
 	sum := c.ID()
@@ -68,8 +69,10 @@ func (c *Chunk) Uncompressed() ([]byte, error) {
 }
 
 // ID returns the checksum/ID of the uncompressed chunk data. The ID is stored
-// after the first call and doesn't need to be re-calculated.
+// after the first call and doesn't need to be re-calculated. Note that calculating
+// the ID may mean decompressing the data first.
 func (c *Chunk) ID() ChunkID {
+
 	if c.idCalculated {
 		return c.id
 	}

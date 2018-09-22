@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
 	"net/url"
@@ -43,7 +42,7 @@ func TestHTTPHandlerReadWrite(t *testing.T) {
 
 	// Make up some data and store it in the RW store
 	dataIn := []byte("some data")
-	chunkIn := NewChunk(dataIn, nil)
+	chunkIn := NewChunkFromUncompressed(dataIn)
 	id := chunkIn.ID()
 	if err := rwStore.StoreChunk(chunkIn); err != nil {
 		t.Fatal(err)
@@ -99,13 +98,12 @@ func TestHTTPHandlerCompression(t *testing.T) {
 
 	// Make up some data and store it in the RW store
 	dataIn := []byte("some data")
-	chunkIn := NewChunk(dataIn, nil)
+	chunkIn := NewChunkFromUncompressed(dataIn)
 	id := chunkIn.ID()
 
-	// Try to get compressed chunks from a store that only serves compressed
-	if _, err := invalidStore.GetChunk(id); err != nil {
-		fmt.Println(err)
-		t.Fatal("expected failure trying to get compressed from uncompressed http store")
+	// Try to get compressed chunks from a store that only serves uncompressed chunks
+	if _, err := invalidStore.GetChunk(id); err == nil {
+		t.Fatal("expected failure trying to get compressed chunks from uncompressed http store")
 	}
 
 	if err := coStore.StoreChunk(chunkIn); err != nil {
@@ -127,10 +125,8 @@ func TestHTTPHandlerCompression(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Try to get compressed chunks from a store that only serves compressed
-	if _, err := invalidStore.GetChunk(id); err != nil {
-		fmt.Println(err)
-		t.Fatal("expected failure trying to get compressed from uncompressed http store")
+	// Try to get the uncompressed chunk
+	if _, err := unStore.GetChunk(id); err != nil {
+		t.Fatal(err)
 	}
-
 }

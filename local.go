@@ -102,7 +102,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 		wg.Add(1)
 		go func() {
 			for id := range ids {
-				chunk, err := s.GetChunk(id)
+				_, err := s.GetChunk(id)
 				switch err.(type) {
 				case ChunkInvalid: // bad chunk, report and delete (if repair=true)
 					msg := err.Error()
@@ -117,18 +117,6 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 				case nil:
 				default: // unexpected, print the error and carry on
 					fmt.Fprintln(w, err)
-				}
-				// If verification is disabled, we'll get here even if the chunk isn't valid
-				if chunk.ID() != id {
-					msg := ChunkInvalid{id, chunk.ID()}.Error()
-					if repair {
-						if err = s.RemoveChunk(id); err != nil {
-							msg = msg + ":" + err.Error()
-						} else {
-							msg = msg + ": removed"
-						}
-					}
-					fmt.Fprintln(w, msg)
 				}
 			}
 			wg.Done()

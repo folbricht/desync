@@ -34,7 +34,7 @@ func TestSelfSeed(t *testing.T) {
 	for i := 0; i < numChunks; i++ {
 		b := make([]byte, size)
 		rand.Read(b)
-		chunk := NewChunk(b, nil)
+		chunk := NewChunkFromUncompressed(b)
 		if err = s.StoreChunk(chunk); err != nil {
 			t.Fatal(err)
 		}
