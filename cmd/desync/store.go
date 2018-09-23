@@ -206,9 +206,17 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	p.Path = path.Dir(p.Path)
 
 	// Get any store options from the config if present and overwrite with settings from
-	// the command line. FIXME: This way of breaking off the file path from an index URL
-	// won't work on Windows when working with local stores.
-	opt := cmdOpt.MergedWith(cfg.GetStoreOptionsFor(location[:strings.LastIndex(location, "/")]))
+	// the command line. To do that it's necessary to get the base string so it can be looked
+	// up in the config. We could be dealing with Unix-style paths or URLs that use / or with
+	// Windows paths that could be using \.
+	var base string
+	switch {
+	case strings.Contains(location, "/"):
+		base = location[:strings.LastIndex(location, "/")]
+	case strings.Contains(location, "\\"):
+		base = location[:strings.LastIndex(location, "\\")]
+	}
+	opt := cmdOpt.MergedWith(cfg.GetStoreOptionsFor(base))
 
 	var s desync.IndexStore
 	switch loc.Scheme {
