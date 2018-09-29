@@ -66,15 +66,16 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `untar`        - unpack a catar file or an index referencing a catar. Not available on Windows.
 - `prune`        - remove unreferenced chunks from a local or S3 store. Use with caution, can lead to data loss.
 - `verify-index` - verify that an index file matches a given blob
-- `chunk-server` - start a chunk server that serves chunks via HTTP(S)
+- `chunk-server` - start a HTTP(S) chunk server/store
+- `index-server` - start a HTTP(S) index server/store
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
 - `info`         - Show information about an index file, such as number of chunks and optionally chunks from an index that a re present in a store
 
 ### Options (not all apply to all commands)
 - `-s <store>` Location of the chunk store, can be local directory or a URL like ssh://hostname/path/to/store. Multiple stores can be specified, they'll be queried for chunks in the same order. The `chop`, `make`, `tar` and `prune` commands support updating chunk stores in S3, while `verify` only operates on a local store.
-- `-seed <indexfile>` Specifies a seed file and index for the `extract` command. The tool expects the matching file to be present and have the same name as the index file, without the `.caibx` extension.
-- `-seed-dir <dir>` Specifies a directory containing seed files and their indexes for the `extract` command. For each index file in the directory (`*.caibx`) there needs to be a matching blob without the extension.
+- `--seed <indexfile>` Specifies a seed file and index for the `extract` command. The tool expects the matching file to be present and have the same name as the index file, without the `.caibx` extension.
+- `--seed-dir <dir>` Specifies a directory containing seed files and their indexes for the `extract` command. For each index file in the directory (`*.caibx`) there needs to be a matching blob without the extension.
 - `-c <store>` Location of a chunk store to be used as cache. Needs to be writable.
 - `-n <int>` Number of concurrent download jobs and ssh sessions to the chunk store.
 - `-r` Repair a local cache by removing invalid chunks. Only valid for the `verify` command.
@@ -83,8 +84,8 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `-m` Specify the min/avg/max chunk sizes in kb. Only applicable to the `make` command. Defaults to 16:64:256 and for best results the min should be avg/4 and the max should be 4*avg.
 - `-i` When packing/unpacking an archive, don't create/read an archive file but instead store/read the chunks and use an index file (caidx) for the archive. Only applicable to `tar` and `untar` commands.
 - `-t` Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs when using a HTTPS chunk server.
-- `-key` Key file in PEM format used for HTTPS `chunk-server` command. Also requires a certificate with `-cert`
-- `-cert` Certificate file in PEM format used for HTTPS `chunk-server` command. Also requires `-key`.
+- `--key` Key file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires a certificate with `--cert`
+- `--cert` Certificate file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires `-key`.
 - `-k` Keep partially assembled files in place when `extract` fails or is interrupted. The command can then be restarted and it'll not have to retrieve completed parts again.
 
 ### Environment variables
@@ -227,17 +228,17 @@ Use multiple stores, specify the local one first to improve performance.
 desync extract -s /some/local/store -s ssh://192.168.1.1/path/to/casync.store/ somefile.tar.caibx somefile.tar
 ```
 
-Extract version 3 of a disk image using the previous 2 versions as seed for cloning (if supported), or copying. Note, when providing a seed like `-seed <file>.ext.caibx`, it is assumed that `<file>.ext` is available next to the index file, and matches the index.
+Extract version 3 of a disk image using the previous 2 versions as seed for cloning (if supported), or copying. Note, when providing a seed like `--seed <file>.ext.caibx`, it is assumed that `<file>.ext` is available next to the index file, and matches the index.
 ```
 desync extract -s /local/store \
-  -seed image-v1.qcow2.caibx \
-  -seed image-v2.qcow2.caibx \
+  --seed image-v1.qcow2.caibx \
+  --seed image-v2.qcow2.caibx \
   image-v3.qcow2.caibx image-v3.qcow2
 ```
 
 Extract an image using several seeds present in a directory. Each of the `.caibx` files in the directory needs to have a matching blob of the same name. It is possible for the source index file to be in the same directory also (it'll be skipped automatically).
 ```
-desync extract -s /local/store -seed-dir /path/to/images image-v3.qcow2.caibx image-v3.qcow2
+desync extract -s /local/store --seed-dir /path/to/images image-v3.qcow2.caibx image-v3.qcow2
 ```
 
 Mix and match remote stores and use a local cache store to improve performance.
@@ -318,7 +319,7 @@ desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -
 
 Start a writable index server, chunk a file and store the index.
 ```
-server# desync index-server -s /mnt/indexes -w -l :8080
+server# desync index-server -s /mnt/indexes --writable -l :8080
 
 client# desync make -s /some/store http://192.168.1.1:8080/file.vmdk.caibx file.vmdk
 ```
@@ -330,7 +331,7 @@ desync cache -s ssh://192.168.1.2/store -c sftp://192.168.1.3/path/to/store /pat
 
 Start a TLS chunk server on port 443 acting as proxy for a remote chunk store in AWS with local cache. The credentials for AWS are expected to be in the config file under key `https://s3-eu-west-3.amazonaws.com`.
 ```
-desync chunk-server -s s3+https://s3-eu-west-3.amazonaws.com/desync.bucket/prefix -c cache -l 127.0.0.1:https -cert cert.pem -key key.pem
+desync chunk-server -s s3+https://s3-eu-west-3.amazonaws.com/desync.bucket/prefix -c cache -l 127.0.0.1:https --cert cert.pem --key key.pem
 ```
 
 Split a blob, store the chunks and create an index file.
@@ -353,9 +354,9 @@ FUSE mount a chunked and remote index file. First a (small) index file is read f
 desync cat -s http://192.168.1.1/store http://192.168.1.2/small.caibx | desync mount-index -s http://192.168.1.1/store - /mnt/point
 ```
 
-Show information about an index file to see how many of its chunks are present in a local store or an S3 store. The local store is queried first, S3 is only queried if the chunk is not present in the local store. The output will be in JSON format (`-j`) for easier processing in scripts.
+Show information about an index file to see how many of its chunks are present in a local store or an S3 store. The local store is queried first, S3 is only queried if the chunk is not present in the local store. The output will be in JSON format (`--format=json`) for easier processing in scripts.
 ```
-desync info -j -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
+desync info --format=json -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
 ```
 
 ## Links

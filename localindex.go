@@ -40,7 +40,7 @@ func (s LocalIndexStore) GetIndexReader(name string) (rdr io.ReadCloser, e error
 func (s LocalIndexStore) GetIndex(name string) (i Index, e error) {
 	f, err := s.GetIndexReader(name)
 	if err != nil {
-		return i, nil
+		return i, err
 	}
 	defer f.Close()
 	idx, err := IndexFromReader(f)

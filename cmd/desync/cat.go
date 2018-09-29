@@ -3,18 +3,27 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
+	"io"
 	"os"
 
-	"io"
-
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const catUsage = `desync cat [options] <index> [<outputfile>]
+type catOptions struct {
+	cmdStoreOptions
+	stores         []string
+	cache          string
+	offset, length int
+}
 
-Stream a blob to stdout or a file-like object, optionally seeking and limiting
+func newCatCommand(ctx context.Context) *cobra.Command {
+	var opt catOptions
+
+	cmd := &cobra.Command{
+		Use:   "cat <index> [<output>]",
+		Short: "Stream a blob to stdout or a file-like object",
+		Long: `Stream a blob to stdout or a file-like object, optionally seeking and limiting
 the read length.
 
 Unlike extract, this supports output to FIFOs, named pipes, and other
@@ -23,92 +32,73 @@ non-seekable destinations.
 This is inherently slower than extract as while multiple chunks can be
 retrieved concurrently, writing to stdout cannot be parallelized.
 
-Use '-' to read the index from STDIN.`
+Use '-' to read the index from STDIN.`,
+		Example: `  desync cat -s http://192.168.1.1/ file.caibx | grep something`,
+		Args:    cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCat(ctx, opt, args)
+		},
+		SilenceUsage: true,
+	}
+	flags := cmd.Flags()
+	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
+	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	flags.IntVarP(&opt.offset, "offset", "o", 0, "offset in bytes to seek to before reading")
+	flags.IntVarP(&opt.length, "length", "l", 0, "number of bytes to read")
+	return cmd
+}
 
-func cat(ctx context.Context, args []string) error {
+func runCat(ctx context.Context, opt catOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
+	}
+
 	var (
-		cacheLocation  string
-		n              int
-		err            error
-		storeLocations = new(multiArg)
-		offset         int
-		length         int
-		readIndex      bool
-		clientCert     string
-		clientKey      string
+		outFile io.Writer
+		err     error
 	)
-	flags := flag.NewFlagSet("cat", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, catUsage)
-		flags.PrintDefaults()
-	}
-
-	flags.BoolVar(&readIndex, "i", false, "Read index file (caidx), not catar, in 2-argument mode")
-	flags.Var(storeLocations, "s", "casync store location, can be multiples")
-	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.IntVar(&offset, "o", 0, "offset in bytes to seek to before reading")
-	flags.IntVar(&length, "l", 0, "number of bytes to read")
-	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.Parse(args)
-
-	if flags.NArg() < 1 {
-		return errors.New("Not enough arguments. See -h for help.")
-	}
-	if flags.NArg() > 2 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
-	}
-
-	var outFile io.Writer
-	if flags.NArg() == 2 {
-		outFileName := flags.Arg(1)
+	if len(args) == 2 {
+		outFileName := args[1]
 		outFile, err = os.Create(outFileName)
 		if err != nil {
 			return err
 		}
 	} else {
-		outFile = os.Stdout
+		outFile = stdout
 	}
 
-	inFile := flags.Arg(0)
+	inFile := args[0]
 
 	// Checkout the store
-	if len(storeLocations.list) == 0 {
-		return errors.New("No casync store provided. See -h for help.")
+	if len(opt.stores) == 0 {
+		return errors.New("no store provided")
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
-	opts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
-	}
-	s, err := MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
+	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
 	// Read the input
-	c, err := readCaibxFile(inFile, opts)
+	c, err := readCaibxFile(inFile, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 
 	// Write the output
 	readSeeker := desync.NewIndexReadSeeker(c, s)
-	if _, err = readSeeker.Seek(int64(offset), io.SeekStart); err != nil {
+	if _, err = readSeeker.Seek(int64(opt.offset), io.SeekStart); err != nil {
 		return err
 	}
 
-	if length > 0 {
-		_, err = io.CopyN(outFile, readSeeker, int64(length))
+	if opt.length > 0 {
+		_, err = io.CopyN(outFile, readSeeker, int64(opt.length))
 	} else {
 		_, err = io.Copy(outFile, readSeeker)
 	}

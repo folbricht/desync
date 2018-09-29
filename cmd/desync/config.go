@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/url"
@@ -16,8 +15,10 @@ import (
 	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/pkg/credentials"
 	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
 )
 
+// S3Creds holds credentials or references to an S3 credentials file.
 type S3Creds struct {
 	AccessKey          string `json:"access-key,omitempty"`
 	SecretKey          string `json:"secret-key,omitempty"`
@@ -27,6 +28,8 @@ type S3Creds struct {
 	AwsRegion string `json:"aws-region,omitempty"`
 }
 
+// Config is used to hold the global tool configuration. It's used to customize
+// store features and provide credentials where needed.
 type Config struct {
 	HTTPTimeout    time.Duration                  `json:"http-timeout,omitempty"`
 	HTTPErrorRetry int                            `json:"http-error-retry,omitempty"`
@@ -71,49 +74,46 @@ func (c Config) GetStoreOptionsFor(location string) desync.StoreOptions {
 	return c.StoreOptions[location]
 }
 
-// Global config in the main packe defining the defaults. Those can be
-// overridden by loading a config file or in the command line.
-var cfg Config
+func newConfigCommand(ctx context.Context) *cobra.Command {
+	var write bool
 
-const configUsage = `desync config
-
-Shows the current internal config settings, either the defaults or the values
-from $HOME/.config/desync/config.json. The output can be used to create a custom
-config file by writing it to $HOME/.config/desync/config.json.
-`
-
-func config(ctx context.Context, args []string) error {
-	var writeConfig bool
-	flags := flag.NewFlagSet("config", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, configUsage)
-		flags.PrintDefaults()
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Show or write config file",
+		Long: `Shows the current internal configuration settings, either the defaults,
+the values from $HOME/.config/desync/config.json or the specified config file. The
+output can be used to create a custom config file writing it to the specified file
+or $HOME/.config/desync/config.json by default.`,
+		Example: `  desync config
+  desync --config desync.json config -w`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConfig(ctx, write)
+		},
+		SilenceUsage: true,
 	}
-	flags.BoolVar(&writeConfig, "w", false, "write current configuration to $HOME/.config/desync/config.json")
-	flags.Parse(args)
 
-	if flags.NArg() > 0 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
+	flags := cmd.Flags()
+	flags.BoolVarP(&write, "write", "w", false, "write current configuration to file")
+	return cmd
+}
+
+func runConfig(ctx context.Context, write bool) error {
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
 	var w io.Writer = os.Stderr
-	if writeConfig {
-		filename, err := configFile()
-		if err != nil {
+	if write {
+		if err = os.MkdirAll(filepath.Dir(cfgFile), 0755); err != nil {
 			return err
 		}
-		if err = os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
-			return err
-		}
-		f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		f, err := os.OpenFile(cfgFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		fmt.Println("Writing config to", filename)
+		fmt.Println("Writing config to", cfgFile)
 		w = f
 	}
 	_, err = w.Write(b)
@@ -121,31 +121,31 @@ func config(ctx context.Context, args []string) error {
 	return err
 }
 
-func configFile() (string, error) {
-	u, err := user.Current()
-	if err != nil {
-		return "", err
-	}
-	filename := filepath.Join(u.HomeDir, ".config", "desync", "config.json")
-	return filename, nil
-}
+// Global config in the main packe defining the defaults. Those can be
+// overridden by loading a config file or in the command line.
+var cfg Config
+var cfgFile string
 
 // Look for $HOME/.config/desync and if present, load into the global config
 // instance. Values defined in the file will be set accordingly, while anything
 // that's not in the file will retain it's default values.
-func loadConfigIfPresent() error {
-	filename, err := configFile()
-	if err != nil {
-		return err
+func initConfig() {
+	if cfgFile == "" {
+		u, err := user.Current()
+		if err != nil {
+			die(err)
+		}
+		cfgFile = filepath.Join(u.HomeDir, ".config", "desync", "config.json")
 	}
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		return nil
+	if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
+		return
 	}
-	f, err := os.Open(filename)
+	f, err := os.Open(cfgFile)
 	if err != nil {
-		return err
+		die(err)
 	}
 	defer f.Close()
-	err = json.NewDecoder(f).Decode(&cfg)
-	return errors.Wrap(err, "reading "+filename)
+	if err = json.NewDecoder(f).Decode(&cfg); err != nil {
+		die(errors.Wrap(err, "reading "+cfgFile))
+	}
 }

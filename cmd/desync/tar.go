@@ -5,60 +5,61 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
 	"io"
 	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const tarUsage = `desync tar <catar|index> <source>
+type tarOptions struct {
+	cmdStoreOptions
+	store       string
+	chunkSize   string
+	createIndex bool
+}
 
-Encodes a directory tree into a catar archive or alternatively an index file
-with the archive chunked in a local or S3 store. Use '-' to write the output,
-catar or index to STDOUT.`
+func newTarCommand(ctx context.Context) *cobra.Command {
+	var opt tarOptions
 
-func tar(ctx context.Context, args []string) error {
-	var (
-		makeIndex     bool
-		n             int
-		clientCert    string
-		clientKey     string
-		storeLocation string
-		chunkSize     string
-	)
-	flags := flag.NewFlagSet("tar", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, tarUsage)
-		flags.PrintDefaults()
+	cmd := &cobra.Command{
+		Use:   "tar <catar|index> <source>",
+		Short: "Store a directory tree in a catar archive or index",
+		Long: `Encodes a directory tree into a catar archive or alternatively an index file
+with the archive chunked into a store. Use '-' to write the output,
+catar or index to STDOUT.`,
+		Example: `  desync tar documents.catar $HOME/Documents
+  desync make -s /path/to/local pics.caibx $HOME/Pictures`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTar(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
-	flags.BoolVar(&makeIndex, "i", false, "Create index file (caidx), not catar")
-	flags.StringVar(&storeLocation, "s", "", "Local or S3 casync store location (with -i)")
-	flags.IntVar(&n, "n", 10, "number of goroutines (with -i)")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.StringVar(&chunkSize, "m", "16:64:256", "Min/Avg/Max chunk size in kb (with -i)")
-	flags.Parse(args)
+	flags := cmd.Flags()
+	flags.StringVarP(&opt.store, "store", "s", "", "target store (used with -i)")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
+	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
+	return cmd
+}
 
-	if flags.NArg() < 2 {
-		return errors.New("Not enough arguments. See -h for help.")
+func runTar(ctx context.Context, opt tarOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
-	if flags.NArg() > 2 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-	if makeIndex && storeLocation == "" {
+	if opt.createIndex && opt.store == "" {
 		return errors.New("-i requires a store (-s <location>)")
 	}
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
-	}
 
-	output := flags.Arg(0)
-	sourceDir := flags.Arg(1)
+	output := args[0]
+	sourceDir := args[1]
 
 	// Just make the catar and stop if that's all that was required
-	if !makeIndex {
+	if !opt.createIndex {
 		var w io.Writer
 		if output == "-" {
 			w = os.Stdout
@@ -73,25 +74,19 @@ func tar(ctx context.Context, args []string) error {
 		return desync.Tar(ctx, w, sourceDir)
 	}
 
-	sOpts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
-	}
-
 	// An index is requested, so stream the output of the tar command directly
 	// into a chunker using a pipe
 	r, w := io.Pipe()
 
 	// Open the target store
-	s, err := WritableStore(storeLocation, sOpts)
+	s, err := WritableStore(opt.store, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
 	// Prepare the chunker
-	min, avg, max, err := parseChunkSizeParam(chunkSize)
+	min, avg, max, err := parseChunkSizeParam(opt.chunkSize)
 	if err != nil {
 		return err
 	}
@@ -109,7 +104,7 @@ func tar(ctx context.Context, args []string) error {
 
 	// Read from the pipe, split the stream and store the chunks. This should
 	// complete when Tar is done and closes the pipe writer
-	index, err := desync.ChunkStream(ctx, c, s, n)
+	index, err := desync.ChunkStream(ctx, c, s, opt.n)
 	if err != nil {
 		return err
 	}
@@ -122,5 +117,5 @@ func tar(ctx context.Context, args []string) error {
 	}
 
 	// Write the index
-	return storeCaibxFile(index, output, sOpts)
+	return storeCaibxFile(index, output, opt.cmdStoreOptions)
 }

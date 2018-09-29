@@ -17,7 +17,7 @@ func TestNewRefreshableSharedCredentials(t *testing.T) {
 		return currentTime.Add(time.Minute * 2)
 	}
 
-	c := NewRefreshableSharedCredentials("example.ini", "", mockNow)
+	c := NewRefreshableSharedCredentials("testdata/example.ini", "", mockNow)
 
 	assert.True(t, c.IsExpired(), "Expect creds to be expired before retrieve")
 
@@ -30,7 +30,7 @@ func TestNewRefreshableSharedCredentials(t *testing.T) {
 func TestRefreshableSharedCredentialsProvider(t *testing.T) {
 	os.Clearenv()
 
-	p := RefreshableSharedCredentialsProvider{Filename: "example.ini", Profile: "", exp: now().Add(time.Minute), now: now}
+	p := RefreshableSharedCredentialsProvider{Filename: "testdata/example.ini", Profile: "", exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
 	assert.Nil(t, err, "Expect no error")
 
@@ -46,7 +46,7 @@ func TestRefreshableSharedCredentialsProviderIsExpired(t *testing.T) {
 		return currentTime.Add(time.Minute * 2)
 	}
 
-	p := RefreshableSharedCredentialsProvider{Filename: "example.ini", Profile: "", exp: currentTime.Add(time.Minute), now: mockNow}
+	p := RefreshableSharedCredentialsProvider{Filename: "testdata/example.ini", Profile: "", exp: currentTime.Add(time.Minute), now: mockNow}
 
 	assert.True(t, p.IsExpired(), "Expect creds to be expired before retrieve")
 
@@ -58,7 +58,7 @@ func TestRefreshableSharedCredentialsProviderIsExpired(t *testing.T) {
 
 func TestRefreshableSharedCredentialsProviderWithAWS_SHARED_CREDENTIALS_FILE(t *testing.T) {
 	os.Clearenv()
-	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", "example.ini")
+	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", "testdata/example.ini")
 
 	p := RefreshableSharedCredentialsProvider{exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
@@ -75,7 +75,7 @@ func TestRefreshableSharedCredentialsProviderWithAWS_SHARED_CREDENTIALS_FILEAbsP
 
 	wd, err := os.Getwd()
 	assert.NoError(t, err)
-	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(wd, "example.ini"))
+	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(wd, "testdata/example.ini"))
 	p := RefreshableSharedCredentialsProvider{exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
 	assert.Nil(t, err, "Expect no error")
@@ -89,7 +89,7 @@ func TestRefreshableSharedCredentialsProviderWithAWS_PROFILE(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("AWS_PROFILE", "no_token")
 
-	p := RefreshableSharedCredentialsProvider{Filename: "example.ini", Profile: "", exp: now().Add(time.Minute), now: now}
+	p := RefreshableSharedCredentialsProvider{Filename: "testdata/example.ini", Profile: "", exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
 	assert.Nil(t, err, "Expect no error")
 
@@ -101,7 +101,7 @@ func TestRefreshableSharedCredentialsProviderWithAWS_PROFILE(t *testing.T) {
 func TestRefreshableSharedCredentialsProviderWithoutTokenFromProfile(t *testing.T) {
 	os.Clearenv()
 
-	p := RefreshableSharedCredentialsProvider{Filename: "example.ini", Profile: "no_token", exp: now().Add(time.Minute), now: now}
+	p := RefreshableSharedCredentialsProvider{Filename: "testdata/example.ini", Profile: "no_token", exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
 	assert.Nil(t, err, "Expect no error")
 
@@ -113,7 +113,7 @@ func TestRefreshableSharedCredentialsProviderWithoutTokenFromProfile(t *testing.
 func TestRefreshableSharedCredentialsProviderColonInCredFile(t *testing.T) {
 	os.Clearenv()
 
-	p := RefreshableSharedCredentialsProvider{Filename: "example.ini", Profile: "with_colon", exp: now().Add(time.Minute), now: now}
+	p := RefreshableSharedCredentialsProvider{Filename: "testdata/example.ini", Profile: "with_colon", exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
 	assert.Nil(t, err, "Expect no error")
 

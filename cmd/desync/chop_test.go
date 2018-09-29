@@ -1,0 +1,53 @@
+package main
+
+import (
+	"context"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestChopCommand(t *testing.T) {
+	store, err := ioutil.TempDir("", "")
+	require.NoError(t, err)
+	defer os.RemoveAll(store)
+
+	cmd := newChopCommand(context.Background())
+	cmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
+
+	// Redirect the command's output to turn off the progressbar and run it
+	stderr = ioutil.Discard
+	cmd.SetOutput(ioutil.Discard)
+	_, err = cmd.ExecuteC()
+	require.NoError(t, err)
+
+	// If the file was split right, we'll have chunks in the dir now
+	dirs, err := ioutil.ReadDir(store)
+	require.NoError(t, err)
+	require.NotEmpty(t, dirs)
+}
+
+func TestChopErrors(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		args    []string
+		message string
+	}{
+		{"without store",
+			[]string{"testdata/blob1.caibx", "testdata/blob1"}, "no target store provided"},
+		{"invalid store",
+			[]string{"-s", filepath.Join(os.TempDir(), "desync"), "testdata/blob1.caibx", "testdata/blob1"}, "no such file or directory"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := newChopCommand(context.Background())
+			cmd.SetOutput(ioutil.Discard)
+			cmd.SetArgs(test.args)
+			_, err := cmd.ExecuteC()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.message)
+		})
+	}
+}

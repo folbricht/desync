@@ -3,69 +3,59 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
-	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const cacheUsage = `desync cache [options] <index> [<index>...]
+type cacheOptions struct {
+	cmdStoreOptions
+	stores []string
+	cache  string
+}
 
-Read chunk IDs from caibx or caidx files from one or more stores without
+func newCacheCommand(ctx context.Context) *cobra.Command {
+	var opt cacheOptions
+
+	cmd := &cobra.Command{
+		Use:   "cache <index> [<index>...]",
+		Short: "Read indexes and copy the referenced chunks",
+		Long: `Read chunk IDs from caibx or caidx files from one or more stores without
 writing to disk. Can be used (with -c) to populate a store with desired chunks
 either to be used as cache, or to populate a store with chunks referenced in an
-index file. Use '-' to read (a single) index from STDIN.`
-
-func cache(ctx context.Context, args []string) error {
-	var (
-		cacheLocation  string
-		n              int
-		storeLocations = new(multiArg)
-		clientCert     string
-		clientKey      string
-	)
-	flags := flag.NewFlagSet("cache", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, cacheUsage)
-		flags.PrintDefaults()
+index file. Use '-' to read (a single) index from STDIN.`,
+		Example: `  desync cache -s http://192.168.1.1/ -c /path/to/local file.caibx`,
+		Args:    cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCache(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
+	flags := cmd.Flags()
+	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
+	flags.StringVarP(&opt.cache, "cache", "c", "", "target store")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	return cmd
+}
 
-	flags.Var(storeLocations, "s", "source store location, can be multiples")
-	flags.StringVar(&cacheLocation, "c", "", "target store to be used as cache")
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.Parse(args)
-
-	if flags.NArg() < 1 {
-		return errors.New("Not enough arguments. See -h for help.")
+func runCache(ctx context.Context, opt cacheOptions, args []string) error {
+	if len(opt.stores) == 0 {
+		return errors.New("no source store provided")
 	}
-
-	// Checkout the store
-	if len(storeLocations.list) == 0 {
-		return errors.New("No source store provided. See -h for help.")
+	if opt.cache == "" {
+		return errors.New("no target cache store provided")
 	}
-	if cacheLocation == "" {
-		return errors.New("No target cache store provided. See -h for help.")
-	}
-
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
-	}
-
-	// Parse the store locations, open the stores and add a cache is requested
-	opts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
 
 	// Read the input files and merge all chunk IDs in a map to de-dup them
 	idm := make(map[desync.ChunkID]struct{})
-	for _, name := range flags.Args() {
-		c, err := readCaibxFile(name, opts)
+	for _, name := range args {
+		c, err := readCaibxFile(name, opt.cmdStoreOptions)
 		if err != nil {
 			return err
 		}
@@ -80,13 +70,13 @@ func cache(ctx context.Context, args []string) error {
 		ids = append(ids, id)
 	}
 
-	s, err := multiStore(opts, storeLocations.list...)
+	s, err := multiStore(opt.cmdStoreOptions, opt.stores...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
-	dst, err := WritableStore(cacheLocation, opts)
+	dst, err := WritableStore(opt.cache, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
@@ -96,5 +86,5 @@ func cache(ctx context.Context, args []string) error {
 	pb := NewProgressBar("")
 
 	// Pull all the chunks, and load them into the cache in the process
-	return desync.Copy(ctx, ids, s, dst, n, pb)
+	return desync.Copy(ctx, ids, s, dst, opt.n, pb)
 }

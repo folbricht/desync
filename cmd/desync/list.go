@@ -3,56 +3,51 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"os"
+
+	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const listUsage = `desync list-chunks <index>
+type listOptions struct {
+	cmdStoreOptions
+}
 
-Reads the index file and prints the list of chunk IDs in it. Use '-' to read
-the index from STDIN.`
+func newListCommand(ctx context.Context) *cobra.Command {
+	var opt listOptions
 
-func list(ctx context.Context, args []string) error {
-	var (
-		clientCert string
-		clientKey  string
-	)
-
-	flags := flag.NewFlagSet("list-chunks", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, listUsage)
-		flags.PrintDefaults()
+	cmd := &cobra.Command{
+		Use:   "list-chunks <index>",
+		Short: "List chunk IDs from an index",
+		Long: `Reads the index file and prints the list of chunk IDs in it. Use '-' to read
+the index from STDIN.`,
+		Example: `  desync list-chunks file.caibx`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runList(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.Parse(args)
+	flags := cmd.Flags()
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	return cmd
+}
 
-	if flags.NArg() < 1 {
-		return errors.New("Not enough arguments. See -h for help.")
-	}
-	if flags.NArg() > 1 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
-	}
-
-	// Parse the store locations, open the stores and add a cache is requested
-	opts := cmdStoreOptions{
-		clientCert: clientCert,
-		clientKey:  clientKey,
+func runList(ctx context.Context, opt listOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
 
 	// Read the input
-	c, err := readCaibxFile(flags.Arg(0), opts)
+	c, err := readCaibxFile(args[0], opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 	// Write the list of chunk IDs to STDOUT
 	for _, chunk := range c.Chunks {
-		fmt.Println(chunk.ID)
+		fmt.Fprintln(stdout, chunk.ID)
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():

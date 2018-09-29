@@ -3,68 +3,66 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const infoUsage = `desync info [-s <store>] <index>
+type infoOptions struct {
+	cmdStoreOptions
+	stores      []string
+	printFormat string
+}
 
-Displays information about the provided index, such as number of chunks. If a
+func newInfoCommand(ctx context.Context) *cobra.Command {
+	var opt infoOptions
+
+	cmd := &cobra.Command{
+		Use:   "info <index>",
+		Short: "Show information about an index",
+		Long: `Displays information about the provided index, such as number of chunks. If a
 store is provided, it'll also show how many of the chunks are present in the
-store. Use '-' to read the index from STDIN.`
-
-func info(ctx context.Context, args []string) error {
-	var (
-		n              int
-		clientCert     string
-		clientKey      string
-		storeLocations = new(multiArg)
-		showJSON       bool
-		results        struct {
-			Total   int    `json:"total"`
-			Unique  int    `json:"unique"`
-			InStore uint64 `json:"in-store"`
-			Size    uint64 `json:"size"`
-		}
-	)
-	flags := flag.NewFlagSet("info", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, infoUsage)
-		flags.PrintDefaults()
+store. Use '-' to read the index from STDIN.`,
+		Example: `  desync info -s /path/to/local --format=json file.caibx`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runInfo(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
-	flags.Var(storeLocations, "s", "store location, can be multiples")
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.BoolVar(&showJSON, "j", false, "show information in JSON format")
-	flags.Parse(args)
+	flags := cmd.Flags()
+	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
 
-	if flags.NArg() < 1 {
-		return errors.New("Not enough arguments. See -h for help.")
-	}
-	if flags.NArg() > 1 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	flags.StringVarP(&opt.printFormat, "format", "f", "json", "output format, plain or json")
+	return cmd
+}
 
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
-	}
-
-	opts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
+func runInfo(ctx context.Context, opt infoOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
 
 	// Read the index
-	c, err := readCaibxFile(flags.Arg(0), opts)
+	c, err := readCaibxFile(args[0], opt.cmdStoreOptions)
 	if err != nil {
 		return err
+	}
+
+	var results struct {
+		Total        int    `json:"total"`
+		Unique       int    `json:"unique"`
+		InStore      uint64 `json:"in-store"`
+		Size         uint64 `json:"size"`
+		ChunkSizeMin uint64 `json:"chunk-size-min"`
+		ChunkSizeAvg uint64 `json:"chunk-size-avg"`
+		ChunkSizeMax uint64 `json:"chunk-size-max"`
 	}
 
 	// Calculate the size of the blob, from the last chunk
@@ -72,6 +70,11 @@ func info(ctx context.Context, args []string) error {
 		last := c.Chunks[len(c.Chunks)-1]
 		results.Size = last.Start + last.Size
 	}
+
+	// Capture min:avg:max from the index
+	results.ChunkSizeMin = c.Index.ChunkSizeMin
+	results.ChunkSizeAvg = c.Index.ChunkSizeAvg
+	results.ChunkSizeMax = c.Index.ChunkSizeMax
 
 	// Go through each chunk to count and de-dup them with a map
 	deduped := make(map[desync.ChunkID]struct{})
@@ -86,8 +89,8 @@ func info(ctx context.Context, args []string) error {
 	}
 	results.Unique = len(deduped)
 
-	if len(storeLocations.list) > 0 {
-		store, err := multiStore(cmdStoreOptions{n: n}, storeLocations.list...)
+	if len(opt.stores) > 0 {
+		store, err := multiStore(cmdStoreOptions{n: opt.n}, opt.stores...)
 		if err != nil {
 			return err
 		}
@@ -95,7 +98,7 @@ func info(ctx context.Context, args []string) error {
 		// Query the store in parallel for better performance
 		var wg sync.WaitGroup
 		ids := make(chan desync.ChunkID)
-		for i := 0; i < n; i++ {
+		for i := 0; i < opt.n; i++ {
 			wg.Add(1)
 			go func() {
 				for id := range ids {
@@ -113,15 +116,21 @@ func info(ctx context.Context, args []string) error {
 		wg.Wait()
 	}
 
-	if showJSON {
+	switch opt.printFormat {
+	case "json":
 		if err := printJSON(results); err != nil {
 			return err
 		}
-	} else {
+	case "plain":
 		fmt.Println("Blob size:", results.Size)
 		fmt.Println("Total chunks:", results.Total)
 		fmt.Println("Unique chunks:", results.Unique)
 		fmt.Println("Chunks in store:", results.InStore)
+		fmt.Println("Chunk size min:", results.ChunkSizeMin)
+		fmt.Println("Chunk size avg:", results.ChunkSizeAvg)
+		fmt.Println("Chunk size max:", results.ChunkSizeMax)
+	default:
+		return fmt.Errorf("unsupported output format '%s", opt.printFormat)
 	}
 	return nil
 }
