@@ -2,9 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
+
+	"github.com/spf13/cobra"
 )
 
-func mountIdx(context.Context, []string) error {
-	return fmt.Errorf("Subcommand not available on this platform")
+func newMountIndexCommand(ctx context.Context) *cobra.Command {
+	return &cobra.Command{
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return errors.New("command not available on this platform")
+		},
+		SilenceUsage: true,
+	}
 }
