@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"path"
+	"path/filepath"
 
 	"github.com/folbricht/desync"
 	"github.com/pkg/errors"
@@ -147,13 +148,11 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		if err != nil {
 			return nil, err
 		}
-	case "":
-		s, err = desync.NewLocalStore(loc.Path, opt)
+	default:
+		s, err = desync.NewLocalStore(location)
 		if err != nil {
 			return nil, err
 		}
-	default:
-		return nil, fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
 	}
 	return s, nil
 }
@@ -248,17 +247,16 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 		if err != nil {
 			return nil, "", err
 		}
-	case "":
+	default:
 		if location == "-" {
 			s, _ = desync.NewConsoleIndexStore()
 		} else {
-			s, err = desync.NewLocalIndexStore(p.String())
+			s, err = desync.NewLocalIndexStore(filepath.Dir(location))
 			if err != nil {
 				return nil, "", err
 			}
+			indexName = filepath.Base(location)
 		}
-	default:
-		return nil, "", fmt.Errorf("Unsupported store access scheme %s", loc.Scheme)
 	}
 	return s, indexName, nil
 }
