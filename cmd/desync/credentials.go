@@ -27,19 +27,22 @@ func UserHomeDir() string {
 	return os.Getenv("HOME")
 }
 
-// Implements credentials.Provider from github.com/minio/minio-go/pkg/credentials
+// StaticCredentialsProvider implements credentials.Provider from github.com/minio/minio-go/pkg/credentials
 type StaticCredentialsProvider struct {
 	creds credentials.Value
 }
 
+// IsExpired returns true when the credentials are expired
 func (cp *StaticCredentialsProvider) IsExpired() bool {
 	return false
 }
 
+// Retrieve returns credentials
 func (cp *StaticCredentialsProvider) Retrieve() (credentials.Value, error) {
 	return cp.creds, nil
 }
 
+// NewStaticCredentials initializes a new set of S3 credentials
 func NewStaticCredentials(accessKey, secretKey string) *credentials.Credentials {
 	p := &StaticCredentialsProvider{
 		credentials.Value{
@@ -159,7 +162,7 @@ func (p *RefreshableSharedCredentialsProvider) filename() (string, error) {
 	homeDir := UserHomeDir()
 	if len(homeDir) == 0 {
 		// Backwards compatibility of home directly not found error being returned.
-		return "", errors.New("user home directory not found.")
+		return "", errors.New("user home directory not found")
 	}
 
 	// SDK's default file path

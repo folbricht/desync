@@ -3,66 +3,65 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
-	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const chopUsage = `desync chop [options] <index> <file>
+type chopOptions struct {
+	cmdStoreOptions
+	store string
+}
 
-Reads the index and extracts all referenced chunks from the file into a store,
-local or remote. Use '-' to read the index from STDIN.`
+func newChopCommand(ctx context.Context) *cobra.Command {
+	var opt chopOptions
 
-func chop(ctx context.Context, args []string) error {
-	var (
-		storeLocation string
-		n             int
-		clientCert    string
-		clientKey     string
-	)
-	flags := flag.NewFlagSet("chop", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, chopUsage)
-		flags.PrintDefaults()
+	cmd := &cobra.Command{
+		Use:   "chop <index> <file>",
+		Short: "Reads chunks from a file according to an index",
+		Long: `Reads the index and extracts all referenced chunks from the file into a store,
+local or remote.
+
+Does not modify the input file or index in any. It's used to populate a chunk
+store by chopping up a file according to an existing index.
+
+Use '-' to read the index from STDIN.`,
+		Example: `  desync chop -s sftp://192.168.1.1/store file.caibx largefile.bin`,
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runChop(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
-	flags.StringVar(&storeLocation, "s", "", "Local casync store location")
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.Parse(args)
+	flags := cmd.Flags()
+	flags.StringVarP(&opt.store, "store", "s", "", "target store")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	return cmd
+}
 
-	if flags.NArg() < 2 {
-		return errors.New("Not enough arguments. See -h for help.")
+func runChop(ctx context.Context, opt chopOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
-	if flags.NArg() > 2 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
+	if opt.store == "" {
+		return errors.New("no target store provided")
 	}
 
-	indexFile := flags.Arg(0)
-	dataFile := flags.Arg(1)
-
-	// Parse the store locations, open the stores and add a cache is requested
-	opts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
-	}
+	indexFile := args[0]
+	dataFile := args[1]
 
 	// Open the target store
-	s, err := WritableStore(storeLocation, opts)
+	s, err := WritableStore(opt.store, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
 	// Read the input
-	c, err := readCaibxFile(indexFile, opts)
+	c, err := readCaibxFile(indexFile, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
@@ -71,5 +70,5 @@ func chop(ctx context.Context, args []string) error {
 	pb := NewProgressBar("")
 
 	// Chop up the file into chunks and store them in the target store
-	return desync.ChopFile(ctx, dataFile, c.Chunks, s, n, pb)
+	return desync.ChopFile(ctx, dataFile, c.Chunks, s, opt.n, pb)
 }

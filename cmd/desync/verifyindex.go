@@ -3,53 +3,46 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
-	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const verifyIndexUsage = `desync verify-index [options] <index> <file>
+type verifyIndexOptions struct {
+	cmdStoreOptions
+}
 
-Verifies an index file matches the content of a blob. Use '-' to read the index
-from STDIN.
-`
+func newVerifyIndexCommand(ctx context.Context) *cobra.Command {
+	var opt verifyIndexOptions
 
-func verifyIndex(ctx context.Context, args []string) error {
-	var (
-		n          int
-		clientCert string
-		clientKey  string
-	)
-	flags := flag.NewFlagSet("verify-index", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, verifyIndexUsage)
-		flags.PrintDefaults()
+	cmd := &cobra.Command{
+		Use:   "verify-index <index> <file>",
+		Short: "Verifies an index matches a file",
+		Long: `Verifies an index file matches the content of a blob. Use '-' to read the index
+from STDIN.`,
+		Example: `  desync verify-index sftp://192.168.1.1/myIndex.caibx largefile.bin`,
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runVerifyIndex(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.Parse(args)
-
-	if flags.NArg() < 2 {
-		return errors.New("Not enough arguments. See -h for help.")
+	flags := cmd.Flags()
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	return cmd
+}
+func runVerifyIndex(ctx context.Context, opt verifyIndexOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
-	if flags.NArg() > 2 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-	indexFile := flags.Arg(0)
-	dataFile := flags.Arg(1)
-
-	// Parse the store locations, open the stores and add a cache is requested
-	opts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
-	}
+	indexFile := args[0]
+	dataFile := args[1]
 
 	// Read the input
-	idx, err := readCaibxFile(indexFile, opts)
+	idx, err := readCaibxFile(indexFile, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
@@ -58,5 +51,5 @@ func verifyIndex(ctx context.Context, args []string) error {
 	pb := NewProgressBar("")
 
 	// Chop up the file into chunks and store them in the target store
-	return desync.VerifyIndex(ctx, dataFile, idx, n, pb)
+	return desync.VerifyIndex(ctx, dataFile, idx, opt.n, pb)
 }

@@ -3,46 +3,50 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
-	"os"
+
+	"github.com/spf13/cobra"
 
 	"github.com/folbricht/desync"
 )
 
-const verifyUsage = `desync verify -s <store> [-rn]
+type verifyOptions struct {
+	cmdStoreOptions
+	store  string
+	repair bool
+}
 
-Reads all chunks in a local store and verifies their integrity. If -r is used,
-invalid chunks are deleted from the store.`
+func newVerifyCommand(ctx context.Context) *cobra.Command {
+	var opt verifyOptions
 
-func verify(ctx context.Context, args []string) error {
-	var (
-		repair        bool
-		n             int
-		err           error
-		storeLocation string
-	)
-	flags := flag.NewFlagSet("verify", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, verifyUsage)
-		flags.PrintDefaults()
+	cmd := &cobra.Command{
+		Use:   "verify",
+		Short: "Read chunks in a store and verify their integrity",
+		Long: `Reads all chunks in a local store and verifies their integrity. If -r is used,
+invalid chunks are deleted from the store.`,
+		Example: `  desync verify -s /path/to/store`,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runVerify(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
-	flags.StringVar(&storeLocation, "s", "", "local store directory")
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.BoolVar(&repair, "r", false, "Remove any invalid chunks")
-	flags.Parse(args)
+	flags := cmd.Flags()
+	flags.StringVarP(&opt.store, "store", "s", "", "target store")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&opt.repair, "repair", "r", false, "remove invalid chunks from the store")
+	return cmd
+}
 
-	if flags.NArg() > 0 {
-		return errors.New("Too many arguments. See -h for help.")
+func runVerify(ctx context.Context, opt verifyOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
-
-	if storeLocation == "" {
-		return errors.New("No store provided.")
+	if opt.store == "" {
+		return errors.New("no store provided")
 	}
-
-	s, err := desync.NewLocalStore(storeLocation, cfg.GetStoreOptionsFor(storeLocation))
+	s, err := desync.NewLocalStore(opt.store, cfg.GetStoreOptionsFor(opt.store))
 	if err != nil {
 		return err
 	}
-	return s.Verify(ctx, n, repair, os.Stderr)
+	return s.Verify(ctx, opt.n, opt.repair, stderr)
 }

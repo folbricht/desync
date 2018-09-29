@@ -5,84 +5,77 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const mountIdxUsage = `desync mount-index [options] <index> <mountpoint>
+type mountIndexOptions struct {
+	cmdStoreOptions
+	stores     []string
+	cache      string
+	seeds      []string
+	seedDirs   []string
+	inPlace    bool
+	printStats bool
+}
 
-FUSE mount of the blob in the index file. It makes the (single) file in
+func newMountIndexCommand(ctx context.Context) *cobra.Command {
+	var opt mountIndexOptions
+
+	cmd := &cobra.Command{
+		Use:   "mount-index <index> <mountpoint>",
+		Short: "FUSE mount an index file",
+		Long: `FUSE mount of the blob in the index file. It makes the (single) file in
 the index available for read access. Use 'extract' if the goal is to
 assemble the whole blob locally as that is more efficient. Use '-' to read
-the index from STDIN.
-`
+the index from STDIN.`,
+		Example: `  desync mount-index -s http://192.168.1.1/ file.caibx /mnt/blob`,
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMountIndex(ctx, opt, args)
+		},
+		SilenceUsage: true,
+	}
+	flags := cmd.Flags()
+	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
+	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	return cmd
+}
 
-func mountIdx(ctx context.Context, args []string) error {
-	var (
-		cacheLocation  string
-		n              int
-		err            error
-		storeLocations = new(multiArg)
-		clientCert     string
-		clientKey      string
-	)
-	flags := flag.NewFlagSet("mount-index", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, mountIdxUsage)
-		flags.PrintDefaults()
+func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
 
-	flags.Var(storeLocations, "s", "casync store location, can be multiples")
-	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.Parse(args)
-
-	if flags.NArg() < 2 {
-		return errors.New("Not enough arguments. See -h for help.")
-	}
-	if flags.NArg() > 2 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
-	}
-
-	indexFile := flags.Arg(0)
-	mountPoint := flags.Arg(1)
+	indexFile := args[0]
+	mountPoint := args[1]
 	mountFName := strings.TrimSuffix(filepath.Base(indexFile), filepath.Ext(indexFile))
 
 	// Checkout the store
-	if len(storeLocations.list) == 0 {
-		return errors.New("No casync store provided. See -h for help.")
+	if len(opt.stores) == 0 {
+		return errors.New("no store provided")
 	}
 
-	// Parse the store locations, open the stores and add a cache is requested
-	opts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
-	}
-	s, err := MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
+	// Parse the store locations, open the stores and add a cache if requested
+	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
-	// Read the input
-	idx, err := readCaibxFile(indexFile, opts)
+	// Read the index
+	idx, err := readCaibxFile(indexFile, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 
-	// Chop up the file into chunks and store them in the target store
-	return desync.MountIndex(ctx, idx, mountPoint, mountFName, s, n)
+	// Mount it
+	return desync.MountIndex(ctx, idx, mountPoint, mountFName, s, opt.n)
 }

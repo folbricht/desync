@@ -3,19 +3,32 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/folbricht/desync"
 	"github.com/folbricht/tempfile"
+	"github.com/spf13/cobra"
 )
 
-const extractUsage = `desync extract [options] <index> <output>
+type extractOptions struct {
+	cmdStoreOptions
+	stores     []string
+	cache      string
+	seeds      []string
+	seedDirs   []string
+	inPlace    bool
+	printStats bool
+}
 
-Reads an index and builds a blob reading chunks from one or more chunk stores.
+func newExtractCommand(ctx context.Context) *cobra.Command {
+	var opt extractOptions
+
+	cmd := &cobra.Command{
+		Use:   "extract <index> <output>",
+		Short: "Read an index and build a blob from it",
+		Long: `Reads an index and builds a blob reading chunks from one or more chunk stores.
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
@@ -23,103 +36,83 @@ Muptiple optional seed indexes can be given with -seed. The matching blob needs
 to have the same name as the indexfile without the .caibx extension. If several
 seed files and indexes are available, the -seed-dir option can be used to
 automatically select call .caibx files in a directory as seeds. Use '-' to read
-the index from STDIN.`
+the index from STDIN.`,
+		Example: `  desync extract -s http://192.168.1.1/ -c /path/to/local file.caibx largefile.bin
+  desync extract -s /mnt/store -s /tmp/other/store file.tar.caibx file.tar
+  desync extract -s /mnt/store --seed /mnt/v1.caibx v2.caibx v2.vmdk`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runExtract(ctx, opt, args)
+		},
+		SilenceUsage: true,
+	}
+	flags := cmd.Flags()
+	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
+	flags.StringSliceVar(&opt.seeds, "seed", nil, "seed indexes")
+	flags.StringSliceVar(&opt.seedDirs, "seed-dir", nil, "directory with seed index files")
+	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
+	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")
+	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print statistics")
+	return cmd
+}
 
-func extract(ctx context.Context, args []string) error {
-	var (
-		cacheLocation    string
-		n                int
-		err              error
-		storeLocations   = new(multiArg)
-		seedLocations    = new(multiArg)
-		seedDirLocations = new(multiArg)
-		clientCert       string
-		clientKey        string
-		inPlace          bool
-		printStats       bool
-	)
-	flags := flag.NewFlagSet("extract", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, extractUsage)
-		flags.PrintDefaults()
+func runExtract(ctx context.Context, opt extractOptions, args []string) error {
+	if (opt.clientKey == "") != (opt.clientCert == "") {
+		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
 
-	flags.Var(storeLocations, "s", "casync store location, can be multiples")
-	flags.Var(seedLocations, "seed", "seed indexes, can be multiples")
-	flags.Var(seedDirLocations, "seed-dir", "directory with seed index files, can be multiples")
-	flags.StringVar(&cacheLocation, "c", "", "use local store as cache")
-	flags.IntVar(&n, "n", 10, "number of goroutines")
-	flags.BoolVar(&desync.TrustInsecure, "t", false, "trust invalid certificates")
-	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
-	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
-	flags.BoolVar(&inPlace, "k", false, "extract the file in place and keep it in case of error")
-	flags.BoolVar(&printStats, "stats", false, "Print statistics in JSON format")
-	flags.Parse(args)
-
-	if flags.NArg() < 2 {
-		return errors.New("Not enough arguments. See -h for help.")
-	}
-	if flags.NArg() > 2 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-
-	if clientKey != "" && clientCert == "" || clientCert != "" && clientKey == "" {
-		return errors.New("-clientKey and -clientCert options need to be provided together.")
-	}
-
-	inFile := flags.Arg(0)
-	outFile := flags.Arg(1)
+	inFile := args[0]
+	outFile := args[1]
 	if inFile == outFile {
-		return errors.New("Input and output filenames match.")
+		return errors.New("input and output filenames match")
 	}
 
 	// Checkout the store
-	if len(storeLocations.list) == 0 {
-		return errors.New("No casync store provided. See -h for help.")
+	if len(opt.stores) == 0 {
+		return errors.New("no store provided")
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
 	var s desync.Store
-	opts := cmdStoreOptions{
-		n:          n,
-		clientCert: clientCert,
-		clientKey:  clientKey,
-	}
-	s, err = MultiStoreWithCache(opts, cacheLocation, storeLocations.list...)
+	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
 	// Read the input
-	idx, err := readCaibxFile(inFile, opts)
+	idx, err := readCaibxFile(inFile, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 
 	// Build a list of seeds if any were given in the command line
-	seeds, err := readSeeds(outFile, seedLocations.list, opts)
+	seeds, err := readSeeds(outFile, opt.seeds, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 
 	// Expand the list of seeds with all found in provided directories
-	dSeeds, err := readSeedDirs(outFile, inFile, seedDirLocations.list, opts)
+	dSeeds, err := readSeedDirs(outFile, inFile, opt.seedDirs, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 	seeds = append(seeds, dSeeds...)
 
 	var stats *desync.ExtractStats
-	if inPlace {
-		stats, err = writeInplace(ctx, outFile, idx, s, seeds, n)
+	if opt.inPlace {
+		stats, err = writeInplace(ctx, outFile, idx, s, seeds, opt.n)
 	} else {
-		stats, err = writeWithTmpFile(ctx, outFile, idx, s, seeds, n)
+		stats, err = writeWithTmpFile(ctx, outFile, idx, s, seeds, opt.n)
 	}
 	if err != nil {
 		return err
 	}
-	if printStats {
+	if opt.printStats {
 		return printJSON(stats)
 	}
 	return nil

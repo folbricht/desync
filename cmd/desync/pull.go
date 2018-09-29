@@ -2,42 +2,45 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
-	"fmt"
 	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/spf13/cobra"
 )
 
-const pullUsage = `desync pull - - - <store>
+type pullOptions struct{}
 
-Serves up chunks (read-only) from a local store using the casync protocol
+func newPullCommand(ctx context.Context) *cobra.Command {
+	var opt pullOptions
+
+	cmd := &cobra.Command{
+		Use:   "pull - - - <store>",
+		Short: "Serve chunks via casync protocol over SSH",
+		Long: `Serves up chunks (read-only) from a local store using the casync protocol
 via Stdin/Stdout. Functions as a drop-in replacement for casync on remote
-stores accessed with SSH. See CASYNC_REMOTE_PATH environment variable.`
-
-func pull(ctx context.Context, args []string) error {
-	flags := flag.NewFlagSet("pull", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, pullUsage)
-		flags.PrintDefaults()
+stores accessed with SSH. See CASYNC_REMOTE_PATH environment variable.`,
+		Example: `  desync pull - - - /path/to/store`,
+		Args:    cobra.ExactArgs(4),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPull(ctx, opt, args)
+		},
+		SilenceUsage:          true,
+		DisableFlagsInUseLine: true,
 	}
-	flags.Parse(args)
+	return cmd
+}
 
-	if flags.NArg() != 4 {
-		return errors.New("Needs 4 arguments. See -h for help.")
-	}
-
-	storeLocation := flags.Arg(3)
+func runPull(ctx context.Context, opt pullOptions, args []string) error {
+	storeLocation := args[3]
 
 	// SSH only supports serving compressed chunks currently. And we really
 	// don't want to have to decompress every chunk to verify its checksum.
 	// Clients will do that anyway, so disable verification here.
-	opt := cfg.GetStoreOptionsFor(storeLocation)
-	opt.SkipVerify = true
+	sOpt := cfg.GetStoreOptionsFor(storeLocation)
+	sOpt.SkipVerify = true
 
 	// Open the local store to serve chunks from
-	s, err := desync.NewLocalStore(storeLocation, opt)
+	s, err := desync.NewLocalStore(storeLocation, sOpt)
 	if err != nil {
 		return err
 	}

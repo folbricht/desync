@@ -3,46 +3,46 @@ package main
 import (
 	"context"
 	"crypto/sha512"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/folbricht/desync"
-	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
 )
 
-const chunkUsage = `desync chunk [options] <file>
+type chunkOptions struct {
+	chunkSize string
+	startPos  uint64
+}
 
-Write start/length/hash pairs for each chunk a file is split into.`
+func newChunkCommand(ctx context.Context) *cobra.Command {
+	var opt chunkOptions
 
-func chunkCmd(ctx context.Context, args []string) error {
-	var (
-		chunkSize string
-		startPos  uint64
-	)
-	flags := flag.NewFlagSet("chunk", flag.ExitOnError)
-	flags.Usage = func() {
-		fmt.Fprintln(os.Stderr, chunkUsage)
-		flags.PrintDefaults()
+	cmd := &cobra.Command{
+		Use:     "chunk <file>",
+		Short:   "Chunk input file and print chunk points plus chunk ID",
+		Long:    `Write start/length/hash pairs for each chunk a file would be split into.`,
+		Example: `  desync chunk file.bin`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runChunk(ctx, opt, args)
+		},
+		SilenceUsage: true,
 	}
-	flags.StringVar(&chunkSize, "m", "16:64:256", "Min/Avg/Max chunk size in kb")
-	flags.Uint64Var(&startPos, "S", 0, "Starting position")
-	flags.Parse(args)
+	flags := cmd.Flags()
+	flags.Uint64VarP(&opt.startPos, "start", "S", 0, "starting position")
+	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
+	return cmd
+}
 
-	if flags.NArg() < 1 {
-		return errors.New("Not enough arguments. See -h for help.")
-	}
-	if flags.NArg() > 1 {
-		return errors.New("Too many arguments. See -h for help.")
-	}
-
-	min, avg, max, err := parseChunkSizeParam(chunkSize)
+func runChunk(ctx context.Context, opt chunkOptions, args []string) error {
+	min, avg, max, err := parseChunkSizeParam(opt.chunkSize)
 	if err != nil {
 		return err
 	}
 
-	dataFile := flags.Arg(0)
+	dataFile := args[0]
 
 	// Open the blob
 	f, err := os.Open(dataFile)
@@ -50,12 +50,12 @@ func chunkCmd(ctx context.Context, args []string) error {
 		return err
 	}
 	defer f.Close()
-	s, err := f.Seek(int64(startPos), io.SeekStart)
+	s, err := f.Seek(int64(opt.startPos), io.SeekStart)
 	if err != nil {
 		return err
 	}
-	if uint64(s) != startPos {
-		return fmt.Errorf("requested seek to position %d, but got %d", startPos, s)
+	if uint64(s) != opt.startPos {
+		return fmt.Errorf("requested seek to position %d, but got %d", opt.startPos, s)
 	}
 
 	// Prepare the chunker
@@ -78,6 +78,6 @@ func chunkCmd(ctx context.Context, args []string) error {
 			return nil
 		}
 		sum := sha512.Sum512_256(b)
-		fmt.Printf("%d\t%d\t%x\n", start+startPos, len(b), sum)
+		fmt.Printf("%d\t%d\t%x\n", start+opt.startPos, len(b), sum)
 	}
 }

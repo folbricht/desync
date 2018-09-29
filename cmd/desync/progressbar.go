@@ -16,22 +16,26 @@ func NewProgressBar(prefix string) desync.ProgressBar {
 	}
 	bar := pb.New(0).Prefix(prefix)
 	bar.ShowCounters = false
-	bar.Output = os.Stderr
+	bar.Output = stderr
 	return ProgressBar{bar}
 }
 
+// ProgressBar wraps https://github.com/cheggaaa/pb and implrments desync.ProgressBar
 type ProgressBar struct {
 	*pb.ProgressBar
 }
 
+// SetTotal sets the upper bounds for the progress bar
 func (p ProgressBar) SetTotal(total int) {
 	p.ProgressBar.SetTotal(total)
 }
 
+// Start displaying the progress bar
 func (p ProgressBar) Start() {
 	p.ProgressBar.Start()
 }
 
+// Set the current value
 func (p ProgressBar) Set(current int) {
 	p.ProgressBar.Set(current)
 }

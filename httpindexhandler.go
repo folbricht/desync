@@ -36,7 +36,7 @@ func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h HTTPIndexHandler) get(indexName string, w http.ResponseWriter) {
-	ir, err := h.s.GetIndexReader(indexName)
+	idx, err := h.s.GetIndex(indexName)
 	if err != nil {
 		if os.IsNotExist(err) {
 			w.WriteHeader(http.StatusNotFound)
@@ -47,10 +47,9 @@ func (h HTTPIndexHandler) get(indexName string, w http.ResponseWriter) {
 		return
 	}
 	b := new(bytes.Buffer)
-	_, err = b.ReadFrom(ir)
+	_, err = idx.WriteTo(b)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	h.HTTPHandlerBase.get(indexName, b.Bytes(), err, w)
@@ -82,8 +81,7 @@ func (h HTTPIndexHandler) put(indexName string, w http.ResponseWriter, r *http.R
 	// Read the chunk into memory
 	idx, err := IndexFromReader(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, err)
+		http.Error(w, "invalid index: "+err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
 
