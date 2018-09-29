@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"syscall"
 )
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
@@ -198,17 +197,4 @@ loop:
 
 	wg.Wait()
 	return stats, pErr
-}
-
-func blocksizeOfFile(name string) uint64 {
-	stat, err := os.Stat(name)
-	if err != nil {
-		return DefaultBlockSize
-	}
-	switch sys := stat.Sys().(type) {
-	case *syscall.Stat_t:
-		return uint64(sys.Blksize)
-	default:
-		return DefaultBlockSize
-	}
 }
