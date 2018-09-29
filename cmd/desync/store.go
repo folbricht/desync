@@ -149,7 +149,7 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 			return nil, err
 		}
 	default:
-		s, err = desync.NewLocalStore(location)
+		s, err = desync.NewLocalStore(location, opt)
 		if err != nil {
 			return nil, err
 		}

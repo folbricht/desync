@@ -88,7 +88,6 @@ func (s LocalStore) StoreChunk(chunk *Chunk) error {
 		return err
 	}
 	tmp.Close() // Windows can't rename open files, close explicitly
-	p := filepath.Join(d, sID) + chunkFileExt
 	return os.Rename(tmp.Name(), p)
 }
 
