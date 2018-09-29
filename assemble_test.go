@@ -53,7 +53,7 @@ func TestExtract(t *testing.T) {
 	}
 	defer os.RemoveAll(store)
 
-	s, err := NewLocalStore(store)
+	s, err := NewLocalStore(store, StoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestExtract(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(blankstore)
-	bs, err := NewLocalStore(blankstore)
+	bs, err := NewLocalStore(blankstore, StoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestSeed(t *testing.T) {
 	}
 	defer os.RemoveAll(store)
 
-	s, err := NewLocalStore(store)
+	s, err := NewLocalStore(store, StoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

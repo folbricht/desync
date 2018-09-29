@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-
-	"github.com/pkg/errors"
 )
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
@@ -151,34 +149,23 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				// Record this chunk having been pulled from the store
 				stats.incChunksFromStore()
 				// Pull the (compressed) chunk from the store
-				b, err := s.GetChunk(c.ID)
+				chunk, err := s.GetChunk(c.ID)
 				if err != nil {
 					recordError(err)
 					continue
 				}
-				// Since we know how big the chunk is supposed to be, pre-allocate a
-				// slice to decompress into
-				var db []byte
-				db = make([]byte, c.Size)
-				// The the chunk is compressed. Decompress it here
-				db, err = Decompress(db, b)
+				b, err := chunk.Uncompressed()
 				if err != nil {
-					recordError(errors.Wrap(err, c.ID.String()))
-					continue
-				}
-				// Verify the checksum of the chunk matches the ID
-				sum := sha512.Sum512_256(db)
-				if sum != c.ID {
-					recordError(fmt.Errorf("unexpected sha512/256 %s for chunk id %s", sum, c.ID))
+					recordError(err)
 					continue
 				}
 				// Might as well verify the chunk size while we're at it
-				if c.Size != uint64(len(db)) {
+				if c.Size != uint64(len(b)) {
 					recordError(fmt.Errorf("unexpected size for chunk %s", c.ID))
 					continue
 				}
 				// Write the decompressed chunk into the file at the right position
-				if _, err = f.WriteAt(db, int64(c.Start)); err != nil {
+				if _, err = f.WriteAt(b, int64(c.Start)); err != nil {
 					recordError(err)
 					continue
 				}

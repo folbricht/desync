@@ -25,6 +25,7 @@ type SFTPStoreBase struct {
 	path     string
 	client   *sftp.Client
 	cancel   context.CancelFunc
+	opt      StoreOptions
 }
 
 // SFTPStore is a chunk store that uses SFTP over SSH.
@@ -33,7 +34,7 @@ type SFTPStore struct {
 }
 
 // Creates a base sftp client
-func newSFTPStoreBase(location *url.URL) (*SFTPStoreBase, error) {
+func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, error) {
 	sshCmd := os.Getenv("CASYNC_SSH_PATH")
 	if sshCmd == "" {
 		sshCmd = "ssh"
@@ -69,7 +70,7 @@ func newSFTPStoreBase(location *url.URL) (*SFTPStoreBase, error) {
 		cancel()
 		return nil, err
 	}
-	return &SFTPStoreBase{location, path, client, cancel}, nil
+	return &SFTPStoreBase{location, path, client, cancel, opt}, nil
 }
 
 // StoreObject adds a new object to a writable index or chunk store.
@@ -117,8 +118,8 @@ func (s *SFTPStoreBase) String() string {
 }
 
 // NewSFTPStore initializes a chunk store using SFTP over SSH.
-func NewSFTPStore(location *url.URL) (*SFTPStore, error) {
-	b, err := newSFTPStoreBase(location)
+func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
+	b, err := newSFTPStoreBase(location, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +127,7 @@ func NewSFTPStore(location *url.URL) (*SFTPStore, error) {
 }
 
 // GetChunk returns a chunk from an SFTP store, returns ChunkMissing if the file does not exist
-func (s *SFTPStore) GetChunk(id ChunkID) ([]byte, error) {
+func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 	name := s.nameFromID(id)
 	f, err := s.client.Open(name)
 	if err != nil {
@@ -136,7 +137,14 @@ func (s *SFTPStore) GetChunk(id ChunkID) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return ioutil.ReadAll(f)
+	b, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to read from %s", name)
+	}
+	if s.opt.Uncompressed {
+		return NewChunkWithID(id, b, nil, s.opt.SkipVerify)
+	}
+	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -150,8 +158,21 @@ func (s *SFTPStore) RemoveChunk(id ChunkID) error {
 }
 
 // StoreChunk adds a new chunk to the store
-func (s *SFTPStore) StoreChunk(id ChunkID, b []byte) error {
-	return s.StoreObject(s.nameFromID(id), bytes.NewReader(b))
+func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
+	name := s.nameFromID(chunk.ID())
+	var (
+		b   []byte
+		err error
+	)
+	if s.opt.Uncompressed {
+		b, err = chunk.Uncompressed()
+	} else {
+		b, err = chunk.Compressed()
+	}
+	if err != nil {
+		return err
+	}
+	return s.StoreObject(name, bytes.NewReader(b))
 }
 
 // HasChunk returns true if the chunk is in the store
@@ -181,12 +202,25 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			continue
 		}
 		path := walker.Path()
-		if !strings.HasSuffix(path, chunkFileExt) { // Skip files without chunk extension
+		if !strings.HasSuffix(path, CompressedChunkExt) { // Skip files without chunk extension
 			continue
+		}
+		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
+		var sID string
+		if s.opt.Uncompressed {
+			if !strings.HasSuffix(path, UncompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), UncompressedChunkExt)
+		} else {
+			if !strings.HasSuffix(path, CompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), CompressedChunkExt)
 		}
 		// Convert the name into a checksum, if that fails we're probably not looking
 		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(strings.TrimSuffix(filepath.Base(path), ".cacnk"))
+		id, err := ChunkIDFromString(sID)
 		if err != nil {
 			continue
 		}
@@ -203,5 +237,11 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 func (s *SFTPStore) nameFromID(id ChunkID) string {
 	sID := id.String()
-	return s.path + sID[0:4] + "/" + sID + chunkFileExt
+	name := s.path + sID[0:4] + "/" + sID
+	if s.opt.Uncompressed {
+		name += UncompressedChunkExt
+	} else {
+		name += CompressedChunkExt
+	}
+	return name
 }

@@ -73,7 +73,7 @@ func tar(ctx context.Context, args []string) error {
 		return desync.Tar(ctx, w, sourceDir)
 	}
 
-	sOpts := storeOptions{
+	sOpts := cmdStoreOptions{
 		n:          n,
 		clientCert: clientCert,
 		clientKey:  clientKey,

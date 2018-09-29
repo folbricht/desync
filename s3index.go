@@ -21,8 +21,8 @@ type S3IndexStore struct {
 // should be provided like this: s3+http://host:port/bucket
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3S3_SECRET_KEY, or via the desync config file.
-func NewS3IndexStore(location *url.URL, s3Creds *credentials.Credentials, region string) (s S3IndexStore, e error) {
-	b, err := NewS3StoreBase(location, s3Creds, region)
+func NewS3IndexStore(location *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions) (s S3IndexStore, e error) {
+	b, err := NewS3StoreBase(location, s3Creds, region, opt)
 	if err != nil {
 		return s, err
 	}

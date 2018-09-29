@@ -5,7 +5,6 @@ package desync
 import (
 	"bytes"
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -201,37 +200,26 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 		wg.Add(1)
 		go func() {
 			for r := range req {
-				// Pull the (compressed) chunk from the store
-				b, err := s.GetChunk(r.chunk.ID)
+				// Pull the chunk from the store
+				chunk, err := s.GetChunk(r.chunk.ID)
 				if err != nil {
 					recordError(err)
 					close(r.data)
 					continue
 				}
-				// Since we know how big the chunk is supposed to be, pre-allocate a
-				// slice to decompress into
-				db := make([]byte, r.chunk.Size)
-				// The the chunk is compressed. Decompress it here
-				db, err = Decompress(db, b)
+				b, err := chunk.Uncompressed()
 				if err != nil {
-					recordError(errors.Wrap(err, r.chunk.ID.String()))
-					close(r.data)
-					continue
-				}
-				// Verify the checksum of the chunk matches the ID
-				sum := sha512.Sum512_256(db)
-				if sum != r.chunk.ID {
-					recordError(fmt.Errorf("unexpected sha512/256 %s for chunk id %s", sum, r.chunk.ID))
+					recordError(err)
 					close(r.data)
 					continue
 				}
 				// Might as well verify the chunk size while we're at it
-				if r.chunk.Size != uint64(len(db)) {
+				if r.chunk.Size != uint64(len(b)) {
 					recordError(fmt.Errorf("unexpected size for chunk %s", r.chunk.ID))
 					close(r.data)
 					continue
 				}
-				r.data <- db
+				r.data <- b
 				close(r.data)
 			}
 			wg.Done()

@@ -27,7 +27,11 @@ Starts an HTTP chunk server that can be used as remote store. It supports
 reading from multiple local or remote stores as well as a local cache. If
 -cert and -key are provided, the server will serve over HTTPS. The -w option
 enables writing to this store, but this is only allowed when just one upstream
-chunk store is provided.`
+chunk store is provided. The option -skip-verify-write disables validation of
+chunks written to this server which bypasses checksum validation as well as
+the necessary decompression step to calculate it. If -u is used, only
+uncompressed chunks are being served (and accepted). If the upstream store
+serves compressed chunks, everything will have to be decompressed server-side.`
 
 	indexServerUsage = `desync index-server [options]
 
@@ -47,6 +51,8 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 		clientCert      string
 		clientKey       string
 		writable        bool
+		skipVerifyWrite bool
+		uncompressed    bool
 	)
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	flags.Usage = func() {
@@ -77,6 +83,8 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 	flags.StringVar(&clientCert, "clientCert", "", "Path to Client Certificate for TLS authentication")
 	flags.StringVar(&clientKey, "clientKey", "", "Path to Client Key for TLS authentication")
 	flags.BoolVar(&writable, "w", false, "support writing")
+	flags.BoolVar(&skipVerifyWrite, "skip-verify-write", false, "Don't verify chunk data written to this server (faster)")
+	flags.BoolVar(&uncompressed, "u", false, "Serve uncompressed chunks")
 	flags.Parse(args)
 
 	if flags.NArg() > 0 {
@@ -105,17 +113,18 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 		return errors.New("Only one upstream store supported for writing")
 	}
 
-	// Parse the store locations, open the stores and add a cache is requested
-	var (
-		opts = storeOptions{
-			n:          n,
-			clientCert: clientCert,
-			clientKey:  clientKey,
-		}
-	)
+	// Parse the store locations, open the stores and add a cache if requested. Since we're
+	// just proxying chunks, disable verification so we don't need to decompress everything
+	// to verify the checksum. Clients will be checking the data anyway.
+	var opts = cmdStoreOptions{
+		n:          n,
+		clientCert: clientCert,
+		clientKey:  clientKey,
+		skipVerify: true,
+	}
 
 	if serverType == ChunkServer {
-		s, err := handleChunkStore(writable, storeLocations, opts, cacheLocation)
+		s, err := handleChunkStore(writable, skipVerifyWrite, uncompressed, storeLocations, opts, cacheLocation)
 		if err != nil {
 			return err
 		}
@@ -153,7 +162,7 @@ func server(ctx context.Context, serverType ServerType, args []string) error {
 	return nil
 }
 
-func handleChunkStore(writable bool, storeLocations *multiArg, opts storeOptions, cacheLocation string) (desync.Store, error) {
+func handleChunkStore(writable, skipVerifyWrite, uncompressed bool, storeLocations *multiArg, opts cmdStoreOptions, cacheLocation string) (desync.Store, error) {
 	var (
 		s   desync.Store
 		err error
@@ -167,11 +176,11 @@ func handleChunkStore(writable bool, storeLocations *multiArg, opts storeOptions
 		return nil, err
 	}
 
-	http.Handle("/", desync.NewHTTPHandler(s, writable))
+	http.Handle("/", desync.NewHTTPHandler(s, writable, skipVerifyWrite, uncompressed))
 	return s, err
 }
 
-func handleIndexStore(writable bool, storeLocations *multiArg, opts storeOptions, cacheLocation string) (desync.IndexStore, error) {
+func handleIndexStore(writable bool, storeLocations *multiArg, opts cmdStoreOptions, cacheLocation string) (desync.IndexStore, error) {
 	var (
 		s   desync.IndexStore
 		err error

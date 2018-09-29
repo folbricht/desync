@@ -57,7 +57,7 @@ func makeCmd(ctx context.Context, args []string) error {
 	indexFile := flags.Arg(0)
 	dataFile := flags.Arg(1)
 
-	sOpts := storeOptions{
+	sOpts := cmdStoreOptions{
 		n:          n,
 		clientCert: clientCert,
 		clientKey:  clientKey,

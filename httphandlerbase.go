@@ -19,8 +19,7 @@ func (h HTTPHandlerBase) get(id string, b []byte, err error, w http.ResponseWrit
 	case nil:
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
-	case ChunkMissing:
-	case NoSuchObject:
+	case ChunkMissing, NoSuchObject:
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "%s %s not found", h.handlerType, id)
 	default:

@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 )
 
 // Store is a generic interface implemented by read-only stores, like SSH or
 // HTTP remote stores currently.
 type Store interface {
-	GetChunk(id ChunkID) ([]byte, error)
+	GetChunk(id ChunkID) (*Chunk, error)
 	HasChunk(id ChunkID) bool
 	io.Closer
 	fmt.Stringer
@@ -19,7 +20,7 @@ type Store interface {
 // such as a local store or an S3 store.
 type WriteStore interface {
 	Store
-	StoreChunk(id ChunkID, b []byte) error
+	StoreChunk(c *Chunk) error
 }
 
 // PruneStore is a store that supports pruning of chunks
@@ -40,4 +41,35 @@ type IndexStore interface {
 type IndexWriteStore interface {
 	IndexStore
 	StoreIndex(name string, idx Index) error
+}
+
+// StoreOptions provide additional common settings used in chunk stores, such as compression
+// error retry or timeouts. Not all options available are applicable to all types of stores.
+type StoreOptions struct {
+	// Concurrency used in the store. Depending on store type, it's used for
+	// the number of goroutines, processes, or connection pool size.
+	N int `json:"n,omitempty"`
+
+	// Cert file name for HTTP SSL connections that require mutual SSL.
+	ClientCert string `json:"client-cert,omitempty"`
+	// Key file name for HTTP SSL connections that require mutual SSL.
+	ClientKey string `json:"client-key,omitempty"`
+
+	// Timeout for waiting for objects to be retrieved. Default: 1 minute
+	Timeout time.Duration `json:"timeout,omitempty"`
+
+	// Number of times object retrieval should be attempted on error. Useful when dealing
+	// with unreliable connections. Default: 0
+	ErrorRetry int `json:"error-retry,omitempty"`
+
+	// If SkipVerify is true, this store will not verfiy the data it reads and serves up. This is
+	// helpful when a store is merely a proxy and the data will pass through additional stores
+	// before being used. Verifying the checksum of a chunk requires it be uncompressed, so if
+	// a compressed chunkstore is being proxied, all chunks would have to be decompressed first.
+	// This setting avoids the extra overhead. While this could be used in other cases, it's not
+	// recommended as a damaged chunk might be processed further leading to unpredictable results.
+	SkipVerify bool `json:"skip-verify,omitempty"`
+
+	// Store and read chunks uncompressed, without chunk file extension
+	Uncompressed bool `json:"uncompressed"`
 }

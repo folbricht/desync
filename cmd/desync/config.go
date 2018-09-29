@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/pkg/credentials"
 	"github.com/pkg/errors"
 )
@@ -27,9 +28,10 @@ type S3Creds struct {
 }
 
 type Config struct {
-	HTTPTimeout    time.Duration      `json:"http-timeout"`
-	HTTPErrorRetry int                `json:"http-error-retry"`
-	S3Credentials  map[string]S3Creds `json:"s3-credentials"`
+	HTTPTimeout    time.Duration                  `json:"http-timeout,omitempty"`
+	HTTPErrorRetry int                            `json:"http-error-retry,omitempty"`
+	S3Credentials  map[string]S3Creds             `json:"s3-credentials"`
+	StoreOptions   map[string]desync.StoreOptions `json:"store-options"`
 }
 
 // GetS3CredentialsFor attempts to find creds and region for an S3 location in the
@@ -63,11 +65,15 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 	return creds, region
 }
 
-// Global config in the main packe defining the defaults. Those can be
-// overridden by loading a config file.
-var cfg = Config{
-	HTTPTimeout: time.Minute,
+// GetStoreOptionsFor returns optional config options for a specific store. Note that
+// the location string in the config file needs to match exactly (watch for trailing /).
+func (c Config) GetStoreOptionsFor(location string) desync.StoreOptions {
+	return c.StoreOptions[location]
 }
+
+// Global config in the main packe defining the defaults. Those can be
+// overridden by loading a config file or in the command line.
+var cfg Config
 
 const configUsage = `desync config
 

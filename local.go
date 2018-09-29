@@ -2,8 +2,8 @@ package desync
 
 import (
 	"context"
-	"crypto/sha512"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -11,10 +11,7 @@ import (
 	"sync"
 
 	"github.com/folbricht/tempfile"
-	"github.com/pkg/errors"
 )
-
-const chunkFileExt = ".cacnk"
 
 // LocalStore casync store
 type LocalStore struct {
@@ -23,11 +20,13 @@ type LocalStore struct {
 	// When accessing chunks, should mtime be updated? Useful when this is
 	// a cache. Old chunks can be identified and removed from the store that way
 	UpdateTimes bool
+
+	opt StoreOptions
 }
 
 // NewLocalStore creates an instance of a local castore, it only checks presence
 // of the store
-func NewLocalStore(dir string) (LocalStore, error) {
+func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return LocalStore{}, err
@@ -35,26 +34,26 @@ func NewLocalStore(dir string) (LocalStore, error) {
 	if !info.IsDir() {
 		return LocalStore{}, fmt.Errorf("%s is not a directory", dir)
 	}
-	return LocalStore{Base: dir}, nil
+	return LocalStore{Base: dir, opt: opt}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
-func (s LocalStore) GetChunk(id ChunkID) ([]byte, error) {
-	sID := id.String()
-	p := filepath.Join(s.Base, sID[0:4], sID) + chunkFileExt
-
+func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
+	_, p := s.nameFromID(id)
 	b, err := ioutil.ReadFile(p)
 	if os.IsNotExist(err) {
-		err = ChunkMissing{id}
+		return nil, ChunkMissing{id}
 	}
-	return b, err
+	if s.opt.Uncompressed {
+		return NewChunkWithID(id, b, nil, s.opt.SkipVerify)
+	}
+	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
 // Used when verifying and repairing caches.
 func (s LocalStore) RemoveChunk(id ChunkID) error {
-	sID := id.String()
-	p := filepath.Join(s.Base, sID[0:4], sID) + chunkFileExt
+	_, p := s.nameFromID(id)
 	if _, err := os.Stat(p); err != nil {
 		return ChunkMissing{id}
 	}
@@ -62,9 +61,20 @@ func (s LocalStore) RemoveChunk(id ChunkID) error {
 }
 
 // StoreChunk adds a new chunk to the store
-func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
-	sID := id.String()
-	d := filepath.Join(s.Base, sID[0:4])
+func (s LocalStore) StoreChunk(chunk *Chunk) error {
+	d, p := s.nameFromID(chunk.ID())
+	var (
+		b   []byte
+		err error
+	)
+	if s.opt.Uncompressed {
+		b, err = chunk.Uncompressed()
+	} else {
+		b, err = chunk.Compressed()
+	}
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(d, 0755); err != nil {
 		return err
 	}
@@ -83,8 +93,9 @@ func (s LocalStore) StoreChunk(id ChunkID, b []byte) error {
 }
 
 // Verify all chunks in the store. If repair is set true, bad chunks are deleted.
-// n determines the number of concurrent operations.
-func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
+// n determines the number of concurrent operations. w is used to write any messages
+// intended for the user, typically os.Stderr.
+func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer) error {
 	var wg sync.WaitGroup
 	ids := make(chan ChunkID)
 
@@ -93,7 +104,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
 		wg.Add(1)
 		go func() {
 			for id := range ids {
-				err := s.verifyChunk(id)
+				_, err := s.GetChunk(id)
 				switch err.(type) {
 				case ChunkInvalid: // bad chunk, report and delete (if repair=true)
 					msg := err.Error()
@@ -104,10 +115,10 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
 							msg = msg + ": removed"
 						}
 					}
-					fmt.Fprintln(os.Stderr, msg)
-				case nil: // all good, move to the next
+					fmt.Fprintln(w, msg)
+				case nil:
 				default: // unexpected, print the error and carry on
-					fmt.Fprintln(os.Stderr, err)
+					fmt.Fprintln(w, err)
 				}
 			}
 			wg.Done()
@@ -129,12 +140,22 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool) error {
 		if info.IsDir() { // Skip dirs
 			return nil
 		}
-		if !strings.HasSuffix(path, chunkFileExt) { // Skip files without chunk extension
-			return nil
+		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
+		var sID string
+		if s.opt.Uncompressed {
+			if !strings.HasSuffix(path, UncompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), UncompressedChunkExt)
+		} else {
+			if !strings.HasSuffix(path, CompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), CompressedChunkExt)
 		}
 		// Convert the name into a checksum, if that fails we're probably not looking
 		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(strings.TrimSuffix(filepath.Base(path), ".cacnk"))
+		id, err := ChunkIDFromString(sID)
 		if err != nil {
 			return nil
 		}
@@ -164,12 +185,22 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		if info.IsDir() { // Skip dirs
 			return nil
 		}
-		if !strings.HasSuffix(path, chunkFileExt) { // Skip files without chunk extension
-			return nil
+		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
+		var sID string
+		if s.opt.Uncompressed {
+			if !strings.HasSuffix(path, UncompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), UncompressedChunkExt)
+		} else {
+			if !strings.HasSuffix(path, CompressedChunkExt) {
+				return nil
+			}
+			sID = strings.TrimSuffix(filepath.Base(path), CompressedChunkExt)
 		}
 		// Convert the name into a checksum, if that fails we're probably not looking
 		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(strings.TrimSuffix(filepath.Base(path), ".cacnk"))
+		id, err := ChunkIDFromString(sID)
 		if err != nil {
 			return nil
 		}
@@ -185,34 +216,11 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	return err
 }
 
-// Unpack a chunk, calculate the checksum of its content and return nil if
-// they match.
-func (s LocalStore) verifyChunk(id ChunkID) error {
-	b, err := s.GetChunk(id)
-	if err != nil {
-		return err
-	}
-	// The the chunk is compressed. Decompress it here
-	db, err := Decompress(nil, b)
-	if err != nil {
-		return errors.Wrap(err, id.String())
-	}
-	// Verify the checksum of the chunk matches the ID
-	sum := sha512.Sum512_256(db)
-	if sum != id {
-		return ChunkInvalid{ID: id, Sum: sum}
-	}
-	return nil
-}
-
 // HasChunk returns true if the chunk is in the store
 func (s LocalStore) HasChunk(id ChunkID) bool {
-	sID := id.String()
-	p := filepath.Join(s.Base, sID[0:4], sID) + chunkFileExt
-	if _, err := os.Stat(p); err == nil {
-		return true
-	}
-	return false
+	_, p := s.nameFromID(id)
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 func (s LocalStore) String() string {
@@ -221,3 +229,15 @@ func (s LocalStore) String() string {
 
 // Close the store. NOP opertation, needed to implement Store interface.
 func (s LocalStore) Close() error { return nil }
+
+func (s LocalStore) nameFromID(id ChunkID) (dir, name string) {
+	sID := id.String()
+	dir = filepath.Join(s.Base, sID[0:4])
+	name = filepath.Join(dir, sID)
+	if s.opt.Uncompressed {
+		name += UncompressedChunkExt
+	} else {
+		name += CompressedChunkExt
+	}
+	return
+}

@@ -80,7 +80,7 @@ func extract(ctx context.Context, args []string) error {
 
 	// Parse the store locations, open the stores and add a cache is requested
 	var s desync.Store
-	opts := storeOptions{
+	opts := cmdStoreOptions{
 		n:          n,
 		clientCert: clientCert,
 		clientKey:  clientKey,
@@ -153,7 +153,7 @@ func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.S
 	return desync.AssembleFile(ctx, name, idx, s, seeds, n, pb)
 }
 
-func readSeeds(dstFile string, locations []string, opts storeOptions) ([]desync.Seed, error) {
+func readSeeds(dstFile string, locations []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	for _, srcIndexFile := range locations {
 		srcIndex, err := readCaibxFile(srcIndexFile, opts)
@@ -171,7 +171,7 @@ func readSeeds(dstFile string, locations []string, opts storeOptions) ([]desync.
 	return seeds, nil
 }
 
-func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts storeOptions) ([]desync.Seed, error) {
+func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	absIn, err := filepath.Abs(dstIdxFile)
 	if err != nil {

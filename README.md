@@ -12,7 +12,7 @@ Among the distinguishing factors:
 - Where the upstream command has chosen to optimize for storage efficiency (f/e, being able to use local files as "seeds", building temporary indexes into them), this command chooses to optimize for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at cost to storage efficiency.
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
 - SHA512/256 is currently the only supported hash function.
-- Only chunk store using zstd compression are supported at this point.
+- Only chunk stores using zstd compression as well uncompressed are supported at this point.
 - Supports local stores as well as remote stores (as client) over SSH, SFTP and HTTP
 - Built-in HTTP(S) chunk server that can proxy multiple local or remote stores and also supports caching.
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
@@ -22,6 +22,7 @@ Among the distinguishing factors:
 - Allows FUSE mounting of blob indexes
 - S3 protocol support to access chunk stores for read operations and some some commands that write chunks
 - Stores and retrieves index files from remote index stores such as HTTP, SFTP and S3
+- Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 
 ## Parallel chunking
@@ -136,24 +137,37 @@ This is a store running on the local machine on port 9000 without SSL.
 s3+http://127.0.0.1:9000/store
 ```
 
-#### Previous S3 storage layout
-Before April 2018, chunks in S3 stores were kept in a flat layout, with the name being the checksum of the chunk. Since then, the layout was modified to match that of local stores: `<4-checksum-chars>/<checksum>.cacnk` This change allows the use of other tools to convert or copy stores between local and S3 stores. To convert an existing s3 store from the old format, a command `upgrade-s3` is available in the tool.
+### Compressed vs Uncompressed chunk stores
+By default, desync reads and writes chunks in compressed form to all supported stores. This is in line with upstream casync's goal of storing in the most efficient way. It is however possible to change this behavior by providing desync with a config file (see Configuration section below). Disabling compression and store chunks uncompressed may reduce latency in some use-cases and improve performance. desync supports reading and writing uncompressed chunks to SFTP, S3, HTTP and local stores and caches. If more than one store is used, each of those can be configured independently, for example it's possible to read compressed chunks from S3 while using a local uncompressed cache for best performance. However, care needs to be taken when using the `chunk-server` command and building chains of chunk store proxies to avoid shifting the decompression load onto the server (it's possible this is actually desirable).
+
+In the setup below, a client reads chunks from an HTTP chunk server which itself gets chunks from S3.
+```
+<Client> ---> <HTTP chunk server> ---> <S3 store>
+```
+If the client configures the HTTP chunk server to be uncompressed (`chunk-server` needs to be started with the `-u` option), and the chunk server reads compressed chunks from S3, then the chunk server will have to decompress every chunk that's requested before responding to the client. If the chunk server was reading uncompressed chunks from S3, there would be no overhead.
+
+Compressed and uncompressed chunks can live in the same store and don't interfere with each other. A store that's configured for compressed chunks by configuring it client-side will not see the uncompressed chunks that may be present. `prune` and `verify` too will ignore any chunks written in the other format. Both kinds of chunks can be accessed by multiple clients concurrently and independently.
 
 ### Configuration
 
-For most use cases, it is sufficient to use the tool's default configuration not requiring a config file. Having a config file `$HOME/.config/desync/config.json` allows for further customization of timeouts, error retry behaviour or credentials that can't be set via command-line options or environment variables. To view the current configuration, use `desync config`. If no config file is present, this will show the defaults. To create a config file allowing custom values, use `desync config -w` which will write the current configuration to the file, then edit the file.
+For most use cases, it is sufficient to use the tool's default configuration not requiring a config file. Having a config file `$HOME/.config/desync/config.json` allows for further customization of timeouts, error retry behaviour or credentials that can't be set via command-line options or environment variables. All values have sensible defaults if unconfigured. Only add configuration for values that differ from the defaults. To view the current configuration, use `desync config`. If no config file is present, this will show the defaults. To create a config file allowing custom values, use `desync config -w` which will write the current configuration to the file, then edit the file.
 
 Available configuration values:
-- `http-timeout` - HTTP request timeout used in HTTP stores (not S3) in nanoseconds
-- `http-error-retry` - Number of times to retry failed chunk requests from HTTP stores
+- `http-timeout` *DEPRECATED, see `store-options.<Location>.timeout`* - HTTP request timeout used in HTTP stores (not S3) in nanoseconds
+- `http-error-retry` *DEPRECATED, see `store-options.<Location>.error-retry` - Number of times to retry failed chunk requests from HTTP stores
 - `s3-credentials` - Defines credentials for use with S3 stores. Especially useful if more than one S3 store is used. The key in the config needs to be the URL scheme and host used for the store, excluding the path, but including the port number if used in the store URL. It is also possible to use a [standard aws credentials file](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) in order to store s3 credentials.
+- `store-options` - Allows customization of chunk and index stores, for example comression settings, timeouts, retry behavior and keys. Not all options are applicable to every store, some of these like `timeout` are ignored for local stores. Some of these options, such as the client certificates are overwritten with any values set in the command line. Note that the store location used in the command line needs to match the key under `store-options` exactly for these options to be used. Watch out for trailing `/` in URLs.
+  - `timeout` - Time limit for chunk read or write operation in nanoseconds. Default: 1 minute.
+  - `error-retry` - Number of times to retry failed chunk requests. Default: 0.
+  - `client-cert` - Cerificate file to be used for stores where the server requires mutual SSL.
+  - `client-key` - Key file to be used for stores where the server requires mutual SSL.
+  - `skip-verify` - Disables data integrity verification when reading chunks to improve performance. Only recommended when chaining chunk stores with the `chunk-server` command using compressed stores.
+  - `uncompressed` - Reads and writes uncompressed chunks from/to this store. This can improve performance, especially for local stores or caches. Compressed and uncompressed chunks can coexist in the same store, but only one kind is read or written by one client.
 
 **Example config**
 
-```
+```json
 {
-  "http-timeout": 60000000000,
-  "http-error-retry": 0,
   "s3-credentials": {
        "http://localhost": {
            "access-key": "MYACCESSKEY",
@@ -171,6 +185,16 @@ Available configuration values:
            "aws-region": "us-west-2",
            "aws-profile": "profile_refreshable"
        }
+  },
+  "store-options": {
+    "https://192.168.1.1/store": {
+      "client-cert": "/path/to/crt",
+      "client-key": "/path/to/key",
+      "error-retry": 1
+    },
+    "/path/to/local/cache": {
+      "uncompressed": true
+    }
   }
 }
 ```
@@ -337,7 +361,3 @@ desync info -j -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
 ## Links
 - casync - https://github.com/systemd/casync
 - GoDoc for desync library - https://godoc.org/github.com/folbricht/desync
-
-## TODOs
-- Pre-allocate the output file to avoid fragmentation when using extract command
-- Allow on-disk chunk cache to optionally be stored uncompressed, such that blocks can be directly reflinked (rather than copied) into files, when on a platform and filesystem where reflink support is available.

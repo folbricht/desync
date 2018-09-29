@@ -87,7 +87,7 @@ func TestIndexChunking(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir) // clean up
-	s, err := NewLocalStore(dir)
+	s, err := NewLocalStore(dir, StoreOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func splitBlob(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer os.RemoveAll(dir) // clean up
-	s, err := NewLocalStore(dir)
+	s, err := NewLocalStore(dir, StoreOptions{})
 	if err != nil {
 		b.Fatal(err)
 	}

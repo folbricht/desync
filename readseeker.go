@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-
-	"github.com/pkg/errors"
 )
 
 // TODO: Implement WriterTo interface
@@ -91,28 +89,22 @@ func (ip *IndexPos) findOffset(newPos int64) (int64, error) {
 	return newPos, err
 }
 
-func (ip *IndexPos) loadChunk() (err error) {
+func (ip *IndexPos) loadChunk() error {
 	// See if we can simply read a blank slice from memory if the null chunk
 	// is being loaded
 	if ip.curChunkID == ip.nullChunk.ID {
 		ip.curChunk = ip.nullChunk.Data
-		return
+		return nil
 	}
-
-	var compressedChunk []byte
-	var decompressedChunk []byte
-
-	compressedChunk, err = ip.Store.GetChunk(ip.curChunkID)
+	chunk, err := ip.Store.GetChunk(ip.curChunkID)
 	if err != nil {
 		return err
 	}
-
-	decompressedChunk, err = Decompress(nil, compressedChunk)
+	b, err := chunk.Uncompressed()
 	if err != nil {
-		return errors.Wrap(err, ip.curChunkID.String())
+		return err
 	}
-
-	ip.curChunk = decompressedChunk
+	ip.curChunk = b
 	return nil
 }
 

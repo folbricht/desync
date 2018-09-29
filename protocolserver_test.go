@@ -12,10 +12,14 @@ func TestProtocolServer(t *testing.T) {
 	r2, w2 := io.Pipe()
 
 	server := NewProtocol(r1, w2)
-	// client := NewProtocol(r2, w1)
 
+	// Test data
+	uncompressed := []byte{4, 3, 2, 1}
+	chunkIn := NewChunkFromUncompressed(uncompressed)
+	compressed, _ := chunkIn.Compressed()
+	id := chunkIn.ID()
 	store := TestStore{
-		ChunkID{1}: []byte{4, 3, 2, 1},
+		id: compressed,
 	}
 	ps := NewProtocolServer(r2, w1, store)
 
@@ -31,11 +35,12 @@ func TestProtocolServer(t *testing.T) {
 	}
 
 	// Should find this chunk
-	chunk, err := server.RequestChunk(ChunkID{1})
+	chunk, err := server.RequestChunk(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(chunk, store[ChunkID{1}]) {
+	b, _ := chunk.Uncompressed()
+	if !bytes.Equal(b, uncompressed) {
 		t.Fatal("chunk data doesn't match expected")
 	}
 

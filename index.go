@@ -3,7 +3,6 @@ package desync
 import (
 	"bufio"
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"math"
 	"sync"
@@ -168,14 +167,14 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 		wg.Add(1)
 		go func() {
 			for c := range in {
-				// Calculate the chunk ID
-				id := sha512.Sum512_256(c.b)
+				// Create a chunk object, needed to calculate the checksum
+				chunk := NewChunkFromUncompressed(c.b)
 
 				// Record the index row
-				chunk := IndexChunk{Start: c.start, Size: uint64(len(c.b)), ID: id}
-				recordResult(c.num, chunk)
+				idxChunk := IndexChunk{Start: c.start, Size: uint64(len(c.b)), ID: chunk.ID()}
+				recordResult(c.num, idxChunk)
 
-				if err := s.StoreChunk(id, c.b); err != nil {
+				if err := s.StoreChunk(chunk); err != nil {
 					recordError(err)
 					continue
 				}

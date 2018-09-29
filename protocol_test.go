@@ -14,8 +14,10 @@ func TestProtocol(t *testing.T) {
 	client := NewProtocol(r2, w1)
 
 	// Test data
-	cID := ChunkID{1, 2, 3, 4}
-	cData := []byte{0, 0, 1, 1, 2, 2}
+	uncompressed := []byte{0, 0, 1, 1, 2, 2}
+	inChunk := NewChunkFromUncompressed(uncompressed)
+	compressed, _ := inChunk.Compressed()
+	cID := inChunk.ID()
 
 	// Server
 	go func() {
@@ -37,7 +39,7 @@ func TestProtocol(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := client.SendProtocolChunk(id, 0, cData); err != nil {
+				if err := client.SendProtocolChunk(id, 0, compressed); err != nil {
 					t.Fatal(err)
 				}
 			default:
@@ -60,7 +62,8 @@ func TestProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(chunk, cData) {
+	b, _ := chunk.Uncompressed()
+	if !bytes.Equal(b, uncompressed) {
 		t.Fatal("chunk data doesn't match expected")
 	}
 }

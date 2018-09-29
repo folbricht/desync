@@ -55,7 +55,7 @@ func info(ctx context.Context, args []string) error {
 		return errors.New("-clientKey and -clientCert options need to be provided together.")
 	}
 
-	opts := storeOptions{
+	opts := cmdStoreOptions{
 		n:          n,
 		clientCert: clientCert,
 		clientKey:  clientKey,
@@ -87,7 +87,7 @@ func info(ctx context.Context, args []string) error {
 	results.Unique = len(deduped)
 
 	if len(storeLocations.list) > 0 {
-		store, err := multiStore(storeOptions{n: n}, storeLocations.list...)
+		store, err := multiStore(cmdStoreOptions{n: n}, storeLocations.list...)
 		if err != nil {
 			return err
 		}

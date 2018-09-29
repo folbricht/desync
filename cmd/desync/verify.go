@@ -40,9 +40,9 @@ func verify(ctx context.Context, args []string) error {
 		return errors.New("No store provided.")
 	}
 
-	s, err := desync.NewLocalStore(storeLocation)
+	s, err := desync.NewLocalStore(storeLocation, cfg.GetStoreOptionsFor(storeLocation))
 	if err != nil {
 		return err
 	}
-	return s.Verify(ctx, n, repair)
+	return s.Verify(ctx, n, repair, os.Stderr)
 }
