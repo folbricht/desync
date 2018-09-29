@@ -29,6 +29,7 @@ func main() {
 		cancel()
 	}()
 
+	rootCmd := newRootCommand()
 	rootCmd.AddCommand(
 		newConfigCommand(ctx),
 		newCacheCommand(ctx),
@@ -48,7 +49,10 @@ func main() {
 		newVerifyCommand(ctx),
 		newVerifyIndexCommand(ctx),
 	)
-	Execute()
+
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
 
 func printJSON(v interface{}) error {
