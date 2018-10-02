@@ -154,7 +154,7 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	}
 
 	// No need to carry on if we don't have enough bytes left to even fill the min chunk
-	if len(c.buf) < int(c.min) {
+	if len(c.buf) <= int(c.min) {
 		return c.split(len(c.buf), nil)
 	}
 

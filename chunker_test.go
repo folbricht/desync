@@ -114,7 +114,6 @@ func TestChunkerSmallFile(t *testing.T) {
 	if start != 0 {
 		t.Fatalf("unexpected start position %d, expected 0", start)
 	}
-
 }
 
 // There are no chunk boundaries when all data is nil, make sure we get the
@@ -140,6 +139,38 @@ func TestChunkerNoBoundary(t *testing.T) {
 		if start%ChunkSizeMaxDefault != 0 {
 			t.Fatalf("unexpected start position %d, expected 0", start)
 		}
+	}
+}
+
+// Test with exactly min, avg, max chunk size of data
+func TestChunkerBounds(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		size uint64
+	}{
+		{"chunker with exactly min chunk size data", ChunkSizeMinDefault},
+		{"chunker with exactly avg chunk size data", ChunkSizeAvgDefault},
+		{"chunker with exactly max chunk size data", ChunkSizeMaxDefault},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			b := make([]byte, c.size)
+			r := bytes.NewReader(b)
+			c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			start, buf, err := c.Next()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(buf) != len(b) {
+				t.Fatalf("unexpected size %d, expected %d", len(buf), len(b))
+			}
+			if start != 0 {
+				t.Fatalf("unexpected start position %d, expected 0", start)
+			}
+		})
 	}
 }
 
