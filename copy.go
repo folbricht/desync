@@ -2,7 +2,8 @@ package desync
 
 import (
 	"context"
-	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // Copy reads a list of chunks from the provided src store, and copies the ones
@@ -10,14 +11,8 @@ import (
 // store to populate a cache. If progress is provided, it'll be called when a
 // chunk has been processed. Used to draw a progress bar, can be nil.
 func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, pb ProgressBar) error {
-	var (
-		wg   sync.WaitGroup
-		in   = make(chan ChunkID)
-		mu   sync.Mutex
-		pErr error
-	)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	in := make(chan ChunkID)
+	g, ctx := errgroup.WithContext(ctx)
 
 	// Setup and start the progressbar if any
 	if pb != nil {
@@ -26,52 +21,38 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 		defer pb.Finish()
 	}
 
-	// Helper function to record and deal with any errors in the goroutines
-	recordError := func(err error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if pErr == nil {
-			pErr = err
-		}
-		cancel()
-	}
-
 	// Start the workers
 	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
+		g.Go(func() error {
 			for id := range in {
-				if !dst.HasChunk(id) {
-					chunk, err := src.GetChunk(id)
-					if err != nil {
-						recordError(err)
-						continue
-					}
-					if err := dst.StoreChunk(chunk); err != nil {
-						recordError(err)
-					}
-				}
 				if pb != nil {
 					pb.Increment()
 				}
+				if dst.HasChunk(id) {
+					continue
+				}
+				chunk, err := src.GetChunk(id)
+				if err != nil {
+					return err
+				}
+				if err := dst.StoreChunk(chunk); err != nil {
+					return err
+				}
 			}
-			wg.Done()
-		}()
+			return nil
+		})
 	}
 
-	// Feed the workers, stop on any errors
+	// Feed the workers, the context is cancelled if any goroutine encounters an error
 loop:
 	for _, c := range ids {
-		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
 			break loop
-		default:
+		case in <- c:
 		}
-		in <- c
 	}
 	close(in)
-	wg.Wait()
 
-	return pErr
+	return g.Wait()
 }
