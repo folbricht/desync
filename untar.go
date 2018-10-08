@@ -10,8 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sync"
 	"syscall"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/pkg/errors"
 )
@@ -171,25 +172,10 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 		data  chan ([]byte) // channel for the (decompressed) chunk
 	}
 	var (
-		// stop bool
-		wg       sync.WaitGroup
-		mu       sync.Mutex
-		pErr     error
 		req      = make(chan requestJob)
 		assemble = make(chan chan []byte, n)
 	)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Helper function to record and deal with any errors in the goroutines
-	recordError := func(err error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if pErr == nil {
-			pErr = err
-		}
-		cancel()
-	}
+	g, ctx := errgroup.WithContext(ctx)
 
 	// Use a pipe as input to untar and write the chunks into that (in the right
 	// order of course)
@@ -197,64 +183,60 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 
 	// Workers - getting chunks from the store
 	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
+		g.Go(func() error {
 			for r := range req {
 				// Pull the chunk from the store
 				chunk, err := s.GetChunk(r.chunk.ID)
 				if err != nil {
-					recordError(err)
 					close(r.data)
-					continue
+					return err
 				}
 				b, err := chunk.Uncompressed()
 				if err != nil {
-					recordError(err)
 					close(r.data)
-					continue
+					return err
 				}
 				// Might as well verify the chunk size while we're at it
 				if r.chunk.Size != uint64(len(b)) {
-					recordError(fmt.Errorf("unexpected size for chunk %s", r.chunk.ID))
 					close(r.data)
-					continue
+					return fmt.Errorf("unexpected size for chunk %s", r.chunk.ID)
 				}
 				r.data <- b
 				close(r.data)
 			}
-			wg.Done()
-		}()
+			return nil
+		})
 	}
 
-	// Feeder - requesting chunks from the workers
-	go func() {
+	// Feeder - requesting chunks from the workers and handing a result data channel
+	// to the assembler
+	g.Go(func() error {
 	loop:
 		for _, c := range index.Chunks {
-			// See if we're meant to stop
+			data := make(chan []byte, 1)
 			select {
 			case <-ctx.Done():
 				break loop
-			default:
+			case req <- requestJob{chunk: c, data: data}: // request the chunk
+				assemble <- data // and hand over the data channel to the assembler
 			}
-			data := make(chan []byte, 1)
-			req <- requestJob{chunk: c, data: data} // request the chunk
-			assemble <- data                        // and hand over the data channel to the assembler
 		}
-		close(req)
-		wg.Wait()       // wait for the workers to stop
+		close(req)      // tell the workers this is it
 		close(assemble) // tell the assembler we're done
-	}()
+		return nil
+	})
 
-	// Assember - push the chunks into the pipe that untar reads from
-	go func() {
+	// Assember - Read from data channels push the chunks into the pipe that untar reads from
+	g.Go(func() error {
 		for data := range assemble {
 			b := <-data
 			if _, err := io.Copy(w, bytes.NewReader(b)); err != nil {
-				recordError(err)
+				return err
 			}
 		}
 		w.Close() // No more chunks to come, stop the untar
-	}()
+		return nil
+	})
 
 	// Run untar in the main goroutine
 	err := UnTar(ctx, r, dst, opts)
@@ -264,7 +246,7 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 	// the untar stage. If pErr is set, this would have triggered an error from
 	// the untar stage as well (since it cancels the context), so pErr takes
 	// precedence here.
-	if pErr != nil {
+	if pErr := g.Wait(); pErr != nil {
 		return pErr
 	}
 	return err

@@ -5,7 +5,8 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"os"
-	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
@@ -22,14 +23,10 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		source  SeedSegment
 	}
 	var (
-		wg      sync.WaitGroup
-		mu      sync.Mutex
-		pErr    error
 		in      = make(chan Job)
 		isBlank bool
 	)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	g, ctx := errgroup.WithContext(ctx)
 
 	// Setup and start the progressbar if any
 	if pb != nil {
@@ -42,16 +39,6 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	stats := &ExtractStats{
 		BytesTotal:  idx.Length(),
 		ChunksTotal: len(idx.Chunks),
-	}
-
-	// Helper function to record and deal with any errors in the goroutines
-	recordError := func(err error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if pErr == nil {
-			pErr = err
-		}
-		cancel()
 	}
 
 	// Determine is the target exists and create it if not
@@ -100,13 +87,13 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 
 	// Start the workers, each having its own filehandle to write concurrently
 	for i := 0; i < n; i++ {
-		wg.Add(1)
+		// wg.Add(1)
 		f, err := os.OpenFile(name, os.O_RDWR, 0666)
 		if err != nil {
 			return stats, fmt.Errorf("unable to open file %s, %s", name, err)
 		}
 		defer f.Close()
-		go func() {
+		g.Go(func() error {
 			for job := range in {
 				if pb != nil {
 					pb.Add(job.segment.lengthChunks())
@@ -117,8 +104,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					length := job.segment.lengthBytes()
 					copied, cloned, err := job.source.WriteInto(f, offset, length, blocksize, isBlank)
 					if err != nil {
-						recordError(err)
-						continue
+						return err
 					}
 					stats.addBytesCopied(copied)
 					stats.addBytesCloned(cloned)
@@ -134,8 +120,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				if !isBlank {
 					b := make([]byte, c.Size)
 					if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
-						recordError(err)
-						continue
+						return err
 					}
 					sum := sha512.Sum512_256(b)
 					if sum == c.ID {
@@ -151,29 +136,25 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				// Pull the (compressed) chunk from the store
 				chunk, err := s.GetChunk(c.ID)
 				if err != nil {
-					recordError(err)
-					continue
+					return err
 				}
 				b, err := chunk.Uncompressed()
 				if err != nil {
-					recordError(err)
-					continue
+					return err
 				}
 				// Might as well verify the chunk size while we're at it
 				if c.Size != uint64(len(b)) {
-					recordError(fmt.Errorf("unexpected size for chunk %s", c.ID))
-					continue
+					return fmt.Errorf("unexpected size for chunk %s", c.ID)
 				}
 				// Write the decompressed chunk into the file at the right position
 				if _, err = f.WriteAt(b, int64(c.Start)); err != nil {
-					recordError(err)
-					continue
+					return err
 				}
 				// Record this chunk's been written in the self-seed
 				ss.add(job.segment)
 			}
-			wg.Done()
-		}()
+			return nil
+		})
 	}
 
 	// Let the sequencer break up the index into segments, feed the workers, and
@@ -181,20 +162,17 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	seq := NewSeedSequencer(idx, seeds...)
 loop:
 	for {
-		// See if we're meant to stop
+		chunks, from, done := seq.Next()
 		select {
 		case <-ctx.Done():
 			break loop
-		default:
+		case in <- Job{chunks, from}:
 		}
-		chunks, from, done := seq.Next()
-		in <- Job{chunks, from}
 		if done {
 			break
 		}
 	}
 	close(in)
 
-	wg.Wait()
-	return stats, pErr
+	return stats, g.Wait()
 }

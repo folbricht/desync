@@ -7,6 +7,8 @@ import (
 	"math"
 	"sync"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/pkg/errors"
 
 	"io"
@@ -130,27 +132,13 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 		b     []byte
 	}
 	var (
-		stop    bool
-		wg      sync.WaitGroup
 		mu      sync.Mutex
-		pErr    error
 		in      = make(chan chunkJob)
 		results = make(map[int]IndexChunk)
 	)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
+	g, ctx := errgroup.WithContext(ctx)
 	s := NewChunkStorage(ws)
-
-	// Helper function to record and deal with any errors in the goroutines
-	recordError := func(err error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if pErr == nil {
-			pErr = err
-		}
-		cancel()
-	}
 
 	// All the chunks are processed in parallel, but we need to preserve the
 	// order for later. So add the chunking results to a map, indexed by
@@ -164,8 +152,7 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 	// Start the workers responsible for checksum calculation, compression and
 	// storage (if required). Each job comes with a chunk number for sorting later
 	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
+		g.Go(func() error {
 			for c := range in {
 				// Create a chunk object, needed to calculate the checksum
 				chunk := NewChunkFromUncompressed(c.b)
@@ -175,26 +162,19 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 				recordResult(c.num, idxChunk)
 
 				if err := s.StoreChunk(chunk); err != nil {
-					recordError(err)
-					continue
+					return err
 				}
 			}
-			wg.Done()
-		}()
+			return nil
+		})
 	}
 
 	// Feed the workers, stop if there are any errors. To keep the index list in
 	// order, we calculate the checksum here before handing	them over to the
 	// workers for compression and storage. That could probablybe optimized further
 	var num int // chunk #, so we can re-assemble the index in the right order later
+loop:
 	for {
-		// See if we're meant to stop
-		select {
-		case <-ctx.Done():
-			stop = true
-			break
-		default:
-		}
 		start, b, err := c.Next()
 		if err != nil {
 			return Index{}, err
@@ -204,19 +184,17 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 		}
 
 		// Send it off for compression and storage
-		in <- chunkJob{num: num, start: start, b: b}
-
+		select {
+		case <-ctx.Done():
+			break loop
+		case in <- chunkJob{num: num, start: start, b: b}:
+		}
 		num++
 	}
 	close(in)
-	wg.Wait()
 
-	// Everything has settled, now see if something happend that would invalidate
-	// the results. Either an error or an interrupt by the user. We don't just
-	// want to bail out when it happens and abandon any running goroutines that
-	// might still be writing/processing chunks. Only stop here it's safe like here.
-	if stop {
-		return Index{}, pErr
+	if err := g.Wait(); err != nil {
+		return Index{}, err
 	}
 
 	// All the chunks have been processed and are stored in a map. Now build a
@@ -236,5 +214,5 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 		},
 		Chunks: chunks,
 	}
-	return index, pErr
+	return index, nil
 }
