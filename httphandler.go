@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // HTTPHandler is the server-side handler for a HTTP chunk store.
@@ -107,6 +109,9 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 func (h HTTPHandler) idFromPath(path string) (ChunkID, error) {
 	ext := CompressedChunkExt
 	if h.Uncompressed {
+		if strings.HasSuffix(path, CompressedChunkExt) {
+			return ChunkID{}, errors.New("compressed chunk requested from http chunk store serving uncompressed chunks")
+		}
 		ext = UncompressedChunkExt
 	}
 	sID := strings.TrimSuffix(filepath.Base(path), ext)

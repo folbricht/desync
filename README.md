@@ -420,6 +420,20 @@ Show information about an index file to see how many of its chunks are present i
 desync info --format=json -s /tmp/store -s s3+http://127.0.0.1:9000/store /path/to/index
 ```
 
+Start an HTTP chunk server that will store uncompressed chunks locally, configured via JSON config file, and serve uncompressed chunks over the network (`-u` option). This chunk server could be used as a cache, minimizing latency by storing and serving uncompressed chunks. Clients will need to be configured to request uncompressed chunks from this server.
+
+```text
+# Chunk server
+echo '{"store-options": {"/path/to/store/":{"uncompressed": true}}}' > /path/to/server.json
+
+desync --config /path/to/server.json chunk-server -w -u -s /path/to/store/ -l :8080
+
+# Client
+echo '{"store-options": {"http://store.host:8080/":{"uncompressed": true}}}' > /path/to/client.json
+
+desync --config /path/to/client.json cache -s sftp://remote.host/store -c http://store.host:8080/ /path/to/blob.caibx
+```
+
 ## Links
 
 - casync - [https://github.com/systemd/casync](https://github.com/systemd/casync)
