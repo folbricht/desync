@@ -87,7 +87,6 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 
 	// Start the workers, each having its own filehandle to write concurrently
 	for i := 0; i < n; i++ {
-		// wg.Add(1)
 		f, err := os.OpenFile(name, os.O_RDWR, 0666)
 		if err != nil {
 			return stats, fmt.Errorf("unable to open file %s, %s", name, err)
