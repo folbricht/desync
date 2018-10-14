@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/spf13/cobra"
 )
 
 // Define writers for STDOUT and STDERR that are used in the commands.
@@ -29,6 +31,10 @@ func main() {
 		cancel()
 	}()
 
+	// Read config early
+	cobra.OnInitialize(initConfig)
+
+	// Register the sub-commands under root
 	rootCmd := newRootCommand()
 	rootCmd.AddCommand(
 		newConfigCommand(ctx),
