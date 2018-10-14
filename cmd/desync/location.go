@@ -11,10 +11,11 @@ import (
 // http://host/path/ is equal http://host/path (no trailing /) and /tmp/path is
 // equal \tmp\path on Windows.
 func locationMatch(loc1, loc2 string) bool {
-	// First lets see if they're both URLs
 	u1, _ := url.Parse(loc1)
 	u2, _ := url.Parse(loc2)
-	if u1.Scheme != "" || u2.Scheme != "" { // At lease one URL
+	// See if we have at least one URL, Windows drive letters come out as single-letter
+	// scheme so we need more here.
+	if len(u1.Scheme) > 1 || len(u2.Scheme) > 1 {
 		if u1.Scheme != u2.Scheme || u1.Host != u2.Host {
 			return false
 		}

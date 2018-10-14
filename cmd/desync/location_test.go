@@ -36,5 +36,7 @@ func TestLocationEquality(t *testing.T) {
 	require.False(t, locationMatch("/path", "path"))
 	require.False(t, locationMatch("/path/to", "path/to"))
 	require.False(t, locationMatch("/path/to", "/path/to/.."))
-
+	if runtime.GOOS == "windows" {
+		require.False(t, locationMatch("c:\\path1", "c:\\path2"))
+	}
 }
