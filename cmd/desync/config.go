@@ -71,7 +71,12 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 // GetStoreOptionsFor returns optional config options for a specific store. Note that
 // the location string in the config file needs to match exactly (watch for trailing /).
 func (c Config) GetStoreOptionsFor(location string) desync.StoreOptions {
-	return c.StoreOptions[location]
+	for k, v := range c.StoreOptions {
+		if locationMatch(k, location) {
+			return v
+		}
+	}
+	return desync.StoreOptions{}
 }
 
 func newConfigCommand(ctx context.Context) *cobra.Command {
@@ -130,15 +135,20 @@ var cfgFile string
 // instance. Values defined in the file will be set accordingly, while anything
 // that's not in the file will retain it's default values.
 func initConfig() {
+	var defaultLocation bool
 	if cfgFile == "" {
 		u, err := user.Current()
 		if err != nil {
 			die(err)
 		}
 		cfgFile = filepath.Join(u.HomeDir, ".config", "desync", "config.json")
+		defaultLocation = true
 	}
 	if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
-		return
+		if defaultLocation { // no problem if the default config doesn't exist
+			return
+		}
+		die(err)
 	}
 	f, err := os.Open(cfgFile)
 	if err != nil {

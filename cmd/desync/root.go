@@ -12,7 +12,3 @@ func newRootCommand() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default $HOME/.config/desync/config.json)")
 	return cmd
 }
-
-func init() {
-	cobra.OnInitialize(initConfig)
-}
