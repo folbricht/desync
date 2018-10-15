@@ -118,7 +118,7 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 
 	switch opt.printFormat {
 	case "json":
-		if err := printJSON(results); err != nil {
+		if err := printJSON(stdout, results); err != nil {
 			return err
 		}
 	case "plain":

@@ -61,12 +61,12 @@ func main() {
 	}
 }
 
-func printJSON(v interface{}) error {
+func printJSON(w io.Writer, v interface{}) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(os.Stderr, string(b))
+	fmt.Fprintln(w, string(b))
 	return nil
 }
 

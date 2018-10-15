@@ -113,7 +113,7 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 		return err
 	}
 	if opt.printStats {
-		return printJSON(stats)
+		return printJSON(stdout, stats)
 	}
 	return nil
 }
