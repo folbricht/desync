@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -107,6 +108,7 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 }
 
 func (h HTTPHandler) idFromPath(path string) (ChunkID, error) {
+	path = filepath.FromSlash(path)
 	ext := CompressedChunkExt
 	if h.Uncompressed {
 		if strings.HasSuffix(path, CompressedChunkExt) {
@@ -118,9 +120,11 @@ func (h HTTPHandler) idFromPath(path string) (ChunkID, error) {
 	if len(sID) < 4 {
 		return ChunkID{}, fmt.Errorf("expected format '/<prefix>/<chunkid>%s", ext)
 	}
-
+        
+	ps := string(os.PathSeparator)
+	expectedPath := filepath.Join(ps, sID[0:4], sID+ext)
 	// Make sure the prefix does match the first characters of the ID.
-	if path != filepath.Join("/", sID[0:4], sID+ext) {
+	if path != expectedPath {
 		return ChunkID{}, fmt.Errorf("expected format '/<prefix>/<chunkid>%s", ext)
 	}
 	return ChunkIDFromString(sID)
