@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 )
 
 // HTTPIndexHandler is the HTTP handler for index stores.
@@ -20,7 +20,7 @@ func NewHTTPIndexHandler(s IndexStore, writable bool) http.Handler {
 }
 
 func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	indexName := filepath.Base(r.URL.Path)
+	indexName := path.Base(r.URL.Path)
 
 	switch r.Method {
 	case "GET":
