@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -106,21 +106,21 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h HTTPHandler) idFromPath(path string) (ChunkID, error) {
+func (h HTTPHandler) idFromPath(p string) (ChunkID, error) {
 	ext := CompressedChunkExt
 	if h.Uncompressed {
-		if strings.HasSuffix(path, CompressedChunkExt) {
+		if strings.HasSuffix(p, CompressedChunkExt) {
 			return ChunkID{}, errors.New("compressed chunk requested from http chunk store serving uncompressed chunks")
 		}
 		ext = UncompressedChunkExt
 	}
-	sID := strings.TrimSuffix(filepath.Base(path), ext)
+	sID := strings.TrimSuffix(path.Base(p), ext)
 	if len(sID) < 4 {
 		return ChunkID{}, fmt.Errorf("expected format '/<prefix>/<chunkid>%s", ext)
 	}
 
 	// Make sure the prefix does match the first characters of the ID.
-	if path != filepath.Join("/", sID[0:4], sID+ext) {
+	if p != path.Join("/", sID[0:4], sID+ext) {
 		return ChunkID{}, fmt.Errorf("expected format '/<prefix>/<chunkid>%s", ext)
 	}
 	return ChunkIDFromString(sID)

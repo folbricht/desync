@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"path/filepath"
+	"path"
 	"strings"
 	"time"
 
@@ -235,7 +235,7 @@ func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 
 func (r *RemoteHTTP) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := filepath.Join(sID[0:4], sID)
+	name := path.Join(sID[0:4], sID)
 	if r.opt.Uncompressed {
 		name += UncompressedChunkExt
 	} else {
