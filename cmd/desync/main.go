@@ -38,6 +38,7 @@ func main() {
 	rootCmd := newRootCommand()
 	rootCmd.AddCommand(
 		newConfigCommand(ctx),
+		newCatCommand(ctx),
 		newCacheCommand(ctx),
 		newMakeCommand(ctx),
 		newExtractCommand(ctx),
