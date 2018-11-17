@@ -103,7 +103,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `-t` Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs when using a HTTPS chunk server.
 - `--key` Key file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires a certificate with `--cert`
 - `--cert` Certificate file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires `-key`.
-- `-k` Keep partially assembled files in place when `extract` fails or is interrupted. The command can then be restarted and it'll not have to retrieve completed parts again.
+- `-k` Keep partially assembled files in place when `extract` fails or is interrupted. The command can then be restarted and it'll not have to retrieve completed parts again. Also use this option to write to block devices.
 
 ### Environment variables
 
@@ -295,6 +295,12 @@ Extract a file in-place (`-k` option). If this operation fails, the file will re
 
 ```text
 desync extract -k -s sftp://192.168.1.1/path/to/store file.caibx file.tar
+```
+
+Extract an image directly onto a block device. The `-k` or `--in-place` option is needed.
+
+```text
+desync extract -k -s /mnt/store image.caibx /dev/sdc
 ```
 
 Extract a file using a remote index stored in an HTTP index store
