@@ -25,14 +25,14 @@ func CanClone(dstFile, srcFile string) bool {
 	if err != nil {
 		return false
 	}
-	defer dst.Close()
 	defer os.Remove(dst.Name())
+	defer dst.Close()
 	src, err := ioutil.TempFile(filepath.Dir(srcFile), ".tmp")
 	if err != nil {
 		return false
 	}
-	defer src.Close()
 	defer os.Remove(src.Name())
+	defer src.Close()
 	err = CloneRange(dst, src, 0, 0, 0)
 	return err == nil
 }
