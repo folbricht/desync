@@ -30,7 +30,9 @@ type SFTPStoreBase struct {
 
 // SFTPStore is a chunk store that uses SFTP over SSH.
 type SFTPStore struct {
-	*SFTPStoreBase
+	pool     chan *SFTPStoreBase
+	location *url.URL
+	n        int
 }
 
 // Creates a base sftp client
@@ -117,19 +119,37 @@ func (s *SFTPStoreBase) String() string {
 	return s.location.String()
 }
 
+// Returns the path for a chunk
+func (s *SFTPStoreBase) nameFromID(id ChunkID) string {
+	sID := id.String()
+	name := s.path + sID[0:4] + "/" + sID
+	if s.opt.Uncompressed {
+		name += UncompressedChunkExt
+	} else {
+		name += CompressedChunkExt
+	}
+	return name
+}
+
 // NewSFTPStore initializes a chunk store using SFTP over SSH.
 func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
-	b, err := newSFTPStoreBase(location, opt)
-	if err != nil {
-		return nil, err
+	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N}
+	for i := 0; i < opt.N; i++ {
+		c, err := newSFTPStoreBase(location, opt)
+		if err != nil {
+			return nil, err
+		}
+		s.pool <- c
 	}
-	return &SFTPStore{b}, nil
+	return s, nil
 }
 
 // GetChunk returns a chunk from an SFTP store, returns ChunkMissing if the file does not exist
 func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
-	name := s.nameFromID(id)
-	f, err := s.client.Open(name)
+	c := <-s.pool
+	defer func() { s.pool <- c }()
+	name := c.nameFromID(id)
+	f, err := c.client.Open(name)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = ChunkMissing{id}
@@ -141,30 +161,34 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to read from %s", name)
 	}
-	if s.opt.Uncompressed {
-		return NewChunkWithID(id, b, nil, s.opt.SkipVerify)
+	if c.opt.Uncompressed {
+		return NewChunkWithID(id, b, nil, c.opt.SkipVerify)
 	}
-	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
+	return NewChunkWithID(id, nil, b, c.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
 // Used when verifying and repairing caches.
 func (s *SFTPStore) RemoveChunk(id ChunkID) error {
-	name := s.nameFromID(id)
-	if _, err := s.client.Stat(name); err != nil {
+	c := <-s.pool
+	defer func() { s.pool <- c }()
+	name := c.nameFromID(id)
+	if _, err := c.client.Stat(name); err != nil {
 		return ChunkMissing{id}
 	}
-	return s.client.Remove(name)
+	return c.client.Remove(name)
 }
 
 // StoreChunk adds a new chunk to the store
 func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
-	name := s.nameFromID(chunk.ID())
+	c := <-s.pool
+	defer func() { s.pool <- c }()
+	name := c.nameFromID(chunk.ID())
 	var (
 		b   []byte
 		err error
 	)
-	if s.opt.Uncompressed {
+	if c.opt.Uncompressed {
 		b, err = chunk.Uncompressed()
 	} else {
 		b, err = chunk.Compressed()
@@ -172,20 +196,24 @@ func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 	if err != nil {
 		return err
 	}
-	return s.StoreObject(name, bytes.NewReader(b))
+	return c.StoreObject(name, bytes.NewReader(b))
 }
 
 // HasChunk returns true if the chunk is in the store
 func (s *SFTPStore) HasChunk(id ChunkID) bool {
-	name := s.nameFromID(id)
-	_, err := s.client.Stat(name)
+	c := <-s.pool
+	defer func() { s.pool <- c }()
+	name := c.nameFromID(id)
+	_, err := c.client.Stat(name)
 	return err == nil
 }
 
 // Prune removes any chunks from the store that are not contained in a list
 // of chunks
 func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	walker := s.client.Walk(s.path)
+	c := <-s.pool
+	defer func() { s.pool <- c }()
+	walker := c.client.Walk(c.path)
 
 	for walker.Step() {
 		// See if we're meant to stop
@@ -207,7 +235,7 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		}
 		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
 		var sID string
-		if s.opt.Uncompressed {
+		if c.opt.Uncompressed {
 			if !strings.HasSuffix(path, UncompressedChunkExt) {
 				return nil
 			}
@@ -235,13 +263,16 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	return nil
 }
 
-func (s *SFTPStore) nameFromID(id ChunkID) string {
-	sID := id.String()
-	name := s.path + sID[0:4] + "/" + sID
-	if s.opt.Uncompressed {
-		name += UncompressedChunkExt
-	} else {
-		name += CompressedChunkExt
+// Close terminates all client connections
+func (s *SFTPStore) Close() error {
+	var err error
+	for i := 0; i < s.n; i++ {
+		c := <-s.pool
+		err = c.Close()
 	}
-	return name
+	return err
+}
+
+func (s *SFTPStore) String() string {
+	return s.location.String()
 }
