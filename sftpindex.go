@@ -3,6 +3,7 @@ package desync
 import (
 	"net/url"
 	"os"
+	"path"
 
 	"io"
 
@@ -26,7 +27,7 @@ func NewSFTPIndexStore(location *url.URL, opt StoreOptions) (*SFTPIndexStore, er
 // GetIndexReader returns a reader of an index from an SFTP store. Fails if the specified
 // index file does not exist.
 func (s *SFTPIndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
-	f, err := s.client.Open(name)
+	f, err := s.client.Open(s.pathFromName(name))
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = errors.Errorf("Index file does not exist: %v", err)
@@ -54,5 +55,9 @@ func (s *SFTPIndexStore) StoreIndex(name string, idx Index) error {
 		defer w.Close()
 		idx.WriteTo(w)
 	}()
-	return s.StoreObject(name, r)
+	return s.StoreObject(s.pathFromName(name), r)
+}
+
+func (s *SFTPIndexStore) pathFromName(name string) string {
+	return path.Join(s.path, name)
 }

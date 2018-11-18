@@ -197,7 +197,7 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	case "ssh":
 		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
 	case "sftp":
-		s, err = desync.NewSFTPIndexStore(loc, opt)
+		s, err = desync.NewSFTPIndexStore(&p, opt)
 		if err != nil {
 			return nil, "", err
 		}
