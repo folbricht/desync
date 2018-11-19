@@ -39,3 +39,48 @@ func (p ProgressBar) Start() {
 func (p ProgressBar) Set(current int) {
 	p.ProgressBar.Set(current)
 }
+
+// ProgressReader implements ProgressBar and io.Reader
+type ProgressReader struct {
+	ProgressBar
+	f *os.File
+}
+
+func NewProgressReader(prefix string, f *os.File) desync.ProgressBar {
+	pb := NewProgressBar(prefix)
+	if pb == nil {
+		return nil
+	}
+
+	pb.f = f
+	cur, err := f.Seek(0, SEEK_CUR)
+	if err != nil {
+		return nil
+	}
+
+	size, err := f.Seek(0, SEEK_END)
+	f.Seek(cur, SEEK_SET)
+	if err != nil {
+		return nil
+	}
+
+	pb.SetTotal(size)
+	pb.Set(cur)
+
+	return pb
+}
+
+func (p ProgressReader) Read(b []byte) (n int, err error) {
+	n, err = p.f.Read()
+	if err != nil {
+		return
+	}
+
+	cur, err := p.f.Seek(0, SEEK_CUR)
+	if err != nil {
+		return
+	}
+
+	p.Set(cur)
+	return
+}
