@@ -20,7 +20,7 @@ func NewProgressBar(prefix string) desync.ProgressBar {
 	return ProgressBar{bar}
 }
 
-// ProgressBar wraps https://github.com/cheggaaa/pb and implrments desync.ProgressBar
+// ProgressBar wraps https://github.com/cheggaaa/pb and implements desync.ProgressBar
 type ProgressBar struct {
 	*pb.ProgressBar
 }
@@ -40,47 +40,47 @@ func (p ProgressBar) Set(current int) {
 	p.ProgressBar.Set(current)
 }
 
-// ProgressReader implements ProgressBar and io.Reader
+// ProgressReader wraps ProgressBar and implements io.Reader
 type ProgressReader struct {
-	ProgressBar
+	desync.ProgressBar
 	f *os.File
 }
 
-func NewProgressReader(prefix string, f *os.File) desync.ProgressBar {
+func NewProgressReader(prefix string, f *os.File) *ProgressReader {
 	pb := NewProgressBar(prefix)
 	if pb == nil {
 		return nil
 	}
 
-	pb.f = f
-	cur, err := f.Seek(0, SEEK_CUR)
+	cur, err := f.Seek(0, os.SEEK_CUR)
 	if err != nil {
 		return nil
 	}
 
-	size, err := f.Seek(0, SEEK_END)
-	f.Seek(cur, SEEK_SET)
+	size, err := f.Seek(0, os.SEEK_END)
+	f.Seek(cur, os.SEEK_SET)
 	if err != nil {
 		return nil
 	}
 
-	pb.SetTotal(size)
-	pb.Set(cur)
+	pr := ProgressReader{pb, f}
+	pb.SetTotal(int(size))
+	pb.Set(int(cur))
 
-	return pb
+	return &pr
 }
 
 func (p ProgressReader) Read(b []byte) (n int, err error) {
-	n, err = p.f.Read()
+	n, err = p.f.Read(b)
 	if err != nil {
 		return
 	}
 
-	cur, err := p.f.Seek(0, SEEK_CUR)
+	cur, err := p.f.Seek(0, os.SEEK_CUR)
 	if err != nil {
 		return
 	}
 
-	p.Set(cur)
+	p.Set(int(cur))
 	return
 }

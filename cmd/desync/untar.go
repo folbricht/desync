@@ -66,7 +66,10 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 			return err
 		}
 		defer f.Close()
-		return desync.UnTar(ctx, f, targetDir, opt.UntarOptions)
+		pb := NewProgressReader("Unpacking ", f)
+		pb.Start()
+		defer pb.Finish()
+		return desync.UnTar(ctx, pb, targetDir, opt.UntarOptions)
 	}
 
 	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
@@ -81,5 +84,5 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, targetDir, index, s, opt.n, opt.UntarOptions)
+	return desync.UnTarIndex(ctx, targetDir, index, s, opt.n, opt.UntarOptions, NewProgressBar("Unpacking "))
 }
