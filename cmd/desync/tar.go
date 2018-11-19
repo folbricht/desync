@@ -14,9 +14,10 @@ import (
 
 type tarOptions struct {
 	cmdStoreOptions
-	store       string
-	chunkSize   string
-	createIndex bool
+	store         string
+	chunkSize     string
+	createIndex   bool
+	oneFileSystem bool
 }
 
 func newTarCommand(ctx context.Context) *cobra.Command {
@@ -44,6 +45,7 @@ catar or index to STDOUT.`,
 	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
+	flags.BoolVarP(&opt.oneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
 	return cmd
 }
 
@@ -56,7 +58,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	}
 
 	output := args[0]
-	sourceDir := args[1]
+	source := args[1]
 
 	// Just make the catar and stop if that's all that was required
 	if !opt.createIndex {
@@ -71,7 +73,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 			defer f.Close()
 			w = f
 		}
-		return desync.Tar(ctx, w, sourceDir)
+		return desync.Tar(ctx, w, source, opt.oneFileSystem)
 	}
 
 	// An index is requested, so stream the output of the tar command directly
@@ -98,7 +100,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	// Run the tar bit in a goroutine, writing to the pipe
 	var tarErr error
 	go func() {
-		tarErr = desync.Tar(ctx, w, sourceDir)
+		tarErr = desync.Tar(ctx, w, source, opt.oneFileSystem)
 		w.Close()
 	}()
 
