@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/folbricht/desync"
+	"github.com/minio/minio-go"
 	"github.com/pkg/errors"
 )
 
@@ -119,7 +120,18 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		}
 	case "s3+http", "s3+https":
 		s3Creds, region := cfg.GetS3CredentialsFor(loc)
-		s, err = desync.NewS3Store(loc, s3Creds, region, opt)
+		lookup := minio.BucketLookupAuto
+		ls := loc.Query().Get("lookup")
+		switch ls {
+		case "dns":
+			lookup = minio.BucketLookupDNS
+		case "path":
+			lookup = minio.BucketLookupPath
+		case "", "auto":
+		default:
+			return nil, fmt.Errorf("unknown S3 bucket lookup type: %q", s)
+		}
+		s, err = desync.NewS3Store(loc, s3Creds, region, opt, lookup)
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +230,18 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 		}
 	case "s3+http", "s3+https":
 		s3Creds, region := cfg.GetS3CredentialsFor(&p)
-		s, err = desync.NewS3IndexStore(&p, s3Creds, region, opt)
+		lookup := minio.BucketLookupAuto
+		ls := loc.Query().Get("lookup")
+		switch ls {
+		case "dns":
+			lookup = minio.BucketLookupDNS
+		case "path":
+			lookup = minio.BucketLookupPath
+		case "", "auto":
+		default:
+			return nil, "", fmt.Errorf("unknown S3 bucket lookup type: %q", s)
+		}
+		s, err = desync.NewS3IndexStore(&p, s3Creds, region, opt, lookup)
 		if err != nil {
 			return nil, "", err
 		}

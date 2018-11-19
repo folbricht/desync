@@ -168,6 +168,18 @@ This is a store running on the local machine on port 9000 without SSL.
 s3+http://127.0.0.1:9000/store
 ```
 
+#### Setting S3 bucket addressing style for other services
+
+desync uses [minio](https://github.com/minio/minio-go) as an S3 client library. It has an auto-detection mechanism for determining the addressing style of the buckets which should work for Amazon and Google S3 services but could potentially fail for your custom implementation. You can manually specify the addressing style by appending the "lookup" query parameter to the URL.
+
+By default, the value of "?lookup=auto" is implied.
+
+```text
+s3+http://127.0.0.1:9000/bucket/prefix?lookup=path
+s3+https://s3.internal.company/bucket/prefix?lookup=dns
+s3+https://example.com/bucket/prefix?lookup=auto
+```
+
 ### Compressed vs Uncompressed chunk stores
 
 By default, desync reads and writes chunks in compressed form to all supported stores. This is in line with upstream casync's goal of storing in the most efficient way. It is however possible to change this behavior by providing desync with a config file (see Configuration section below). Disabling compression and store chunks uncompressed may reduce latency in some use-cases and improve performance. desync supports reading and writing uncompressed chunks to SFTP, S3, HTTP and local stores and caches. If more than one store is used, each of those can be configured independently, for example it's possible to read compressed chunks from S3 while using a local uncompressed cache for best performance. However, care needs to be taken when using the `chunk-server` command and building chains of chunk store proxies to avoid shifting the decompression load onto the server (it's possible this is actually desirable).
