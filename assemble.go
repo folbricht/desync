@@ -23,8 +23,9 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		source  SeedSegment
 	}
 	var (
-		in      = make(chan Job)
-		isBlank bool
+		in          = make(chan Job)
+		isBlank     bool
+		isBlkDevice bool
 	)
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -44,22 +45,28 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	// Determine is the target exists and create it if not
 	info, err := os.Stat(name)
 	switch {
-	case os.IsNotExist(err):
+	case os.IsNotExist(err): // File doesn't exist yet => create it
 		f, err := os.Create(name)
 		if err != nil {
 			return stats, err
 		}
 		f.Close()
 		isBlank = true
-	case info.Size() == 0:
+	case err != nil: // Some other error => bail
+		return stats, err
+	case isDevice(info.Mode()): // Dealing with a block device
+		isBlkDevice = true
+	case info.Size() == 0: // Is a file that exists, but is empty => use optimizations for blank files
 		isBlank = true
 	}
 
 	// Truncate the output file to the full expected size. Not only does this
 	// confirm there's enough disk space, but it allows for an optimization
 	// when dealing with the Null Chunk
-	if err := os.Truncate(name, idx.Length()); err != nil {
-		return stats, err
+	if !isBlkDevice {
+		if err := os.Truncate(name, idx.Length()); err != nil {
+			return stats, err
+		}
 	}
 
 	// Determine the blocksize of the target file which is required for reflinking
