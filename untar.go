@@ -166,7 +166,7 @@ func mkdev(major, minor uint64) uint64 {
 // UnTarIndex takes an index file (of a chunked catar), re-assembles the catar
 // and decodes it on-the-fly into the target directory 'dst'. Uses n gorountines
 // to retrieve and decompress the chunks.
-func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, opts UntarOptions) error {
+func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, opts UntarOptions, pb ProgressBar) error {
 	type requestJob struct {
 		chunk IndexChunk    // requested chunk
 		data  chan ([]byte) // channel for the (decompressed) chunk
@@ -176,6 +176,13 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 		assemble = make(chan chan []byte, n)
 	)
 	g, ctx := errgroup.WithContext(ctx)
+
+	// Initialize and start progress bar if one was provided
+	if pb != nil {
+		pb.SetTotal(len(index.Chunks))
+		pb.Start()
+		defer pb.Finish()
+	}
 
 	// Use a pipe as input to untar and write the chunks into that (in the right
 	// order of course)
@@ -229,6 +236,9 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 	// Assember - Read from data channels push the chunks into the pipe that untar reads from
 	g.Go(func() error {
 		for data := range assemble {
+			if pb != nil {
+				pb.Increment()
+			}
 			b := <-data
 			if _, err := io.Copy(w, bytes.NewReader(b)); err != nil {
 				return err

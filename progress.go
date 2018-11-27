@@ -1,5 +1,7 @@
 package desync
 
+import "io"
+
 // ProgressBar allows clients to provide their own implementations of graphical
 // progress visualizations. Optional, can be nil to disable this feature.
 type ProgressBar interface {
@@ -9,4 +11,5 @@ type ProgressBar interface {
 	Increment() int
 	Add(add int) int
 	Set(current int)
+	io.Writer
 }

@@ -20,7 +20,7 @@ func NewProgressBar(prefix string) desync.ProgressBar {
 	return ProgressBar{bar}
 }
 
-// ProgressBar wraps https://github.com/cheggaaa/pb and implrments desync.ProgressBar
+// ProgressBar wraps https://github.com/cheggaaa/pb and implements desync.ProgressBar
 type ProgressBar struct {
 	*pb.ProgressBar
 }
@@ -38,4 +38,9 @@ func (p ProgressBar) Start() {
 // Set the current value
 func (p ProgressBar) Set(current int) {
 	p.ProgressBar.Set(current)
+}
+
+// Write the current state of the progressbar
+func (p ProgressBar) Write(b []byte) (n int, err error) {
+	return p.ProgressBar.Write(b)
 }
