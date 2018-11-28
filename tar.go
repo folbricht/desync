@@ -28,17 +28,24 @@ const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
 
 // Tar implements the tar command which recursively parses a directory tree,
 // and produces a stream of encoded casync format elements (catar file).
-func Tar(ctx context.Context, w io.Writer, src string) error {
+func Tar(ctx context.Context, w io.Writer, src string, oneFileSystem bool) error {
 	enc := NewFormatEncoder(w)
 	info, err := os.Lstat(src)
 	if err != nil {
 		return err
 	}
-	_, err = tar(ctx, enc, src, info)
+	dev := uint64(0)
+	if oneFileSystem {
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if ok {
+			dev = st.Dev
+		}
+	}
+	_, err = tar(ctx, enc, src, info, dev)
 	return err
 }
 
-func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) (n int64, err error) {
+func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, dev uint64) (n int64, err error) {
 	// See if we're meant to stop
 	select {
 	case <-ctx.Done():
@@ -57,8 +64,8 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 	case *syscall.Stat_t:
 		uid = int(sys.Uid)
 		gid = int(sys.Gid)
-		major = uint64(sys.Rdev / 256)
-		minor = uint64(sys.Rdev % 256)
+		major = uint64((sys.Rdev >> 8) & 0xfff)
+		minor = uint64((sys.Rdev % 256) | ((sys.Rdev & 0xfff00000) >> 12))
 		mode = uint32(sys.Mode)
 	default:
 		// TODO What should be done here on platforms that don't support this (Windows)?
@@ -96,6 +103,14 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 		}
 		var items []FormatGoodbyeItem
 		for _, s := range stats {
+			if dev != 0 {
+				// one-file-system is set, skip other filesystems
+				st, ok := s.Sys().(*syscall.Stat_t)
+				if !ok || st.Dev != dev {
+					continue
+				}
+			}
+
 			start := n
 			// CaFormatFilename - Write the filename element, then recursively encode
 			// the items in the directory
@@ -109,7 +124,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo) 
 				return n, err
 			}
 
-			nn, err = tar(ctx, enc, filepath.Join(path, s.Name()), s)
+			nn, err = tar(ctx, enc, filepath.Join(path, s.Name()), s, dev)
 			n += nn
 			if err != nil {
 				return n, err
