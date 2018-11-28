@@ -28,14 +28,14 @@ type S3Store struct {
 }
 
 // NewS3StoreBase initializes a base object used for chunk or index stores backed by S3.
-func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions) (S3StoreBase, error) {
+func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions, lookupType minio.BucketLookupType) (S3StoreBase, error) {
 	var err error
 	s := S3StoreBase{Location: u.String(), opt: opt}
 	if !strings.HasPrefix(u.Scheme, "s3+http") {
 		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http' or 's3+https'", u.Scheme)
 	}
 	var useSSL bool
-	if strings.HasSuffix(u.Scheme, "s") {
+	if strings.Contains(u.Scheme, "https") {
 		useSSL = true
 	}
 
@@ -52,7 +52,12 @@ func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string,
 		s.prefix += "/"
 	}
 
-	s.client, err = minio.NewWithCredentials(u.Host, s3Creds, useSSL, region)
+	s.client, err = minio.NewWithOptions(u.Host, &minio.Options{
+		Creds:        s3Creds,
+		Secure:       useSSL,
+		Region:       region,
+		BucketLookup: lookupType,
+	})
 	if err != nil {
 		return s, errors.Wrap(err, u.String())
 	}
@@ -70,8 +75,8 @@ func (s S3StoreBase) Close() error { return nil }
 // should be provided like this: s3+http://host:port/bucket
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3S3_SECRET_KEY, or via the desync config file.
-func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions) (s S3Store, e error) {
-	b, err := NewS3StoreBase(location, s3Creds, region, opt)
+func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions, lookupType minio.BucketLookupType) (s S3Store, e error) {
+	b, err := NewS3StoreBase(location, s3Creds, region, opt, lookupType)
 	if err != nil {
 		return s, err
 	}
