@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 
 	"github.com/folbricht/desync"
@@ -66,7 +67,20 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 			return err
 		}
 		defer f.Close()
-		return desync.UnTar(ctx, f, targetDir, opt.UntarOptions)
+		var r io.Reader = f
+		pb := NewProgressBar("Unpacking ")
+		if pb != nil {
+			// Get the file size to initialize the progress bar
+			info, err := f.Stat()
+			if err != nil {
+				return err
+			}
+			pb.Start()
+			defer pb.Finish()
+			pb.SetTotal(int(info.Size()))
+			r = io.TeeReader(f, pb)
+		}
+		return desync.UnTar(ctx, r, targetDir, opt.UntarOptions)
 	}
 
 	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
@@ -81,5 +95,5 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, targetDir, index, s, opt.n, opt.UntarOptions)
+	return desync.UnTarIndex(ctx, targetDir, index, s, opt.n, opt.UntarOptions, NewProgressBar("Unpacking "))
 }
