@@ -6,26 +6,31 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 )
 
+type Xattrs map[string]string
+
 // NodeDirectory represents a directory in a catar archive
 type NodeDirectory struct {
-	Name  string
-	UID   int
-	GID   int
-	Mode  os.FileMode
-	MTime time.Time
+	Name   string
+	UID    int
+	GID    int
+	Mode   os.FileMode
+	MTime  time.Time
+	Xattrs Xattrs
 }
 
 // NodeFile holds file permissions and data in a catar archive
 type NodeFile struct {
-	UID   int
-	GID   int
-	Mode  os.FileMode
-	Name  string
-	MTime time.Time
-	Data  io.Reader
+	UID    int
+	GID    int
+	Mode   os.FileMode
+	Name   string
+	MTime  time.Time
+	Xattrs Xattrs
+	Data   io.Reader
 }
 
 // NodeSymlink holds symlink information in a catar archive
@@ -35,18 +40,20 @@ type NodeSymlink struct {
 	GID    int
 	Mode   os.FileMode
 	MTime  time.Time
+	Xattrs Xattrs
 	Target string
 }
 
 // NodeDevice holds device information in a catar archive
 type NodeDevice struct {
-	Name  string
-	UID   int
-	GID   int
-	Mode  os.FileMode
-	Major uint64
-	Minor uint64
-	MTime time.Time
+	Name   string
+	UID    int
+	GID    int
+	Mode   os.FileMode
+	Major  uint64
+	Minor  uint64
+	Xattrs Xattrs
+	MTime  time.Time
 }
 
 // ArchiveDecoder is used to decode a catar archive.
@@ -70,6 +77,7 @@ func (a *ArchiveDecoder) Next() (interface{}, error) {
 		payload *FormatPayload
 		symlink *FormatSymlink
 		device  *FormatDevice
+		xattrs  map[string]string
 		name    string
 		c       interface{}
 		err     error
@@ -97,7 +105,6 @@ loop:
 			entry = &d
 		case FormatUser: // Not supported yet
 		case FormatGroup:
-		case FormatXAttr:
 		case FormatSELinux:
 		case FormatACLUser:
 		case FormatACLGroup:
@@ -110,6 +117,15 @@ loop:
 			}
 			payload = &d
 			break loop
+		case FormatXAttr:
+			idx := strings.IndexRune(d.NameAndValue, '\000')
+			if entry == nil || idx == -1 {
+				return nil, InvalidFormat{}
+			}
+			if xattrs == nil {
+				xattrs = make(map[string]string)
+			}
+			xattrs[d.NameAndValue[0:idx]] = d.NameAndValue[idx+1:]
 		case FormatSymlink:
 			if entry == nil {
 				return nil, InvalidFormat{}
@@ -144,36 +160,39 @@ loop:
 	if payload == nil && device == nil && symlink == nil {
 		a.dir = filepath.Join(a.dir, name)
 		return NodeDirectory{
-			Name:  a.dir,
-			UID:   entry.UID,
-			GID:   entry.GID,
-			Mode:  entry.Mode,
-			MTime: entry.MTime,
+			Name:   a.dir,
+			UID:    entry.UID,
+			GID:    entry.GID,
+			Mode:   entry.Mode,
+			MTime:  entry.MTime,
+			Xattrs: xattrs,
 		}, nil
 	}
 
 	// Regular file
 	if payload != nil {
 		return NodeFile{
-			Name:  filepath.Join(a.dir, name),
-			UID:   entry.UID,
-			GID:   entry.GID,
-			Mode:  entry.Mode,
-			MTime: entry.MTime,
-			Data:  payload.Data,
+			Name:   filepath.Join(a.dir, name),
+			UID:    entry.UID,
+			GID:    entry.GID,
+			Mode:   entry.Mode,
+			MTime:  entry.MTime,
+			Xattrs: xattrs,
+			Data:   payload.Data,
 		}, nil
 	}
 
 	// Device
 	if device != nil {
 		return NodeDevice{
-			Name:  filepath.Join(a.dir, name),
-			UID:   entry.UID,
-			GID:   entry.GID,
-			Mode:  entry.Mode,
-			MTime: entry.MTime,
-			Major: device.Major,
-			Minor: device.Minor,
+			Name:   filepath.Join(a.dir, name),
+			UID:    entry.UID,
+			GID:    entry.GID,
+			Mode:   entry.Mode,
+			MTime:  entry.MTime,
+			Xattrs: xattrs,
+			Major:  device.Major,
+			Minor:  device.Minor,
 		}, nil
 	}
 
@@ -185,6 +204,7 @@ loop:
 			GID:    entry.GID,
 			Mode:   entry.Mode,
 			MTime:  entry.MTime,
+			Xattrs: xattrs,
 			Target: symlink.Target,
 		}, nil
 	}

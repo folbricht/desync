@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/pkg/xattr"
 )
 
 // TarFeatureFlags are used as feature flags in the header of catar archives. These
@@ -23,6 +25,7 @@ const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
 	CaFormatWithDeviceNodes |
 	CaFormatWithFIFOs |
 	CaFormatWithSockets |
+	CaFormatWithXattrs |
 	CaFormatSHA512256 |
 	CaFormatExcludeNoDump
 
@@ -95,6 +98,28 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 		return n, err
 	}
 
+	// CaFormatXattrs - Write extended attributes elements
+	keys, err := xattr.LList(filepath.Join(path))
+	if err != nil {
+		return n, err
+	}
+	for _, key := range keys {
+		value, err := xattr.LGet(filepath.Join(path), key)
+		if err != nil {
+			return n, err
+		}
+		x := FormatXAttr{
+			FormatHeader: FormatHeader{Size: uint64(len(key)) + 1 + uint64(len(value)) + 1 + 16, Type: CaFormatXAttr},
+			NameAndValue: key + "\000" + string(value),
+		}
+
+		nn, err = enc.Encode(x)
+		n += nn
+		if err != nil {
+			return n, err
+		}
+	}
+
 	switch {
 	case m.IsDir():
 		stats, err := ioutil.ReadDir(path)
@@ -123,7 +148,6 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 			if err != nil {
 				return n, err
 			}
-
 			nn, err = tar(ctx, enc, filepath.Join(path, s.Name()), s, dev)
 			n += nn
 			if err != nil {
