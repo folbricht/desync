@@ -47,7 +47,7 @@ func TestTar(t *testing.T) {
 
 	// Encode it all into a buffer
 	b := new(bytes.Buffer)
-	if err = Tar(context.Background(), b, base); err != nil {
+	if err = Tar(context.Background(), b, base, false); err != nil {
 		t.Fatal(err)
 	}
 
