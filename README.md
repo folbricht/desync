@@ -16,7 +16,7 @@ Among the distinguishing factors:
 - Supports local stores as well as remote stores (as client) over SSH, SFTP and HTTP
 - Built-in HTTP(S) chunk server that can proxy multiple local or remote stores and also supports caching.
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
-- Support for catar files exists, but ignores XAttr, SELinux, ACLs and FCAPs that may be present in existing catar files and those won't be present when creating a new catar with the `tar` command
+- Support for catar files exists, but ignores SELinux and ACLs that may be present in existing catar files and those won't be present when creating a new catar with the `tar` command; FCAPs are supported only as a verbatim copy of "security.capability" XAttr.
 - Supports chunking with the same algorithm used by casync (see `make` command) but executed in parallel. Results are identical to what casync produces, same chunks and index files, but with significantly better performance. For example, up to 10x faster than casync if the chunks are already present in the store. If the chunks are new, it heavily depends on I/O, but it's still likely several times faster than casync.
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 - Allows FUSE mounting of blob indexes

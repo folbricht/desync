@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/pkg/errors"
+	"github.com/pkg/xattr"
 )
 
 // UntarOptions are used to influence the behaviour of untar
@@ -79,6 +80,14 @@ func makeDir(base string, n NodeDirectory, opts UntarOptions) error {
 		if err := os.Chown(dst, n.UID, n.GID); err != nil {
 			return err
 		}
+
+		if n.Xattrs != nil {
+			for key, value := range n.Xattrs {
+				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	if !opts.NoSamePermissions {
 		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
@@ -102,6 +111,14 @@ func makeFile(base string, n NodeFile, opts UntarOptions) error {
 	if !opts.NoSameOwner {
 		if err = f.Chown(n.UID, n.GID); err != nil {
 			return err
+		}
+
+		if n.Xattrs != nil {
+			for key, value := range n.Xattrs {
+				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if !opts.NoSamePermissions {
@@ -129,6 +146,14 @@ func makeSymlink(base string, n NodeSymlink, opts UntarOptions) error {
 		if err := os.Lchown(dst, n.UID, n.GID); err != nil {
 			return err
 		}
+
+		if n.Xattrs != nil {
+			for key, value := range n.Xattrs {
+				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -145,6 +170,14 @@ func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	if !opts.NoSameOwner {
 		if err := os.Chown(dst, n.UID, n.GID); err != nil {
 			return err
+		}
+
+		if n.Xattrs != nil {
+			for key, value := range n.Xattrs {
+				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if !opts.NoSamePermissions {
