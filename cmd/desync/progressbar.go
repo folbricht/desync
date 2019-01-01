@@ -11,7 +11,7 @@ import (
 // NewProgressBar initializes a wrapper for a https://github.com/cheggaaa/pb
 // progressbar that implements desync.ProgressBar
 func NewProgressBar(prefix string) desync.ProgressBar {
-	if !terminal.IsTerminal(int(os.Stderr.Fd())) {
+	if !terminal.IsTerminal(int(os.Stderr.Fd())) && os.Getenv("DESYNC_PROGRESSBAR_ENABLED") == "" {
 		return nil
 	}
 	bar := pb.New(0).Prefix(prefix)
