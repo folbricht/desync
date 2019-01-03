@@ -41,7 +41,8 @@ func Tar(ctx context.Context, w io.Writer, src string, oneFileSystem bool) error
 	if oneFileSystem {
 		st, ok := info.Sys().(*syscall.Stat_t)
 		if ok {
-			dev = st.Dev
+			// Dev (and Rdev) elements of syscall.Stat_t are uint64 on Linux, but int32 on MacOS. Cast it to uint64 everywhere.
+			dev = uint64(st.Dev)
 		}
 	}
 	_, err = tar(ctx, enc, src, info, dev)
@@ -68,7 +69,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 		uid = int(sys.Uid)
 		gid = int(sys.Gid)
 		major = uint64((sys.Rdev >> 8) & 0xfff)
-		minor = uint64((sys.Rdev % 256) | ((sys.Rdev & 0xfff00000) >> 12))
+		minor = (uint64(sys.Rdev) % 256) | ((uint64(sys.Rdev) & 0xfff00000) >> 12)
 		mode = uint32(sys.Mode)
 	default:
 		// TODO What should be done here on platforms that don't support this (Windows)?
@@ -131,7 +132,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 			if dev != 0 {
 				// one-file-system is set, skip other filesystems
 				st, ok := s.Sys().(*syscall.Stat_t)
-				if !ok || st.Dev != dev {
+				if !ok || uint64(st.Dev) != dev {
 					continue
 				}
 			}
