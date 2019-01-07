@@ -110,6 +110,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `CASYNC_SSH_PATH` overrides the default "ssh" with a command to run when connecting to a remote SSH or SFTP chunk store
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
 - `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
+- `DESYNC_PROGRESSBAR_ENABLED` enables the progress bar if set to anything other than an empty string. By default, the progressbar is only turned on if STDERR is found to be a terminal.
 
 ### Caching
 
