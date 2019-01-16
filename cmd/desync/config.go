@@ -7,8 +7,8 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -137,11 +137,12 @@ var cfgFile string
 func initConfig() {
 	var defaultLocation bool
 	if cfgFile == "" {
-		u, err := user.Current()
-		if err != nil {
-			die(err)
+		switch runtime.GOOS {
+		case "windows":
+			cfgFile = filepath.Join(os.Getenv("HOMEDRIVE")+os.Getenv("HOMEPATH"), ".config", "desync", "config.json")
+		default:
+			cfgFile = filepath.Join(os.Getenv("HOME"), ".config", "desync", "config.json")
 		}
-		cfgFile = filepath.Join(u.HomeDir, ".config", "desync", "config.json")
 		defaultLocation = true
 	}
 	if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
