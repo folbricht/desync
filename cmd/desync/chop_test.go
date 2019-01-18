@@ -11,23 +11,36 @@ import (
 )
 
 func TestChopCommand(t *testing.T) {
-	store, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(store)
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{"simple chop",
+			[]string{"testdata/blob1.caibx", "testdata/blob1"}},
+		{"chop with ignore",
+			[]string{"--ignore", "testdata/blob2.caibx", "testdata/blob1.caibx", "testdata/blob1"}},
+	} {
+		store, err := ioutil.TempDir("", "")
+		require.NoError(t, err)
+		defer os.RemoveAll(store)
 
-	cmd := newChopCommand(context.Background())
-	cmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
+		args := []string{"-s", store}
+		args = append(args, test.args...)
 
-	// Redirect the command's output to turn off the progressbar and run it
-	stderr = ioutil.Discard
-	cmd.SetOutput(ioutil.Discard)
-	_, err = cmd.ExecuteC()
-	require.NoError(t, err)
+		cmd := newChopCommand(context.Background())
+		cmd.SetArgs(args)
 
-	// If the file was split right, we'll have chunks in the dir now
-	dirs, err := ioutil.ReadDir(store)
-	require.NoError(t, err)
-	require.NotEmpty(t, dirs)
+		// Redirect the command's output to turn off the progressbar and run it
+		stderr = ioutil.Discard
+		cmd.SetOutput(ioutil.Discard)
+		_, err = cmd.ExecuteC()
+		require.NoError(t, err)
+
+		// If the file was split right, we'll have chunks in the dir now
+		dirs, err := ioutil.ReadDir(store)
+		require.NoError(t, err)
+		require.NotEmpty(t, dirs)
+	}
 }
 
 func TestChopErrors(t *testing.T) {

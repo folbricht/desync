@@ -347,6 +347,12 @@ to populate a local cache from a possibly large blob that already exists on the 
 desync chop -s /some/local/store somefile.tar.caibx somefile.tar
 ```
 
+Chop a blob according to an existing index, while ignoring any chunks that are referenced in another index. This can be used to improve performance when it is known that all chunks referenced in `image-v1.caibx` are already present in the target store and can be ignored when chopping `image-v2.iso`.
+
+```text
+desync chop -s /some/local/store --ignore image-v1.iso.caibx image-v2.iso.caibx image-v2.iso
+```
+
 Pack a directory tree into a catar file.
 
 ```text

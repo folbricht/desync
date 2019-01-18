@@ -10,7 +10,8 @@ import (
 
 type chopOptions struct {
 	cmdStoreOptions
-	store string
+	store         string
+	ignoreIndexes []string
 }
 
 func newChopCommand(ctx context.Context) *cobra.Command {
@@ -35,6 +36,7 @@ Use '-' to read the index from STDIN.`,
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store")
+	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "index(s) to ignore chunks from")
 	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
 	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
 	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
@@ -65,10 +67,32 @@ func runChop(ctx context.Context, opt chopOptions, args []string) error {
 	if err != nil {
 		return err
 	}
+	chunks := c.Chunks
+
+	// If requested, skip/ignore all chunks that are referenced in other indexes
+	if len(opt.ignoreIndexes) > 0 {
+		m := make(map[desync.ChunkID]desync.IndexChunk)
+		for _, c := range chunks {
+			m[c.ID] = c
+		}
+		for _, f := range opt.ignoreIndexes {
+			i, err := readCaibxFile(f, opt.cmdStoreOptions)
+			if err != nil {
+				return err
+			}
+			for _, c := range i.Chunks {
+				delete(m, c.ID)
+			}
+		}
+		chunks = make([]desync.IndexChunk, 0, len(m))
+		for _, c := range m {
+			chunks = append(chunks, c)
+		}
+	}
 
 	// If this is a terminal, we want a progress bar
 	pb := NewProgressBar("")
 
 	// Chop up the file into chunks and store them in the target store
-	return desync.ChopFile(ctx, dataFile, c.Chunks, s, opt.n, pb)
+	return desync.ChopFile(ctx, dataFile, chunks, s, opt.n, pb)
 }
