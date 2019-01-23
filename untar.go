@@ -71,7 +71,7 @@ func makeDir(base string, n NodeDirectory, opts UntarOptions) error {
 		}
 	} else {
 		// Stat error'ed out, presumably because the dir doesn't exist. Create it.
-		if err := os.Mkdir(dst, n.Mode); err != nil {
+		if err := os.Mkdir(dst, 0777); err != nil {
 			return err
 		}
 	}
@@ -100,7 +100,7 @@ func makeDir(base string, n NodeDirectory, opts UntarOptions) error {
 func makeFile(base string, n NodeFile, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, n.Mode)
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if err := syscall.Mknod(dst, uint32(n.Mode), int(mkdev(n.Major, n.Minor))); err != nil {
+	if err := syscall.Mknod(dst, 0666, int(mkdev(n.Major, n.Minor))); err != nil {
 		return errors.Wrapf(err, "mknod %s", dst)
 	}
 	if !opts.NoSameOwner {
