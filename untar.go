@@ -71,7 +71,7 @@ func makeDir(base string, n NodeDirectory, opts UntarOptions) error {
 		}
 	} else {
 		// Stat error'ed out, presumably because the dir doesn't exist. Create it.
-		if err := os.Mkdir(dst, n.Mode); err != nil {
+		if err := os.Mkdir(dst, 0777); err != nil {
 			return err
 		}
 	}
@@ -100,7 +100,7 @@ func makeDir(base string, n NodeDirectory, opts UntarOptions) error {
 func makeFile(base string, n NodeFile, opts UntarOptions) error {
 	dst := filepath.Join(base, n.Name)
 
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, n.Mode)
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if err := syscall.Mknod(dst, uint32(n.Mode), int(mkdev(n.Major, n.Minor))); err != nil {
+	if err := syscall.Mknod(dst, 0666, int(mkdev(n.Major, n.Minor))); err != nil {
 		return errors.Wrapf(err, "mknod %s", dst)
 	}
 	if !opts.NoSameOwner {
@@ -268,29 +268,38 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 
 	// Assember - Read from data channels push the chunks into the pipe that untar reads from
 	g.Go(func() error {
-		for data := range assemble {
-			if pb != nil {
-				pb.Increment()
-			}
-			b := <-data
-			if _, err := io.Copy(w, bytes.NewReader(b)); err != nil {
-				return err
+	loop:
+		for {
+			select {
+			case data := <-assemble:
+				if data == nil {
+					break loop
+				}
+				if pb != nil {
+					pb.Increment()
+				}
+				b := <-data
+				if _, err := io.Copy(w, bytes.NewReader(b)); err != nil {
+					return err
+				}
+			case <-ctx.Done():
+				break loop
 			}
 		}
 		w.Close() // No more chunks to come, stop the untar
 		return nil
 	})
 
-	// Run untar in the main goroutine
-	err := UnTar(ctx, r, dst, opts)
+	// UnTar - Read from the pipe that Assembler pushes into
+	g.Go(func() error {
+		err := UnTar(ctx, r, dst, opts)
+		if err != nil {
+			// If an error has occurred during the UnTar, we need to stop the Assembler.
+			// If we don't, then it would stall on writing to the pipe.
+			r.CloseWithError(err)
+		}
+		return err
+	})
 
-	// We now have 2 possible error values. pErr for anything that failed during
-	// chunk download and assembly of the catar stream and err for failures during
-	// the untar stage. If pErr is set, this would have triggered an error from
-	// the untar stage as well (since it cancels the context), so pErr takes
-	// precedence here.
-	if pErr := g.Wait(); pErr != nil {
-		return pErr
-	}
-	return err
+	return g.Wait()
 }
