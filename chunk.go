@@ -3,6 +3,8 @@ package desync
 import (
 	"crypto/sha512"
 	"errors"
+	"fmt"
+	"os"
 )
 
 // Chunk holds chunk data compressed, uncompressed, or both. If a chunk is created
@@ -28,6 +30,9 @@ func NewChunkFromUncompressed(b []byte) *Chunk {
 func NewChunkWithID(id ChunkID, uncompressed, compressed []byte, skipVerify bool) (*Chunk, error) {
 	c := &Chunk{id: id, uncompressed: uncompressed, compressed: compressed}
 	if skipVerify {
+		if (c.id == ChunkID{}) {
+			fmt.Fprintln(os.Stderr, "issue-96: zero ID with skipverify")
+		}
 		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
 	}
@@ -72,12 +77,15 @@ func (c *Chunk) Uncompressed() ([]byte, error) {
 // after the first call and doesn't need to be re-calculated. Note that calculating
 // the ID may mean decompressing the data first.
 func (c *Chunk) ID() ChunkID {
-
 	if c.idCalculated {
+		if (c.id == ChunkID{}) {
+			fmt.Fprintln(os.Stderr, "issue-96: calculated ID is zero")
+		}
 		return c.id
 	}
 	b, err := c.Uncompressed()
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "issue-96: failed to uncompress :", err)
 		return ChunkID{}
 	}
 	c.id = sha512.Sum512_256(b)
