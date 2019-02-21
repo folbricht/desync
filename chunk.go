@@ -20,6 +20,9 @@ type Chunk struct {
 
 // NewChunkFromUncompressed creates a new chunk from uncompressed data.
 func NewChunkFromUncompressed(b []byte) *Chunk {
+	if len(b) == 0 {
+		panic("issue-96: chunk created without uncompressed data")
+	}
 	return &Chunk{uncompressed: b}
 }
 
@@ -28,6 +31,9 @@ func NewChunkFromUncompressed(b []byte) *Chunk {
 // the uncompressed data unless skipVerify is true. If called with just compressed
 // data, it'll decompress it for the ID validation.
 func NewChunkWithID(id ChunkID, uncompressed, compressed []byte, skipVerify bool) (*Chunk, error) {
+	if len(compressed) == 0 && len(uncompressed) == 0 {
+		panic("issue-96: chunk created without compressed or uncompressed data")
+	}
 	c := &Chunk{id: id, uncompressed: uncompressed, compressed: compressed}
 	if skipVerify {
 		if (c.id == ChunkID{}) {
