@@ -82,7 +82,6 @@ func TestChunkServerWriteCommand(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 func TestChunkServerVerifiedTLS(t *testing.T) {
-	// Create a blank store
 	outdir, err := ioutil.TempDir("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(outdir)
@@ -94,18 +93,20 @@ func TestChunkServerVerifiedTLS(t *testing.T) {
 	store := fmt.Sprintf("https://localhost:%s/", port)
 
 	// Run the "extract" command to confirm the TLS chunk server can be used
-	chopCmd := newExtractCommand(context.Background())
-	chopCmd.SetArgs([]string{"--ca-cert", "testdata/ca.crt", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
-	chopCmd.SetOutput(ioutil.Discard)
-	_, err = chopCmd.ExecuteC()
+	extractCmd := newExtractCommand(context.Background())
+	extractCmd.SetArgs([]string{"--ca-cert", "testdata/ca.crt", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
+	extractCmd.SetOutput(ioutil.Discard)
+	_, err = extractCmd.ExecuteC()
 	require.NoError(t, err)
 }
 
 func TestChunkServerInsecureTLS(t *testing.T) {
-	// Create a blank store
 	outdir, err := ioutil.TempDir("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(outdir)
+
+	stderr = ioutil.Discard
+	stdout = ioutil.Discard
 
 	// Start a (writable) server
 	addr, cancel := startChunkServer(t, "-s", "testdata/blob1.store", "--key", "testdata/server.key", "--cert", "testdata/server.crt")
@@ -113,12 +114,61 @@ func TestChunkServerInsecureTLS(t *testing.T) {
 	_, port, _ := net.SplitHostPort(addr)
 	store := fmt.Sprintf("https://localhost:%s/", port)
 
-	// Run the "extract" command to confirm the TLS chunk server can be used
-	chopCmd := newExtractCommand(context.Background())
-	chopCmd.SetArgs([]string{"-t", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
-	chopCmd.SetOutput(ioutil.Discard)
-	_, err = chopCmd.ExecuteC()
+	// Run the "extract" command accepting any cert  to confirm the TLS chunk server can be used
+	extractCmd := newExtractCommand(context.Background())
+	extractCmd.SetArgs([]string{"-t", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
+	// extractCmd.SetOutput(ioutil.Discard)
+	_, err = extractCmd.ExecuteC()
 	require.NoError(t, err)
+
+	// Run the "extract" command without accepting any cert. Should fail.
+	extractCmd = newExtractCommand(context.Background())
+	extractCmd.SetOutput(ioutil.Discard)
+	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
+	extractCmd.SetOutput(ioutil.Discard)
+	_, err = extractCmd.ExecuteC()
+	require.Error(t, err)
+
+}
+
+func TestChunkServerMutualTLS(t *testing.T) {
+	outdir, err := ioutil.TempDir("", "")
+	require.NoError(t, err)
+	defer os.RemoveAll(outdir)
+
+	stderr = ioutil.Discard
+	stdout = ioutil.Discard
+
+	// Start a (writable) server
+	addr, cancel := startChunkServer(t,
+		"-s", "testdata/blob1.store",
+		"--mutual-tls",
+		"--key", "testdata/server.key",
+		"--cert", "testdata/server.crt",
+		"--client-ca", "testdata/ca.crt",
+	)
+	defer cancel()
+	_, port, _ := net.SplitHostPort(addr)
+	store := fmt.Sprintf("https://localhost:%s/", port)
+
+	// Run the "extract" command to confirm the TLS chunk server can be used
+	extractCmd := newExtractCommand(context.Background())
+	extractCmd.SetArgs([]string{
+		"--client-key", "testdata/client.key",
+		"--client-cert", "testdata/client.crt",
+		"--ca-cert", "testdata/ca.crt",
+		"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
+	_, err = extractCmd.ExecuteC()
+	require.NoError(t, err)
+
+	// Same without client certs, should fail.
+	extractCmd = newExtractCommand(context.Background())
+	extractCmd.SetArgs([]string{
+		"--ca-cert", "testdata/ca.crt",
+		"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
+	extractCmd.SetOutput(ioutil.Discard)
+	_, err = extractCmd.ExecuteC()
+	require.Error(t, err)
 }
 
 func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc) {

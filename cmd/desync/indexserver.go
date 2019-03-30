@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/folbricht/desync"
@@ -14,9 +17,9 @@ import (
 
 type indexServerOptions struct {
 	cmdStoreOptions
+	cmdServerOptions
 	store           string
 	listenAddresses []string
-	cert, key       string
 	writable        bool
 }
 
@@ -40,10 +43,9 @@ enables writing to this store.`,
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "upstream source index store")
 	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
-	flags.StringVar(&opt.cert, "cert", "", "cert file in PEM format, requires --key")
-	flags.StringVar(&opt.key, "key", "", "key file in PEM format, requires --cert")
 	flags.BoolVarP(&opt.writable, "writeable", "w", false, "support writing")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
+	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
 }
 
@@ -51,8 +53,8 @@ func runIndexServer(ctx context.Context, opt indexServerOptions, args []string) 
 	if err := opt.cmdStoreOptions.validate(); err != nil {
 		return err
 	}
-	if (opt.key == "") != (opt.cert == "") {
-		return errors.New("--key and --cert options need to be provided together")
+	if err := opt.cmdServerOptions.validate(); err != nil {
+		return err
 	}
 
 	addresses := opt.listenAddresses
@@ -89,24 +91,44 @@ func runIndexServer(ctx context.Context, opt indexServerOptions, args []string) 
 	http.Handle("/", desync.NewHTTPIndexHandler(s, opt.writable))
 
 	// Start the server
-	return serve(ctx, opt.key, opt.cert, addresses...)
+	return serve(ctx, opt.cmdServerOptions, addresses...)
 }
 
-func serve(ctx context.Context, key, cert string, addresses ...string) error {
+func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error {
+	tlsConfig := &tls.Config{}
+	if opt.mutualTLS {
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+	if opt.clientCA != "" {
+		certPool := x509.NewCertPool()
+		b, err := ioutil.ReadFile(opt.clientCA)
+		if err != nil {
+			return err
+		}
+		if ok := certPool.AppendCertsFromPEM(b); !ok {
+			return errors.New("no client CA certficates found in client-ca file")
+		}
+		tlsConfig.ClientCAs = certPool
+	}
+
 	// Run the server(s) in a goroutine, and use the main goroutine to wait for
 	// a signal or a failing server (ctx gets cancelled in that case)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	for _, addr := range addresses {
 		go func(a string) {
-			server := &http.Server{Addr: a}
+			server := &http.Server{
+				Addr:      a,
+				TLSConfig: tlsConfig,
+				ErrorLog:  log.New(stderr, "", log.LstdFlags),
+			}
 			var err error
-			if key == "" {
+			if opt.key == "" {
 				err = server.ListenAndServe()
 			} else {
-				err = server.ListenAndServeTLS(cert, key)
+				err = server.ListenAndServeTLS(opt.cert, opt.key)
 			}
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(stderr, err)
 			cancel()
 		}(addr)
 	}

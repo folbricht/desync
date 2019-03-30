@@ -478,6 +478,26 @@ desync chunk-server -s /path/to/store --key server.key --cert server.crt -l :844
 desync extract --ca-cert ca.crt -s https://hostname:8443/ image.iso.caibx image.iso
 ```
 
+HTTPS chunk server with client authentication (mutual-TLS).
+
+```text
+# Building the CA, server and client certficates
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt
+openssl genrsa -out server.key 2048
+openssl req -new -key server.key -out server.csr (Common Name should be the server name)
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 3650 -sha256
+openssl genrsa -out client.key 2048
+openssl req -new -key client.key -out client.csr
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 3650 -sha256
+
+# Chunk server
+desync chunk-server -s /path/to/store --key server.key --cert server.crt --mutual-tls --client-ca ca.crt -l :8443
+
+# Client
+desync extract --client-key client.key --client-cert client.crt --ca-cert ca.crt -s https://hostname:8443/ image.iso.caibx image.iso
+```
+
 ## Links
 
 - casync - [https://github.com/systemd/casync](https://github.com/systemd/casync)

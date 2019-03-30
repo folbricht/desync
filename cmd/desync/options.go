@@ -48,11 +48,34 @@ func (o cmdStoreOptions) validate() error {
 	return nil
 }
 
-// Add common store option flags to command flagset.
+// Add common store option flags to a command flagset.
 func addStoreOptions(o *cmdStoreOptions, f *pflag.FlagSet) {
 	f.IntVarP(&o.n, "concurrency", "n", 10, "number of concurrent goroutines")
 	f.StringVar(&o.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
 	f.StringVar(&o.clientKey, "client-key", "", "path to client key for TLS authentication")
 	f.StringVar(&o.caCert, "ca-cert", "", "trust authorities in this file, instead of OS trust store")
 	f.BoolVarP(&o.trustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+}
+
+// cmdServerOptions hold command line options used in HTTP servers.
+type cmdServerOptions struct {
+	cert      string
+	key       string
+	mutualTLS bool
+	clientCA  string
+}
+
+func (o cmdServerOptions) validate() error {
+	if (o.key == "") != (o.cert == "") {
+		return errors.New("--key and --cert options need to be provided together")
+	}
+	return nil
+}
+
+// Add common HTTP server options to a command flagset.
+func addServerOptions(o *cmdServerOptions, f *pflag.FlagSet) {
+	f.StringVar(&o.cert, "cert", "", "cert file in PEM format, requires --key")
+	f.StringVar(&o.key, "key", "", "key file in PEM format, requires --cert")
+	f.BoolVar(&o.mutualTLS, "mutual-tls", false, "require valid client certficate")
+	f.StringVar(&o.clientCA, "client-ca", "", "acceptable client certificate or CA")
 }

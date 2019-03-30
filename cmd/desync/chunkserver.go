@@ -11,10 +11,10 @@ import (
 
 type chunkServerOptions struct {
 	cmdStoreOptions
+	cmdServerOptions
 	stores          []string
 	cache           string
 	listenAddresses []string
-	cert, key       string
 	writable        bool
 	skipVerifyWrite bool
 	uncompressed    bool
@@ -52,13 +52,12 @@ needs to be chosen carefully if the server is under high load.
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "upstream source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
-	flags.StringVar(&opt.cert, "cert", "", "cert file in PEM format, requires --key")
-	flags.StringVar(&opt.key, "key", "", "key file in PEM format, requires --cert")
 	flags.BoolVarP(&opt.writable, "writeable", "w", false, "support writing")
 	flags.BoolVar(&opt.skipVerify, "skip-verify-read", true, "don't verify chunk data read from upstream stores (faster)")
 	flags.BoolVar(&opt.skipVerifyWrite, "skip-verify-write", true, "don't verify chunk data written to this server (faster)")
 	flags.BoolVarP(&opt.uncompressed, "uncompressed", "u", false, "serve uncompressed chunks")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
+	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
 }
 
@@ -66,8 +65,8 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	if err := opt.cmdStoreOptions.validate(); err != nil {
 		return err
 	}
-	if (opt.key == "") != (opt.cert == "") {
-		return errors.New("--key and --cert options need to be provided together")
+	if err := opt.cmdServerOptions.validate(); err != nil {
+		return err
 	}
 
 	addresses := opt.listenAddresses
@@ -102,5 +101,5 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	http.Handle("/", desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, opt.uncompressed))
 
 	// Start the server
-	return serve(ctx, opt.key, opt.cert, addresses...)
+	return serve(ctx, opt.cmdServerOptions, addresses...)
 }
