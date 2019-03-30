@@ -39,19 +39,16 @@ catar or index to STDOUT.`,
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store (used with -i)")
-	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
-	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
-	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
-	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
 	flags.BoolVarP(&opt.oneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
+	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
 
 func runTar(ctx context.Context, opt tarOptions, args []string) error {
-	if (opt.clientKey == "") != (opt.clientCert == "") {
-		return errors.New("--client-key and --client-cert options need to be provided together")
+	if err := opt.cmdStoreOptions.validate(); err != nil {
+		return err
 	}
 	if opt.createIndex && opt.store == "" {
 		return errors.New("-i requires a store (-s <location>)")

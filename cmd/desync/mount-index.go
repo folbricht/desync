@@ -42,16 +42,13 @@ the index from STDIN.`,
 	flags := cmd.Flags()
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
-	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
-	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
-	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
-	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
 
 func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) error {
-	if (opt.clientKey == "") != (opt.clientCert == "") {
-		return errors.New("--client-key and --client-cert options need to be provided together")
+	if err := opt.cmdStoreOptions.validate(); err != nil {
+		return err
 	}
 
 	indexFile := args[0]

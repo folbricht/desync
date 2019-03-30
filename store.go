@@ -55,6 +55,12 @@ type StoreOptions struct {
 	// Key file name for HTTP SSL connections that require mutual SSL.
 	ClientKey string `json:"client-key,omitempty"`
 
+	// CA certificates to trust in TLS connections. If not set, the systems CA store is used.
+	CACert string `json:"ca-cert,omitempty"`
+
+	// Trust any certificate presented by the remote chunk store.
+	TrustInsecure bool `json:"trust-insecure,omitempty"`
+
 	// Timeout for waiting for objects to be retrieved. Default: 1 minute
 	Timeout time.Duration `json:"timeout,omitempty"`
 

@@ -38,9 +38,6 @@ invalid chunks are deleted from the store.`,
 }
 
 func runVerify(ctx context.Context, opt verifyOptions, args []string) error {
-	if (opt.clientKey == "") != (opt.clientCert == "") {
-		return errors.New("--client-key and --client-cert options need to be provided together")
-	}
 	if opt.store == "" {
 		return errors.New("no store provided")
 	}

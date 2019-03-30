@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 
 	"github.com/folbricht/desync"
 	"github.com/spf13/cobra"
@@ -28,15 +27,12 @@ from STDIN.`,
 		SilenceUsage: true,
 	}
 	flags := cmd.Flags()
-	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
-	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
-	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
-	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
 func runVerifyIndex(ctx context.Context, opt verifyIndexOptions, args []string) error {
-	if (opt.clientKey == "") != (opt.clientCert == "") {
-		return errors.New("--client-key and --client-cert options need to be provided together")
+	if err := opt.cmdStoreOptions.validate(); err != nil {
+		return err
 	}
 	indexFile := args[0]
 	dataFile := args[1]

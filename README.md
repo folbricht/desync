@@ -209,6 +209,8 @@ Available configuration values:
   - `error-retry` - Number of times to retry failed chunk requests. Default: 0.
   - `client-cert` - Cerificate file to be used for stores where the server requires mutual SSL.
   - `client-key` - Key file to be used for stores where the server requires mutual SSL.
+  - `ca-cert` - Certificate file containing trusted certs or CAs.
+  - `trust-insecure` - Trust any certificate presented by the server.
   - `skip-verify` - Disables data integrity verification when reading chunks to improve performance. Only recommended when chaining chunk stores with the `chunk-server` command using compressed stores.
   - `uncompressed` - Reads and writes uncompressed chunks from/to this store. This can improve performance, especially for local stores or caches. Compressed and uncompressed chunks can coexist in the same store, but only one kind is read or written by one client.
 
@@ -457,6 +459,23 @@ desync --config /path/to/server.json chunk-server -w -u -s /path/to/store/ -l :8
 echo '{"store-options": {"http://store.host:8080/":{"uncompressed": true}}}' > /path/to/client.json
 
 desync --config /path/to/client.json cache -s sftp://remote.host/store -c http://store.host:8080/ /path/to/blob.caibx
+```
+
+HTTPS chunk server using key and certificate signed by custom CA.
+
+```text
+# Building the CA and server certficate
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt
+openssl genrsa -out server.key 2048
+openssl req -new -key server.key -out server.csr (Common Name should be the server name)
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 3650 -sha256
+
+# Chunk server
+desync chunk-server -s /path/to/store --key server.key --cert server.crt -l :8443
+
+# Client
+desync extract --ca-cert ca.crt -s https://hostname:8443/ image.iso.caibx image.iso
 ```
 
 ## Links
