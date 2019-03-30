@@ -39,19 +39,16 @@ index from STDIN.`,
 	flags := cmd.Flags()
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s), used with -i")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
-	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
-	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
-	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
-	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
 	flags.BoolVarP(&opt.readIndex, "index", "i", false, "read index file (caidx), not catar")
 	flags.BoolVar(&opt.NoSameOwner, "no-same-owner", false, "extract files as current user")
 	flags.BoolVar(&opt.NoSamePermissions, "no-same-permissions", false, "use current user's umask instead of what is in the archive")
+	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
 
 func runUntar(ctx context.Context, opt untarOptions, args []string) error {
-	if (opt.clientKey == "") != (opt.clientCert == "") {
-		return errors.New("--client-key and --client-cert options need to be provided together")
+	if err := opt.cmdStoreOptions.validate(); err != nil {
+		return err
 	}
 	if opt.readIndex && len(opt.stores) == 0 {
 		return errors.New("-i requires at least one store (-s <location>)")

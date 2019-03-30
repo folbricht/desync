@@ -37,16 +37,13 @@ Use '-' to read the index from STDIN.`,
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store")
 	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "index(s) to ignore chunks from")
-	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
-	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
-	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
-	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
+	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
 
 func runChop(ctx context.Context, opt chopOptions, args []string) error {
-	if (opt.clientKey == "") != (opt.clientCert == "") {
-		return errors.New("--client-key and --client-cert options need to be provided together")
+	if err := opt.cmdStoreOptions.validate(); err != nil {
+		return err
 	}
 	if opt.store == "" {
 		return errors.New("no target store provided")

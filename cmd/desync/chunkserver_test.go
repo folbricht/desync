@@ -81,6 +81,45 @@ func TestChunkServerWriteCommand(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
+func TestChunkServerVerifiedTLS(t *testing.T) {
+	// Create a blank store
+	outdir, err := ioutil.TempDir("", "")
+	require.NoError(t, err)
+	defer os.RemoveAll(outdir)
+
+	// Start a (writable) server
+	addr, cancel := startChunkServer(t, "-s", "testdata/blob1.store", "--key", "testdata/server.key", "--cert", "testdata/server.crt")
+	defer cancel()
+	_, port, _ := net.SplitHostPort(addr)
+	store := fmt.Sprintf("https://localhost:%s/", port)
+
+	// Run the "extract" command to confirm the TLS chunk server can be used
+	chopCmd := newExtractCommand(context.Background())
+	chopCmd.SetArgs([]string{"--ca-cert", "testdata/ca.crt", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
+	chopCmd.SetOutput(ioutil.Discard)
+	_, err = chopCmd.ExecuteC()
+	require.NoError(t, err)
+}
+
+func TestChunkServerInsecureTLS(t *testing.T) {
+	// Create a blank store
+	outdir, err := ioutil.TempDir("", "")
+	require.NoError(t, err)
+	defer os.RemoveAll(outdir)
+
+	// Start a (writable) server
+	addr, cancel := startChunkServer(t, "-s", "testdata/blob1.store", "--key", "testdata/server.key", "--cert", "testdata/server.crt")
+	defer cancel()
+	_, port, _ := net.SplitHostPort(addr)
+	store := fmt.Sprintf("https://localhost:%s/", port)
+
+	// Run the "extract" command to confirm the TLS chunk server can be used
+	chopCmd := newExtractCommand(context.Background())
+	chopCmd.SetArgs([]string{"-t", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
+	chopCmd.SetOutput(ioutil.Discard)
+	_, err = chopCmd.ExecuteC()
+	require.NoError(t, err)
+}
 
 func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc) {
 	// Find a free local port to be used to run the index server on

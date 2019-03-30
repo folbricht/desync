@@ -17,10 +17,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// TrustInsecure determines if invalid certs presented by HTTP stores should
-// be accepted.
-var TrustInsecure bool
-
 // RemoteHTTPBase is the base object for a remote, HTTP-based chunk or index stores.
 type RemoteHTTPBase struct {
 	location *url.URL
@@ -44,40 +40,37 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		u.Path = u.Path + "/"
 	}
 
-	var tr *http.Transport
+	// Build a TLS client config
+	tlsConfig := &tls.Config{InsecureSkipVerify: opt.TrustInsecure}
 
+	// Add client key/cert if provided
 	if opt.ClientCert != "" && opt.ClientKey != "" {
-		// Load client cert
 		certificate, err := tls.LoadX509KeyPair(opt.ClientCert, opt.ClientKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load client certificate from %s", opt.ClientCert)
 		}
-		caCertPool, err := x509.SystemCertPool()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create CaCertPool")
-		}
-		tr = &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			DisableCompression:  true,
-			MaxIdleConnsPerHost: opt.N,
-			IdleConnTimeout:     60 * time.Second,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: TrustInsecure,
-				Certificates:       []tls.Certificate{certificate},
-				RootCAs:            caCertPool,
-			},
-		}
+		tlsConfig.Certificates = []tls.Certificate{certificate}
+	}
 
-	} else {
-		// Build a client with the right size connection pool and optionally disable
-		// certificate verification.
-		tr = &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			DisableCompression:  true,
-			MaxIdleConnsPerHost: opt.N,
-			IdleConnTimeout:     60 * time.Second,
-			TLSClientConfig:     &tls.Config{InsecureSkipVerify: TrustInsecure},
+	// Load custom CA set if provided
+	if opt.CACert != "" {
+		certPool := x509.NewCertPool()
+		b, err := ioutil.ReadFile(opt.CACert)
+		if err != nil {
+			return nil, err
 		}
+		if ok := certPool.AppendCertsFromPEM(b); !ok {
+			return nil, errors.New("no CA certficates found in ca-cert file")
+		}
+		tlsConfig.RootCAs = certPool
+	}
+
+	tr := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		DisableCompression:  true,
+		MaxIdleConnsPerHost: opt.N,
+		IdleConnTimeout:     60 * time.Second,
+		TLSClientConfig:     tlsConfig,
 	}
 
 	timeout := opt.Timeout

@@ -51,10 +51,6 @@ needs to be chosen carefully if the server is under high load.
 	flags := cmd.Flags()
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "upstream source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
-	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
-	flags.BoolVarP(&desync.TrustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
-	flags.StringVar(&opt.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
-	flags.StringVar(&opt.clientKey, "client-key", "", "path to client key for TLS authentication")
 	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
 	flags.StringVar(&opt.cert, "cert", "", "cert file in PEM format, requires --key")
 	flags.StringVar(&opt.key, "key", "", "key file in PEM format, requires --cert")
@@ -62,12 +58,13 @@ needs to be chosen carefully if the server is under high load.
 	flags.BoolVar(&opt.skipVerify, "skip-verify-read", true, "don't verify chunk data read from upstream stores (faster)")
 	flags.BoolVar(&opt.skipVerifyWrite, "skip-verify-write", true, "don't verify chunk data written to this server (faster)")
 	flags.BoolVarP(&opt.uncompressed, "uncompressed", "u", false, "serve uncompressed chunks")
+	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
 
 func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) error {
-	if (opt.clientKey == "") != (opt.clientCert == "") {
-		return errors.New("--client-key and --client-cert options need to be provided together")
+	if err := opt.cmdStoreOptions.validate(); err != nil {
+		return err
 	}
 	if (opt.key == "") != (opt.cert == "") {
 		return errors.New("--key and --cert options need to be provided together")
