@@ -73,9 +73,13 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		TLSClientConfig:     tlsConfig,
 	}
 
+	// If no timeout was given in config (set to 0), then use 1 minute. If timeout is negative, use 0 to
+	// set an infinite timeout.
 	timeout := opt.Timeout
 	if timeout == 0 {
 		timeout = time.Minute
+	} else if timeout < 0 {
+		timeout = 0
 	}
 	client := &http.Client{Transport: tr, Timeout: timeout}
 
