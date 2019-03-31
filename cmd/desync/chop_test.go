@@ -45,14 +45,13 @@ func TestChopCommand(t *testing.T) {
 
 func TestChopErrors(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		args    []string
-		message string
+		name string
+		args []string
 	}{
 		{"without store",
-			[]string{"testdata/blob1.caibx", "testdata/blob1"}, "no target store provided"},
+			[]string{"testdata/blob1.caibx", "testdata/blob1"}},
 		{"invalid store",
-			[]string{"-s", filepath.Join(os.TempDir(), "desync"), "testdata/blob1.caibx", "testdata/blob1"}, "no such file or directory"},
+			[]string{"-s", filepath.Join(os.TempDir(), "desync"), "testdata/blob1.caibx", "testdata/blob1"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := newChopCommand(context.Background())
@@ -60,7 +59,6 @@ func TestChopErrors(t *testing.T) {
 			cmd.SetArgs(test.args)
 			_, err := cmd.ExecuteC()
 			require.Error(t, err)
-			require.Contains(t, err.Error(), test.message)
 		})
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExtracCommand(t *testing.T) {
+func TestExtractCommand(t *testing.T) {
 	// Read the whole expected blob from disk
 	expected, err := ioutil.ReadFile("testdata/blob1")
 	require.NoError(t, err)
