@@ -23,9 +23,9 @@ func TestHTTPHandlerReadWrite(t *testing.T) {
 	}
 
 	// Start a read-write capable server and a read-only server
-	rw := httptest.NewServer(NewHTTPHandler(upstream, true, false, false))
+	rw := httptest.NewServer(NewHTTPHandler(upstream, true, false, false, ""))
 	defer rw.Close()
-	ro := httptest.NewServer(NewHTTPHandler(upstream, false, false, false))
+	ro := httptest.NewServer(NewHTTPHandler(upstream, false, false, false, ""))
 	defer ro.Close()
 
 	// Initialize HTTP chunks stores, one RW and the other RO
@@ -74,9 +74,9 @@ func TestHTTPHandlerCompression(t *testing.T) {
 	}
 
 	// Start a server that uses compression, and one that serves uncompressed chunks
-	co := httptest.NewServer(NewHTTPHandler(upstream, true, false, false))
+	co := httptest.NewServer(NewHTTPHandler(upstream, true, false, false, ""))
 	defer co.Close()
-	un := httptest.NewServer(NewHTTPHandler(upstream, true, false, true))
+	un := httptest.NewServer(NewHTTPHandler(upstream, true, false, true, ""))
 	defer un.Close()
 
 	// Initialize HTTP chunks stores, one RW and the other RO. Also make one that's
