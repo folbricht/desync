@@ -111,6 +111,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
 - `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
 - `DESYNC_PROGRESSBAR_ENABLED` enables the progress bar if set to anything other than an empty string. By default, the progressbar is only turned on if STDERR is found to be a terminal.
+- `DESYNC_HTTP_AUTH` sets the expected value in the HTTP Authorization header from clients when using `chunk-server` or `index-server`. It needs to be the full string, with type and encoding like `"Basic dXNlcjpwYXNzd29yZAo="`. Any authorization value provided in the command line takes precedence over the environment variable.
 
 ### Caching
 
@@ -213,6 +214,7 @@ Available configuration values:
   - `trust-insecure` - Trust any certificate presented by the server.
   - `skip-verify` - Disables data integrity verification when reading chunks to improve performance. Only recommended when chaining chunk stores with the `chunk-server` command using compressed stores.
   - `uncompressed` - Reads and writes uncompressed chunks from/to this store. This can improve performance, especially for local stores or caches. Compressed and uncompressed chunks can coexist in the same store, but only one kind is read or written by one client.
+  - `http-auth` - Value of the Authorization header in HTTP requests. This could be a bearer token with `"Bearer <token>"` or a Base64-encoded username and password pair for basic authentication like `"Basic dXNlcjpwYXNzd29yZAo="`.
 
 #### Example config
 
@@ -241,6 +243,9 @@ Available configuration values:
       "client-cert": "/path/to/crt",
       "client-key": "/path/to/key",
       "error-retry": 1
+    },
+    "https://10.0.0.1/": {
+      "http-auth": "Bearer abcabcabc"
     },
     "/path/to/local/cache": {
       "uncompressed": true
@@ -459,6 +464,19 @@ desync --config /path/to/server.json chunk-server -w -u -s /path/to/store/ -l :8
 echo '{"store-options": {"http://store.host:8080/":{"uncompressed": true}}}' > /path/to/client.json
 
 desync --config /path/to/client.json cache -s sftp://remote.host/store -c http://store.host:8080/ /path/to/blob.caibx
+```
+
+HTTP chunk server using basic authorization. The server is configured to expect an `Authorization` header with the correct value in every request. The client configuration defines what the value should be on a per-server basis. The client config could be added to the default `$HOME/.config/desync/config.json` instead.
+
+```text
+# Server
+DESYNC_HTTP_AUTH="Bearer abcabcabc" desync chunk-server -s /path/to/store -l :8080
+
+# Client
+echo '{"store-options": {"http://127.0.0.1:8080/":{"http-auth": "Bearer abcabcabc"}}}' > /path/to/client.json
+
+desync --config /path/to/client.json extract -s http://127.0.0.1:8080/ /path/to/blob.caibx /path/to/blob
+
 ```
 
 HTTPS chunk server using key and certificate signed by custom CA.

@@ -15,8 +15,8 @@ type HTTPIndexHandler struct {
 }
 
 // NewHTTPIndexHandler initializes an HTTP index store handler
-func NewHTTPIndexHandler(s IndexStore, writable bool) http.Handler {
-	return HTTPIndexHandler{HTTPHandlerBase{"index", writable}, s}
+func NewHTTPIndexHandler(s IndexStore, writable bool, auth string) http.Handler {
+	return HTTPIndexHandler{HTTPHandlerBase{"index", writable, auth}, s}
 }
 
 func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

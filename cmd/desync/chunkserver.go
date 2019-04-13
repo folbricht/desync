@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 
 	"github.com/folbricht/desync"
 	"github.com/spf13/cobra"
@@ -68,6 +69,9 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	if err := opt.cmdServerOptions.validate(); err != nil {
 		return err
 	}
+	if opt.auth == "" {
+		opt.auth = os.Getenv("DESYNC_HTTP_AUTH")
+	}
 
 	addresses := opt.listenAddresses
 	if len(addresses) == 0 {
@@ -98,7 +102,7 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	}
 	defer s.Close()
 
-	http.Handle("/", desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, opt.uncompressed))
+	http.Handle("/", desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, opt.uncompressed, opt.auth))
 
 	// Start the server
 	return serve(ctx, opt.cmdServerOptions, addresses...)

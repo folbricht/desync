@@ -10,8 +10,9 @@ import (
 
 // HTTPHandlerBase is the base object for a HTTP chunk or index store.
 type HTTPHandlerBase struct {
-	handlerType string
-	writable    bool
+	handlerType   string
+	writable      bool
+	Authorization string
 }
 
 func (h HTTPHandlerBase) get(id string, b []byte, err error, w http.ResponseWriter) {
