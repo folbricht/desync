@@ -12,7 +12,7 @@ import (
 type HTTPHandlerBase struct {
 	handlerType   string
 	writable      bool
-	Authorization string
+	authorization string
 }
 
 func (h HTTPHandlerBase) get(id string, b []byte, err error, w http.ResponseWriter) {

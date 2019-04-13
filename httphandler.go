@@ -25,7 +25,7 @@ func NewHTTPHandler(s Store, writable, skipVerifyWrite, uncompressed bool, auth 
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.Authorization != "" && r.Header.Get("Authorization") != h.Authorization {
+	if h.authorization != "" && r.Header.Get("Authorization") != h.authorization {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
