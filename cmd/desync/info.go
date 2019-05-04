@@ -85,7 +85,7 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 	results.Unique = len(deduped)
 
 	if len(opt.stores) > 0 {
-		store, err := multiStore(cmdStoreOptions{n: opt.n}, opt.stores...)
+		store, err := multiStoreWithRouter(cmdStoreOptions{n: opt.n}, opt.stores...)
 		if err != nil {
 			return err
 		}

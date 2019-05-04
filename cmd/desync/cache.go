@@ -67,7 +67,7 @@ func runCache(ctx context.Context, opt cacheOptions, args []string) error {
 		ids = append(ids, id)
 	}
 
-	s, err := multiStore(opt.cmdStoreOptions, opt.stores...)
+	s, err := multiStoreWithRouter(opt.cmdStoreOptions, opt.stores...)
 	if err != nil {
 		return err
 	}

@@ -132,6 +132,10 @@ Not all types of stores support all operations. The table below lists the suppor
 | Prune | yes | yes | no | yes | no |
 | Verify | yes | yes | no | no | no |
 
+### Store failover
+
+Given stores with identical content (same chunks in each), it is possible to group them in a way that provides resilience to failures. Store groups are specified in the command line using `|` as separator in the same `-s` option. For example using `-s http://server1/|http://server2`, requests will normally be sent to `server1`, but if a failure is encountered, all subsequent requests will be routed to `server2`. There is no automatic fail-back. A failure in `server2` will cause it to switch back to `server1`. Any number of stores can be grouped this way. Note that a missing chunk is treated as a failure immediately, no other servers will be tried, hence the need for all grouped stores to hold the same content.
+
 ### Remote indexes
 
 Indexes can be stored and retrieved from remote locations via SFTP, S3, and HTTP. Storing indexes remotely is optional and deliberately separate from chunk storage. While it's possible to store indexes in the same location as chunks in the case of SFTP and S3, this should only be done in secured environments. The built-in HTTP chunk store (`chunk-server` command) can not be used as index server. Use the `index-server` command instead to start an index server that serves indexes and can optionally store them as well (with `-w`).
@@ -300,12 +304,12 @@ Extract an image using several seeds present in a directory. Each of the `.caibx
 desync extract -s /local/store --seed-dir /path/to/images image-v3.qcow2.caibx image-v3.qcow2
 ```
 
-Mix and match remote stores and use a local cache store to improve performance.
+Mix and match remote stores and use a local cache store to improve performance. Also group two identical HTTP stores with `|` to provide failover in case of errors on one.
 
 ```text
 desync extract \
+       -s http://192.168.1.101/casync.store/|http://192.168.1.102/casync.store/ \
        -s ssh://192.168.1.1/path/to/casync.store/ \
-       -s http://192.168.1.2/casync.store/ \
        -s https://192.168.1.3/ssl.store/ \
        -c /path/to/cache \
        somefile.tar.caibx somefile.tar

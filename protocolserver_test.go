@@ -18,8 +18,10 @@ func TestProtocolServer(t *testing.T) {
 	chunkIn := NewChunkFromUncompressed(uncompressed)
 	compressed, _ := chunkIn.Compressed()
 	id := chunkIn.ID()
-	store := TestStore{
-		id: compressed,
+	store := &TestStore{
+		Chunks: map[ChunkID][]byte{
+			id: compressed,
+		},
 	}
 	ps := NewProtocolServer(r2, w1, store)
 

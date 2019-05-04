@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,4 +72,27 @@ func TestExtractCommand(t *testing.T) {
 			require.Equal(t, expected, got)
 		})
 	}
+}
+
+func TestExtractWithFailover(t *testing.T) {
+	outDir, err := ioutil.TempDir("", "")
+	require.NoError(t, err)
+	defer os.RemoveAll(outDir)
+	out := filepath.Join(outDir, "out")
+
+	// Start a server that'll always fail
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "failed", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	// Use the HTTP server to simulate a failing store. It should fail over to the local store and succeed
+	cmd := newExtractCommand(context.Background())
+	cmd.SetArgs([]string{"--store", ts.URL + "|testdata/blob1.store", "testdata/blob1.caibx", out})
+
+	// Redirect the command's output and run it
+	stderr = ioutil.Discard
+	cmd.SetOutput(ioutil.Discard)
+	_, err = cmd.ExecuteC()
+	require.NoError(t, err)
 }
