@@ -97,7 +97,7 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 			wg.Add(1)
 			go func() {
 				for id := range ids {
-					if store.HasChunk(id) {
+					if hasChunk, err := store.HasChunk(id); err != nil && hasChunk {
 						atomic.AddUint64(&results.InStore, 1)
 					}
 				}

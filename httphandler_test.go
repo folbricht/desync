@@ -49,7 +49,11 @@ func TestHTTPHandlerReadWrite(t *testing.T) {
 	}
 
 	// Check it's in the store
-	if !rwStore.HasChunk(id) {
+	hashChunk, err := rwStore.HasChunk(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hashChunk {
 		t.Fatal("chunk not found in store")
 	}
 
@@ -111,12 +115,20 @@ func TestHTTPHandlerCompression(t *testing.T) {
 	}
 
 	// Check it's in the store when looking for compressed chunks
-	if !coStore.HasChunk(id) {
+	coExists, err := coStore.HasChunk(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !coExists {
 		t.Fatal("chunk not found in store")
 	}
 
 	// It's also visible when looking for uncompressed data
-	if !unStore.HasChunk(id) {
+	unExists, err := unStore.HasChunk(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unExists {
 		t.Fatal("chunk not found in store")
 	}
 

@@ -139,7 +139,11 @@ func TestIndexChunking(t *testing.T) {
 		if err != nil {
 			t.Fatal(id)
 		}
-		if !s.HasChunk(id) {
+		hasChunk, err := s.HasChunk(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasChunk {
 			t.Fatalf("store is missing chunk %s", id)
 		}
 	}

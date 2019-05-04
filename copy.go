@@ -28,7 +28,11 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 				if pb != nil {
 					pb.Increment()
 				}
-				if dst.HasChunk(id) {
+				hasChunk, err := dst.HasChunk(id)
+				if err != nil {
+					return err
+				}
+				if hasChunk {
 					continue
 				}
 				chunk, err := src.GetChunk(id)

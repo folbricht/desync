@@ -13,6 +13,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var _ WriteStore = S3Store{}
+
 // S3StoreBase is the base object for all chunk and index stores with S3 backing
 type S3StoreBase struct {
 	Location string
@@ -133,10 +135,10 @@ func (s S3Store) StoreChunk(chunk *Chunk) error {
 }
 
 // HasChunk returns true if the chunk is in the store
-func (s S3Store) HasChunk(id ChunkID) bool {
+func (s S3Store) HasChunk(id ChunkID) (bool, error) {
 	name := s.nameFromID(id)
 	_, err := s.client.StatObject(s.bucket, name, minio.StatObjectOptions{})
-	return err == nil
+	return err == nil, nil
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.

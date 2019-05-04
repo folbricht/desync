@@ -41,13 +41,17 @@ func (r StoreRouter) GetChunk(id ChunkID) (*Chunk, error) {
 
 // HasChunk returns true if one of the containing stores has the chunk. It
 // goes through the stores in order and returns as soon as the chunk is found.
-func (r StoreRouter) HasChunk(id ChunkID) bool {
+func (r StoreRouter) HasChunk(id ChunkID) (bool, error) {
 	for _, s := range r.Stores {
-		if s.HasChunk(id) {
-			return true
+		hasChunk, err := s.HasChunk(id)
+		if err != nil {
+			return false, err
+		}
+		if hasChunk {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func (r StoreRouter) String() string {
