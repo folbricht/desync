@@ -20,11 +20,15 @@ type HTTPHandler struct {
 }
 
 // NewHTTPHandler initializes and returns a new HTTP handler for a chunks erver.
-func NewHTTPHandler(s Store, writable, skipVerifyWrite, uncompressed bool) http.Handler {
-	return HTTPHandler{HTTPHandlerBase{"chunk", writable}, s, skipVerifyWrite, uncompressed}
+func NewHTTPHandler(s Store, writable, skipVerifyWrite, uncompressed bool, auth string) http.Handler {
+	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, uncompressed}
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.authorization != "" && r.Header.Get("Authorization") != h.authorization {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	id, err := h.idFromPath(r.URL.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

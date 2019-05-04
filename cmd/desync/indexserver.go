@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/folbricht/desync"
@@ -56,6 +57,9 @@ func runIndexServer(ctx context.Context, opt indexServerOptions, args []string) 
 	if err := opt.cmdServerOptions.validate(); err != nil {
 		return err
 	}
+	if opt.auth == "" {
+		opt.auth = os.Getenv("DESYNC_HTTP_AUTH")
+	}
 
 	addresses := opt.listenAddresses
 	if len(addresses) == 0 {
@@ -88,7 +92,7 @@ func runIndexServer(ctx context.Context, opt indexServerOptions, args []string) 
 	defer s.Close()
 
 	// Setup the handler for the index server
-	http.Handle("/", desync.NewHTTPIndexHandler(s, opt.writable))
+	http.Handle("/", desync.NewHTTPIndexHandler(s, opt.writable, opt.auth))
 
 	// Start the server
 	return serve(ctx, opt.cmdServerOptions, addresses...)

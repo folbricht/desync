@@ -63,6 +63,7 @@ type cmdServerOptions struct {
 	key       string
 	mutualTLS bool
 	clientCA  string
+	auth      string
 }
 
 func (o cmdServerOptions) validate() error {
@@ -78,4 +79,5 @@ func addServerOptions(o *cmdServerOptions, f *pflag.FlagSet) {
 	f.StringVar(&o.key, "key", "", "key file in PEM format, requires --cert")
 	f.BoolVar(&o.mutualTLS, "mutual-tls", false, "require valid client certficate")
 	f.StringVar(&o.clientCA, "client-ca", "", "acceptable client certificate or CA")
+	f.StringVar(&o.auth, "authorization", "", "expected value of the authorization header in requests")
 }

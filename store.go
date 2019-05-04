@@ -61,7 +61,10 @@ type StoreOptions struct {
 	// Trust any certificate presented by the remote chunk store.
 	TrustInsecure bool `json:"trust-insecure,omitempty"`
 
-	// Timeout for waiting for objects to be retrieved. Default: 1 minute
+	// Authorization header value for HTTP stores
+	HTTPAuth string `json:"http-auth,omitempty"`
+
+	// Timeout for waiting for objects to be retrieved. Infinite if negative. Default: 1 minute
 	Timeout time.Duration `json:"timeout,omitempty"`
 
 	// Number of times object retrieval should be attempted on error. Useful when dealing

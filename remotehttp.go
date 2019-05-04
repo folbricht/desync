@@ -98,37 +98,40 @@ func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 	u, _ := r.location.Parse(name)
 	var (
 		resp    *http.Response
-		err     error
 		attempt int
-		b       []byte
 	)
-	for {
-		attempt++
-		resp, err = r.client.Get(u.String())
-		if err != nil {
-			if attempt >= r.opt.ErrorRetry {
-				return nil, errors.Wrap(err, u.String())
-			}
-			continue
-		}
-		defer resp.Body.Close()
-		switch resp.StatusCode {
-		case 200: // expected
-		case 404:
-			return nil, NoSuchObject{name}
-		default:
-			return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, name)
-		}
-		b, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			if attempt >= r.opt.ErrorRetry {
-				return nil, errors.Wrap(err, u.String())
-			}
-			continue
-		}
-		break
+retry:
+	attempt++
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
 	}
-	return b, err
+	if r.opt.HTTPAuth != "" {
+		req.Header.Set("Authorization", r.opt.HTTPAuth)
+	}
+	resp, err = r.client.Do(req)
+	if err != nil {
+		if attempt >= r.opt.ErrorRetry {
+			return nil, errors.Wrap(err, u.String())
+		}
+		goto retry
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200: // expected
+	case 404:
+		return nil, NoSuchObject{name}
+	default:
+		return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, name)
+	}
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		if attempt >= r.opt.ErrorRetry {
+			return nil, errors.Wrap(err, u.String())
+		}
+		goto retry
+	}
+	return b, nil
 }
 
 // StoreObject stores an object to the store.
@@ -145,6 +148,9 @@ retry:
 	req, err := http.NewRequest("PUT", u.String(), rdr)
 	if err != nil {
 		return err
+	}
+	if r.opt.HTTPAuth != "" {
+		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
 	resp, err = r.client.Do(req)
 	if err != nil {
@@ -195,7 +201,14 @@ func (r *RemoteHTTP) HasChunk(id ChunkID) bool {
 	)
 retry:
 	attempt++
-	resp, err = r.client.Head(u.String())
+	req, err := http.NewRequest("HEAD", u.String(), nil)
+	if err != nil {
+		return false
+	}
+	if r.opt.HTTPAuth != "" {
+		req.Header.Set("Authorization", r.opt.HTTPAuth)
+	}
+	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
 			return false
