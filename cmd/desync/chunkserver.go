@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 
@@ -19,6 +20,7 @@ type chunkServerOptions struct {
 	writable        bool
 	skipVerifyWrite bool
 	uncompressed    bool
+	logFile         string
 }
 
 func newChunkServerCommand(ctx context.Context) *cobra.Command {
@@ -57,6 +59,7 @@ needs to be chosen carefully if the server is under high load.
 	flags.BoolVar(&opt.skipVerify, "skip-verify-read", true, "don't verify chunk data read from upstream stores (faster)")
 	flags.BoolVar(&opt.skipVerifyWrite, "skip-verify-write", true, "don't verify chunk data written to this server (faster)")
 	flags.BoolVarP(&opt.uncompressed, "uncompressed", "u", false, "serve uncompressed chunks")
+	flags.StringVar(&opt.logFile, "log", "", "request log file or - for STDOUT")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
@@ -102,8 +105,43 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	}
 	defer s.Close()
 
-	http.Handle("/", desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, opt.uncompressed, opt.auth))
+	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, opt.uncompressed, opt.auth)
+
+	// Wrap the handler in a logger if requested
+	switch opt.logFile {
+	case "": // No logging of requests
+	case "-":
+		handler = withLog(handler, log.New(stderr, "", log.LstdFlags))
+	default:
+		l, err := os.OpenFile(opt.logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		defer l.Close()
+		handler = withLog(handler, log.New(l, "", log.LstdFlags))
+	}
+
+	http.Handle("/", handler)
 
 	// Start the server
 	return serve(ctx, opt.cmdServerOptions, addresses...)
+}
+
+// Wrapper for http.HandlerFunc to add logging for requests (and response codes)
+func withLog(h http.Handler, log *log.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		lrw := &loggingResponseWriter{ResponseWriter: w}
+		h.ServeHTTP(lrw, r)
+		log.Printf("Client: %s, Request: %s %s, Response: %d", r.RemoteAddr, r.Method, r.RequestURI, lrw.statusCode)
+	}
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
 }
