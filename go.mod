@@ -1,14 +1,14 @@
 module github.com/folbricht/desync
 
 require (
-	github.com/datadog/zstd v1.3.5-0.20180806225715-e46e47635dc0
+	github.com/datadog/zstd v1.4.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dchest/siphash v1.2.0
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/folbricht/tempfile v0.0.1
 	github.com/go-ini/ini v1.38.2
 	github.com/gopherjs/gopherjs v0.0.0-20180825215210-0210a2f0f73c // indirect
-	github.com/hanwen/go-fuse v0.0.0-20180831115513-1d35017e9701
+	github.com/hanwen/go-fuse v1.0.0
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jtolds/gls v4.2.1+incompatible // indirect
 	github.com/kr/fs v0.1.0 // indirect
