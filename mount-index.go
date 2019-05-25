@@ -120,6 +120,10 @@ func MountIndex(ctx context.Context, idx Index, path, name string, s Store, n in
 	if err != nil {
 		return err
 	}
+	go func() { // Unmount the server when the contex expires
+		<-ctx.Done()
+		server.Unmount()
+	}()
 	server.Serve()
 	return nil
 }
