@@ -22,6 +22,7 @@ type indexServerOptions struct {
 	store           string
 	listenAddresses []string
 	writable        bool
+	logFile         string
 }
 
 func newIndexServerCommand(ctx context.Context) *cobra.Command {
@@ -45,6 +46,7 @@ enables writing to this store.`,
 	flags.StringVarP(&opt.store, "store", "s", "", "upstream source index store")
 	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
 	flags.BoolVarP(&opt.writable, "writeable", "w", false, "support writing")
+	flags.StringVar(&opt.logFile, "log", "", "request log file or - for STDOUT")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
@@ -91,8 +93,23 @@ func runIndexServer(ctx context.Context, opt indexServerOptions, args []string) 
 	}
 	defer s.Close()
 
-	// Setup the handler for the index server
-	http.Handle("/", desync.NewHTTPIndexHandler(s, opt.writable, opt.auth))
+	handler := desync.NewHTTPIndexHandler(s, opt.writable, opt.auth)
+
+	// Wrap the handler in a logger if requested
+	switch opt.logFile {
+	case "": // No logging of requests
+	case "-":
+		handler = withLog(handler, log.New(stderr, "", log.LstdFlags))
+	default:
+		l, err := os.OpenFile(opt.logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		defer l.Close()
+		handler = withLog(handler, log.New(l, "", log.LstdFlags))
+	}
+
+	http.Handle("/", handler)
 
 	// Start the server
 	return serve(ctx, opt.cmdServerOptions, addresses...)
