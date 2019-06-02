@@ -97,11 +97,17 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	)
 	if opt.writable {
 		s, err = WritableStore(opt.stores[0], opt.cmdStoreOptions)
+		if err != nil {
+			return err
+		}
 	} else {
 		s, err = MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
-	}
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+		// We want to take the edge of a large number of requests coming in for the same chunk. No need
+		// to hit the (potentially slow) upstream stores for duplicated requests.
+		s = desync.NewDedupQueue(s)
 	}
 	defer s.Close()
 
