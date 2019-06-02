@@ -11,7 +11,7 @@ import (
 // HTTP remote stores currently.
 type Store interface {
 	GetChunk(id ChunkID) (*Chunk, error)
-	HasChunk(id ChunkID) bool
+	HasChunk(id ChunkID) (bool, error)
 	io.Closer
 	fmt.Stringer
 }

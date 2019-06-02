@@ -17,6 +17,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var _ WriteStore = &RemoteHTTP{}
+
 // RemoteHTTPBase is the base object for a remote, HTTP-based chunk or index stores.
 type RemoteHTTPBase struct {
 	location *url.URL
@@ -191,7 +193,7 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 }
 
 // HasChunk returns true if the chunk is in the store
-func (r *RemoteHTTP) HasChunk(id ChunkID) bool {
+func (r *RemoteHTTP) HasChunk(id ChunkID) (bool, error) {
 	p := r.nameFromID(id)
 	u, _ := r.location.Parse(p)
 	var (
@@ -203,7 +205,7 @@ retry:
 	attempt++
 	req, err := http.NewRequest("HEAD", u.String(), nil)
 	if err != nil {
-		return false
+		return false, err
 	}
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
@@ -211,7 +213,7 @@ retry:
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
-			return false
+			return false, err
 		}
 		goto retry
 	}
@@ -219,9 +221,11 @@ retry:
 	resp.Body.Close()
 	switch resp.StatusCode {
 	case 200:
-		return true
+		return true, nil
+	case 404:
+		return false, nil
 	default:
-		return false
+		return false, fmt.Errorf("unexpected status code: %s", resp.Status)
 	}
 }
 

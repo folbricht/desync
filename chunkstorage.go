@@ -51,8 +51,8 @@ func (s *ChunkStorage) StoreChunk(chunk *Chunk) (err error) {
 	}
 
 	// Skip this chunk if the store already has it
-	if s.ws.HasChunk(chunk.ID()) {
-		return nil
+	if hasChunk, err := s.ws.HasChunk(chunk.ID()); err != nil || hasChunk {
+		return err
 	}
 
 	// The chunk was marked as "processed" above. If there's a problem to actually

@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var _ Store = &RemoteSSH{}
+
 // RemoteSSH is a remote casync store accessed via SSH. Supports running
 // multiple sessions to improve throughput.
 type RemoteSSH struct {
@@ -55,11 +57,11 @@ func (r *RemoteSSH) Close() error {
 // this way, pulling the whole chunk just to see if it's present, is very
 // inefficient. I'm not aware of a way to implement it with the casync protocol
 // any other way.
-func (r *RemoteSSH) HasChunk(id ChunkID) bool {
-	if _, err := r.GetChunk(id); err == nil {
-		return true
+func (r *RemoteSSH) HasChunk(id ChunkID) (bool, error) {
+	if _, err := r.GetChunk(id); err != nil {
+		return false, err
 	}
-	return false
+	return true, nil
 }
 
 func (r *RemoteSSH) String() string {

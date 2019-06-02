@@ -13,6 +13,8 @@ import (
 	"github.com/folbricht/tempfile"
 )
 
+var _ WriteStore = LocalStore{}
+
 // LocalStore casync store
 type LocalStore struct {
 	Base string
@@ -216,10 +218,16 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 }
 
 // HasChunk returns true if the chunk is in the store
-func (s LocalStore) HasChunk(id ChunkID) bool {
+func (s LocalStore) HasChunk(id ChunkID) (bool, error) {
 	_, p := s.nameFromID(id)
 	_, err := os.Stat(p)
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (s LocalStore) String() string {

@@ -19,6 +19,8 @@ import (
 	"github.com/pkg/sftp"
 )
 
+var _ WriteStore = &SFTPStore{}
+
 // SFTPStoreBase is the base object for SFTP chunk and index stores.
 type SFTPStoreBase struct {
 	location *url.URL
@@ -200,12 +202,12 @@ func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 }
 
 // HasChunk returns true if the chunk is in the store
-func (s *SFTPStore) HasChunk(id ChunkID) bool {
+func (s *SFTPStore) HasChunk(id ChunkID) (bool, error) {
 	c := <-s.pool
 	defer func() { s.pool <- c }()
 	name := c.nameFromID(id)
 	_, err := c.client.Stat(name)
-	return err == nil
+	return err == nil, nil
 }
 
 // Prune removes any chunks from the store that are not contained in a list

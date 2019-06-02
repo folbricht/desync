@@ -3,10 +3,9 @@ package main
 import (
 	"fmt"
 	"net/url"
-	"strings"
-
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/folbricht/desync"
 	"github.com/minio/minio-go"
@@ -18,20 +17,11 @@ import (
 // cacheLocation - Place of the local store used for caching, can be blank
 // storeLocation - URLs or paths to remote or local stores that should be queried in order
 func MultiStoreWithCache(cmdOpt cmdStoreOptions, cacheLocation string, storeLocations ...string) (desync.Store, error) {
-	var (
-		store  desync.Store
-		stores []desync.Store
-	)
-	for _, location := range storeLocations {
-		s, err := storeFromLocation(location, cmdOpt)
-		if err != nil {
-			return store, err
-		}
-		stores = append(stores, s)
-	}
-
 	// Combine all stores into one router
-	store = desync.NewStoreRouter(stores...)
+	store, err := multiStoreWithRouter(cmdOpt, storeLocations...)
+	if err != nil {
+		return nil, err
+	}
 
 	// See if we want to use a writable store as cache, if so, attach a cache to
 	// the router
@@ -49,12 +39,12 @@ func MultiStoreWithCache(cmdOpt cmdStoreOptions, cacheLocation string, storeLoca
 	return store, nil
 }
 
-// multiStoreWithCache is used to parse store locations, and return a store
+// multiStoreWithRouter is used to parse store locations, and return a store
 // router instance containing them all for reading, in the order they're given
-func multiStore(cmdOpt cmdStoreOptions, storeLocations ...string) (desync.Store, error) {
+func multiStoreWithRouter(cmdOpt cmdStoreOptions, storeLocations ...string) (desync.Store, error) {
 	var stores []desync.Store
 	for _, location := range storeLocations {
-		s, err := storeFromLocation(location, cmdOpt)
+		s, err := storeGroup(location, cmdOpt)
 		if err != nil {
 			return nil, err
 		}
@@ -62,6 +52,25 @@ func multiStore(cmdOpt cmdStoreOptions, storeLocations ...string) (desync.Store,
 	}
 
 	return desync.NewStoreRouter(stores...), nil
+}
+
+// storeGroup parses a store-location string and if it finds a "|" in the string initializes
+// each store in the group individually before wrapping them into a FailoverGroup. If there's
+// no "|" in the string, this is a nop.
+func storeGroup(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
+	if !strings.ContainsAny(location, "|") {
+		return storeFromLocation(location, cmdOpt)
+	}
+	var stores []desync.Store
+	members := strings.Split(location, "|")
+	for _, m := range members {
+		s, err := storeFromLocation(m, cmdOpt)
+		if err != nil {
+			return nil, err
+		}
+		stores = append(stores, s)
+	}
+	return desync.NewFailoverGroup(stores...), nil
 }
 
 // WritableStore is used to parse a store location from the command line for

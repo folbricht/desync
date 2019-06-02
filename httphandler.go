@@ -61,7 +61,12 @@ func (h HTTPHandler) get(id ChunkID, w http.ResponseWriter) {
 }
 
 func (h HTTPHandler) head(id ChunkID, w http.ResponseWriter) {
-	if h.s.HasChunk(id) {
+	hasChunk, err := h.s.HasChunk(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if hasChunk {
 		w.WriteHeader(http.StatusOK)
 		return
 	}

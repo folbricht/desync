@@ -31,7 +31,11 @@ func TestLocalStoreCompressed(t *testing.T) {
 	}
 
 	// Check it's in the store
-	if !s.HasChunk(id) {
+	hasChunk, err := s.HasChunk(id)
+	if err != nil {
+		t.Fatal((err))
+	}
+	if !hasChunk {
 		t.Fatal("chunk not found in store")
 	}
 
@@ -84,7 +88,11 @@ func TestLocalStoreUncompressed(t *testing.T) {
 	}
 
 	// Check it's in the store
-	if !s.HasChunk(id) {
+	hasChunk, err := s.HasChunk(id)
+	if err != nil {
+		t.Fatal((err))
+	}
+	if !hasChunk {
 		t.Fatal("chunk not found in store")
 	}
 

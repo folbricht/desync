@@ -45,11 +45,11 @@ func (c Cache) GetChunk(id ChunkID) (*Chunk, error) {
 }
 
 // HasChunk first checks the cache for the chunk, then the store.
-func (c Cache) HasChunk(id ChunkID) bool {
-	if c.l.HasChunk(id) || c.s.HasChunk(id) {
-		return true
+func (c Cache) HasChunk(id ChunkID) (bool, error) {
+	if hasChunk, err := c.l.HasChunk(id); err != nil || hasChunk {
+		return hasChunk, err
 	}
-	return false
+	return c.s.HasChunk(id)
 }
 
 func (c Cache) String() string {
