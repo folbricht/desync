@@ -52,6 +52,7 @@ func (q *DedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
 	// We're done, drop the request from the queue to avoid keeping all the chunk data
 	// in memory after the request is done
 	q.getChunkQueue.delete(id)
+
 	return b, err
 }
 
@@ -120,13 +121,13 @@ func newRequest() *request {
 }
 
 // Wait for the request to complete. Returns the data as well as the error from the request.
-func (r request) wait() (interface{}, error) {
+func (r *request) wait() (interface{}, error) {
 	<-r.done
 	return r.data, r.err
 }
 
 // Set the result data and marks this request as comlete.
-func (r request) markDone(data interface{}, err error) {
+func (r *request) markDone(data interface{}, err error) {
 	r.data = data
 	r.err = err
 	close(r.done)
