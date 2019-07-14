@@ -15,6 +15,7 @@ import (
 	"crypto/x509"
 
 	"github.com/pkg/errors"
+	"golang.org/x/net/http2"
 )
 
 var _ WriteStore = &RemoteHTTP{}
@@ -73,6 +74,13 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		MaxIdleConnsPerHost: opt.N,
 		IdleConnTimeout:     60 * time.Second,
 		TLSClientConfig:     tlsConfig,
+	}
+	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
+	// the HTTP library. Turn it on for this transport.
+	if tr.TLSClientConfig != nil {
+		if err := http2.ConfigureTransport(tr); err != nil {
+			return nil, err
+		}
 	}
 
 	// If no timeout was given in config (set to 0), then use 1 minute. If timeout is negative, use 0 to
