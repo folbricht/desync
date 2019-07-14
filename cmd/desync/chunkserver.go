@@ -127,10 +127,8 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 		handler = withLog(handler, log.New(l, "", log.LstdFlags))
 	}
 
-	http.Handle("/", handler)
-
 	// Start the server
-	return serve(ctx, opt.cmdServerOptions, addresses...)
+	return serve(ctx, handler, opt.cmdServerOptions, addresses...)
 }
 
 // Wrapper for http.HandlerFunc to add logging for requests (and response codes)

@@ -16,6 +16,7 @@ type cmdStoreOptions struct {
 	caCert        string
 	skipVerify    bool
 	trustInsecure bool
+	h2c           bool
 }
 
 // MergeWith takes store options as read from the config, and applies command-line
@@ -37,6 +38,9 @@ func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions
 	if o.trustInsecure {
 		opt.TrustInsecure = true
 	}
+	if o.h2c {
+		opt.H2C = true
+	}
 	return opt
 }
 
@@ -55,6 +59,7 @@ func addStoreOptions(o *cmdStoreOptions, f *pflag.FlagSet) {
 	f.StringVar(&o.clientKey, "client-key", "", "path to client key for TLS authentication")
 	f.StringVar(&o.caCert, "ca-cert", "", "trust authorities in this file, instead of OS trust store")
 	f.BoolVarP(&o.trustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
+	f.BoolVarP(&o.h2c, "h2c", "", false, "enable H2C - HTTP2 over non-TLS connections")
 }
 
 // cmdServerOptions hold command line options used in HTTP servers.

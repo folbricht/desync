@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -43,43 +44,62 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		u.Path = u.Path + "/"
 	}
 
-	// Build a TLS client config
-	tlsConfig := &tls.Config{InsecureSkipVerify: opt.TrustInsecure}
+	var roundTripper http.RoundTripper
+	if location.Scheme == "https" {
+		// Build a TLS client config
+		tlsConfig := &tls.Config{InsecureSkipVerify: opt.TrustInsecure}
 
-	// Add client key/cert if provided
-	if opt.ClientCert != "" && opt.ClientKey != "" {
-		certificate, err := tls.LoadX509KeyPair(opt.ClientCert, opt.ClientKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load client certificate from %s", opt.ClientCert)
+		// Add client key/cert if provided
+		if opt.ClientCert != "" && opt.ClientKey != "" {
+			certificate, err := tls.LoadX509KeyPair(opt.ClientCert, opt.ClientKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load client certificate from %s", opt.ClientCert)
+			}
+			tlsConfig.Certificates = []tls.Certificate{certificate}
 		}
-		tlsConfig.Certificates = []tls.Certificate{certificate}
-	}
-
-	// Load custom CA set if provided
-	if opt.CACert != "" {
-		certPool := x509.NewCertPool()
-		b, err := ioutil.ReadFile(opt.CACert)
-		if err != nil {
-			return nil, err
+		// Load custom CA set if provided
+		if opt.CACert != "" {
+			certPool := x509.NewCertPool()
+			b, err := ioutil.ReadFile(opt.CACert)
+			if err != nil {
+				return nil, err
+			}
+			if ok := certPool.AppendCertsFromPEM(b); !ok {
+				return nil, errors.New("no CA certficates found in ca-cert file")
+			}
+			tlsConfig.RootCAs = certPool
 		}
-		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return nil, errors.New("no CA certficates found in ca-cert file")
+		// Build the transport with TLS options
+		tr := &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			DisableCompression:  true,
+			MaxIdleConnsPerHost: opt.N,
+			IdleConnTimeout:     60 * time.Second,
+			TLSClientConfig:     tlsConfig,
 		}
-		tlsConfig.RootCAs = certPool
-	}
-
-	tr := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		DisableCompression:  true,
-		MaxIdleConnsPerHost: opt.N,
-		IdleConnTimeout:     60 * time.Second,
-		TLSClientConfig:     tlsConfig,
-	}
-	// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
-	// the HTTP library. Turn it on for this transport.
-	if tr.TLSClientConfig != nil {
+		// If we're using a custom tls.Config, HTTP2 isn't enabled by default in
+		// the HTTP library. Turn it on for this transport.
 		if err := http2.ConfigureTransport(tr); err != nil {
 			return nil, err
+		}
+		roundTripper = tr
+	} else { // Non-TLS connections
+		roundTripper = &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			DisableCompression:  true,
+			MaxIdleConnsPerHost: opt.N,
+			IdleConnTimeout:     60 * time.Second,
+		}
+		if opt.H2C { // Enable HTTP2 over non-TLS connections. Note this doesn't support proxies at this point.
+			roundTripper = &http2.Transport{
+				DisableCompression: true,
+				// So http2.Transport doesn't complain the URL scheme isn't 'https'
+				AllowHTTP: true,
+				// Pretend we are dialing a TLS endpoint. (Note, we ignore the passed tls.Config)
+				DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+					return net.Dial(network, addr)
+				},
+			}
 		}
 	}
 
@@ -91,7 +111,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	} else if timeout < 0 {
 		timeout = 0
 	}
-	client := &http.Client{Transport: tr, Timeout: timeout}
+	client := &http.Client{Transport: roundTripper, Timeout: timeout}
 
 	return &RemoteHTTPBase{location: location, client: client, opt: opt}, nil
 }

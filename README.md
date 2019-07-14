@@ -22,7 +22,7 @@ Among the distinguishing factors:
 - Allows FUSE mounting of blob indexes
 - S3 protocol support to access chunk stores for read operations and some some commands that write chunks
 - Stores and retrieves index files from remote index stores such as HTTP, SFTP and S3
-- Built-in HTTP(S) index server to read/write indexes
+- Built-in HTTP(S) index server to read/write indexes with HTTP2 and H2C support
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 
 ## Terminology
@@ -104,6 +104,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `--key` Key file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires a certificate with `--cert`
 - `--cert` Certificate file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires `-key`.
 - `-k` Keep partially assembled files in place when `extract` fails or is interrupted. The command can then be restarted and it'll not have to retrieve completed parts again. Also use this option to write to block devices.
+- `--h2c` When using remote HTTP stores without TLS, this will enable H2C and allow HTTP2 over plain connections.
 
 ### Environment variables
 
@@ -219,6 +220,7 @@ Available configuration values:
   - `skip-verify` - Disables data integrity verification when reading chunks to improve performance. Only recommended when chaining chunk stores with the `chunk-server` command using compressed stores.
   - `uncompressed` - Reads and writes uncompressed chunks from/to this store. This can improve performance, especially for local stores or caches. Compressed and uncompressed chunks can coexist in the same store, but only one kind is read or written by one client.
   - `http-auth` - Value of the Authorization header in HTTP requests. This could be a bearer token with `"Bearer <token>"` or a Base64-encoded username and password pair for basic authentication like `"Basic dXNlcjpwYXNzd29yZAo="`.
+  - `h2c` - Enable H2C, HTTP2 over non-TLS connections. This is ignored if the store uses HTTPS, and it must be supported by the chunk-server.
 
 #### Example config
 

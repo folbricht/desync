@@ -81,4 +81,7 @@ type StoreOptions struct {
 
 	// Store and read chunks uncompressed, without chunk file extension
 	Uncompressed bool `json:"uncompressed"`
+
+	// Enables H2C support (HTTP2 over plain connections). This is only honoured for non-TLS connections.
+	H2C bool `json:"h2c"`
 }

@@ -14,12 +14,8 @@ import (
 
 type mountIndexOptions struct {
 	cmdStoreOptions
-	stores     []string
-	cache      string
-	seeds      []string
-	seedDirs   []string
-	inPlace    bool
-	printStats bool
+	stores []string
+	cache  string
 }
 
 func newMountIndexCommand(ctx context.Context) *cobra.Command {

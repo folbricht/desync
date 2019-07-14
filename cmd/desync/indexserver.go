@@ -14,6 +14,8 @@ import (
 
 	"github.com/folbricht/desync"
 	"github.com/spf13/cobra"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 type indexServerOptions struct {
@@ -109,13 +111,11 @@ func runIndexServer(ctx context.Context, opt indexServerOptions, args []string) 
 		handler = withLog(handler, log.New(l, "", log.LstdFlags))
 	}
 
-	http.Handle("/", handler)
-
 	// Start the server
-	return serve(ctx, opt.cmdServerOptions, addresses...)
+	return serve(ctx, handler, opt.cmdServerOptions, addresses...)
 }
 
-func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error {
+func serve(ctx context.Context, handler http.Handler, opt cmdServerOptions, addresses ...string) error {
 	tlsConfig := &tls.Config{}
 	if opt.mutualTLS {
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
@@ -132,6 +132,11 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 		tlsConfig.ClientCAs = certPool
 	}
 
+	// Wrap the handler to allow H2C and handle incoming requests for HTTP2 over plain HTTP
+	// connections without TLS.
+	h2 := &http2.Server{}
+	handler = h2c.NewHandler(handler, h2)
+
 	// Run the server(s) in a goroutine, and use the main goroutine to wait for
 	// a signal or a failing server (ctx gets cancelled in that case)
 	ctx, cancel := context.WithCancel(ctx)
@@ -142,6 +147,7 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 				Addr:      a,
 				TLSConfig: tlsConfig,
 				ErrorLog:  log.New(stderr, "", log.LstdFlags),
+				Handler:   handler,
 			}
 			var err error
 			if opt.key == "" {
