@@ -186,7 +186,7 @@ func (c *pChunker) start(ctx context.Context) {
 		start += c.offset
 		if len(b) == 0 {
 			// TODO: If this worker reached the end of the stream and it's not the
-			// last one, we should probable stop all following workers. Meh, shouldn't
+			// last one, we should probably stop all following workers. Meh, shouldn't
 			// be happening for large file or save significant CPU for small ones.
 			c.eof = true
 			return
