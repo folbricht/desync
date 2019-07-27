@@ -174,6 +174,70 @@ func TestChunkerBounds(t *testing.T) {
 	}
 }
 
+// Test to confirm advancing through the input without producing chunks works.
+func TestChunkerAdvance(t *testing.T) {
+	// Build an input slice that is NullChunk + <dataA> + Nullchunk + <dataB>.
+	// Then skip over the data slices and we should be left with only Null chunks.
+	dataA := make([]byte, 128) // Short slice
+	for i := range dataA {
+		dataA[i] = 'a'
+	}
+
+	dataB := make([]byte, 12*ChunkSizeMaxDefault) // Long slice to ensure we read past the chunker-internal buffer
+	for i := range dataB {
+		dataB[i] = 'b'
+	}
+
+	nullChunk := NewNullChunk(ChunkSizeMaxDefault)
+
+	// Build the input slice consisting of Null+dataA+Null+dataB
+	input := append(nullChunk.Data, dataA...)
+	input = append(input, nullChunk.Data...)
+	input = append(input, dataB...)
+
+	c, err := NewChunker(bytes.NewReader(input), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Chunk the first part, this should be a null chunk
+	_, buf, err := c.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf, nullChunk.Data) {
+		t.Fatal("expected null chunk")
+	}
+
+	// Now skip the dataA slice
+	if err := c.Advance(len(dataA)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the 2nd null chunk
+	_, buf, err = c.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf, nullChunk.Data) {
+		t.Fatal("expected null chunk")
+	}
+
+	// Skip over dataB
+	if err := c.Advance(len(dataB)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should be at the end, nothing more to chunk
+	_, buf, err = c.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(buf) != 0 {
+		t.Fatal("expected end of input")
+	}
+}
+
 // Global vars used for results during the benchmark to prevent optimizer
 // from optimizing away some operations
 var (
@@ -215,3 +279,29 @@ func chunkFile(b *testing.B, name string) error {
 	}
 	return err
 }
+
+func benchmarkChunkNull(b *testing.B, size int) {
+	in := make([]byte, size)
+	for n := 0; n < b.N; n++ {
+		c, err := NewChunker(bytes.NewReader(in), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+		if err != nil {
+			panic(err)
+		}
+		for {
+			start, buf, err := c.Next()
+			if err != nil {
+				panic(err)
+			}
+			if len(buf) == 0 {
+				break
+			}
+			chunkStart = start
+			chunkBuf = buf
+		}
+	}
+}
+
+func BenchmarkChunkNull1M(b *testing.B)   { benchmarkChunkNull(b, 1024*1024) }
+func BenchmarkChunkNull10M(b *testing.B)  { benchmarkChunkNull(b, 10*1024*1024) }
+func BenchmarkChunkNull50M(b *testing.B)  { benchmarkChunkNull(b, 50*1024*1024) }
+func BenchmarkChunkNull100M(b *testing.B) { benchmarkChunkNull(b, 100*1024*1024) }
