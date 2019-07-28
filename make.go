@@ -281,11 +281,12 @@ func (c *pChunker) syncWith(chunk IndexChunk) (bool, uint64) {
 	// of nulls (chunk split points are unlikely to line up). If so we can tell the previous
 	// chunker how many nulls are coming so it doesn't need to do all the work again and can
 	// skip ahead, producing null-chunks of max size.
+	var n uint64
 	if c.sync.ID == c.nullChunk.ID && prev.ID == c.nullChunk.ID {
 		// We know there're at least some null chunks in front of the previous chunker. Let's
 		// see if there are more in our bucket so we can tell the previous chunker how far to
 		// skip ahead.
-		n := prev.Start + prev.Size - chunk.Start
+		n = prev.Start + prev.Size - chunk.Start
 		for {
 			var ok bool
 			select {
@@ -302,7 +303,7 @@ func (c *pChunker) syncWith(chunk IndexChunk) (bool, uint64) {
 			n += uint64(len(c.nullChunk.Data))
 		}
 	}
-	return false, 0
+	return false, n
 }
 
 // ChunkingStats is used to report statistics of a parallel chunking operation.

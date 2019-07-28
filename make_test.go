@@ -20,10 +20,11 @@ func TestParallelChunking(t *testing.T) {
 	rand.Read(rand2)
 
 	tests := map[string][][]byte{
-		"random input":  {rand1, rand2, rand1, rand2, rand1},
-		"leading null":  {null, null, null, null, rand1, rand2},
-		"trailing null": {rand1, rand2, null, null, null, null},
-		"middle null":   {rand1, null, null, null, null, rand2},
+		"random input":    {rand1, rand2, rand1, rand2, rand1},
+		"leading null":    {null, null, null, null, rand1, rand2},
+		"trailing null":   {rand1, rand2, null, null, null, null},
+		"middle null":     {rand1, null, null, null, null, rand2},
+		"spread out null": {rand1, null, null, null, rand1, null, null, null, rand2},
 	}
 
 	for name, input := range tests {
