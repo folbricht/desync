@@ -191,9 +191,7 @@ func TestChunkerAdvance(t *testing.T) {
 	nullChunk := NewNullChunk(ChunkSizeMaxDefault)
 
 	// Build the input slice consisting of Null+dataA+Null+dataB
-	input := append(nullChunk.Data, dataA...)
-	input = append(input, nullChunk.Data...)
-	input = append(input, dataB...)
+	input := join(nullChunk.Data, dataA, nullChunk.Data, dataB)
 
 	c, err := NewChunker(bytes.NewReader(input), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
 	if err != nil {

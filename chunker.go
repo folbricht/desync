@@ -222,9 +222,9 @@ func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
 func (c *Chunker) Advance(n int) error {
 	// We might still have bytes in the buffer. These count towards the move forward.
 	// It's possible the advance stays within the buffer and doesn't impact the reader.
+	c.start += uint64(n)
 	if n <= len(c.buf) {
 		c.buf = c.buf[n:]
-		c.start += uint64(n)
 		return nil
 	}
 	readerN := int64(n - len(c.buf))
@@ -234,7 +234,6 @@ func (c *Chunker) Advance(n int) error {
 		_, err := rs.Seek(readerN, io.SeekCurrent)
 		return err
 	}
-
 	_, err := io.CopyN(ioutil.Discard, c.r, readerN)
 	return err
 }
