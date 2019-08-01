@@ -1,86 +1,86 @@
 package desync
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha512"
 	"fmt"
-	"io/ioutil"
+	"math/rand"
 	"os"
-	"reflect"
 	"testing"
+
+	"github.com/folbricht/tempfile"
 )
 
 func TestParallelChunking(t *testing.T) {
-	blank, err := ioutil.TempFile("", "blank")
-	if err != nil {
-		t.Fatal(err)
-	}
-	blank.Close()
-	defer os.RemoveAll(blank.Name())
+	null := make([]byte, 4*ChunkSizeMaxDefault)
+	rand1 := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(rand1)
+	rand2 := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(rand2)
 
-	// Create a file full of zeroes to test behaviour of the chunker when no
-	// boundaries can be found (the rolling hash will not produce boundaries
-	// for files full of nil bytes)
-	zeroes, err := ioutil.TempFile("", "zeroes")
-	if err != nil {
-		t.Fatal(err)
-	}
-	zeroes.Close()
-	defer os.RemoveAll(zeroes.Name())
-	if err = ioutil.WriteFile(zeroes.Name(), make([]byte, 1024*1024), 0644); err != nil {
-		t.Fatal(err)
-	}
-	// Make an array of files we want to test the chunker with
-	testFiles := []string{
-		"testdata/chunker.input",
-		zeroes.Name(),
-		blank.Name(),
+	tests := map[string][][]byte{
+		"random input":    {rand1, rand2, rand1, rand2, rand1},
+		"leading null":    {null, null, null, null, rand1, rand2},
+		"trailing null":   {rand1, rand2, null, null, null, null},
+		"middle null":     {rand1, null, null, null, null, rand2},
+		"spread out null": {rand1, null, null, null, rand1, null, null, null, rand2},
 	}
 
-	// Split each file with different values for n (number of goroutes)
-	for _, name := range testFiles {
-		// Chunk the file single stream first to use the results as reference for
-		// the parallel chunking
-		f, err := os.Open(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer f.Close()
-		c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var expected []IndexChunk
-		for {
-			start, buf, err := c.Next()
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Put the input data into a file for chunking
+			f, err := tempfile.New("", "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(buf) == 0 {
-				break
+			defer os.Remove(f.Name())
+			b := join(input...)
+			if _, err := f.Write(b); err != nil {
+				t.Fatal(err)
 			}
-			id := ChunkID(sha512.Sum512_256(buf))
-			expected = append(expected, IndexChunk{Start: start, Size: uint64(len(buf)), ID: id})
-		}
+			f.Close()
 
-		for n := 2; n < 3; n++ {
-			t.Run(fmt.Sprintf("%s, n=%d", name, n), func(t *testing.T) {
-				// Split it up in parallel
-				index, _, err := IndexFromFile(
-					context.Background(),
-					name,
-					n,
-					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
-					nil,
-				)
+			// Chunk the file single stream first to use the results as reference for
+			// the parallel chunking
+			c, err := NewChunker(bytes.NewReader(b), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var expected []IndexChunk
+			for {
+				start, buf, err := c.Next()
 				if err != nil {
 					t.Fatal(err)
 				}
-				// Compare the results of the single stream chunking to the parallel ones
-				if !reflect.DeepEqual(index.Chunks, expected) {
-					t.Fatal("chunks from parallel splitter don't match single stream chunks")
+				if len(buf) == 0 {
+					break
 				}
-			})
-		}
+				id := ChunkID(sha512.Sum512_256(buf))
+				expected = append(expected, IndexChunk{Start: start, Size: uint64(len(buf)), ID: id})
+			}
+
+			// Chunk the file with the parallel chunking algorithm and different degrees of concurrency
+			for n := 1; n <= 10; n++ {
+				t.Run(fmt.Sprintf("%s, n=%d", name, n), func(t *testing.T) {
+					index, _, err := IndexFromFile(
+						context.Background(),
+						f.Name(),
+						n,
+						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+						nil,
+					)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					for i := range expected {
+						if expected[i] != index.Chunks[i] {
+							t.Fatal("chunks from parallel splitter don't match single stream chunks")
+						}
+					}
+				})
+			}
+		})
 	}
 }

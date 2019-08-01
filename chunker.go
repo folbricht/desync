@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/bits"
 )
 
@@ -212,6 +213,29 @@ func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
 	c.hIdx = 0
 	c.hValue = 0
 	return start, b, err
+}
+
+// Advance n bytes without producing chunks. This can be used if the content of the next
+// section in the file is known (i.e. it is known that there are a number of null chunks
+// coming). This resets everything in the chunker and behaves as if the streams starts
+// at (current position+n).
+func (c *Chunker) Advance(n int) error {
+	// We might still have bytes in the buffer. These count towards the move forward.
+	// It's possible the advance stays within the buffer and doesn't impact the reader.
+	c.start += uint64(n)
+	if n <= len(c.buf) {
+		c.buf = c.buf[n:]
+		return nil
+	}
+	readerN := int64(n - len(c.buf))
+	c.buf = nil
+	rs, ok := c.r.(io.Seeker)
+	if ok {
+		_, err := rs.Seek(readerN, io.SeekCurrent)
+		return err
+	}
+	_, err := io.CopyN(ioutil.Discard, c.r, readerN)
+	return err
 }
 
 // Min returns the minimum chunk size

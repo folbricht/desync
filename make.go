@@ -74,6 +74,11 @@ func IndexFromFile(ctx context.Context,
 		defer pb.Finish()
 	}
 
+	// Null chunks is produced when a large section of null bytes is chunked. There are no
+	// split points in those sections so it's always of max chunk size. Used for optimizations
+	// when chunking files with large empty sections.
+	nullChunk := NewNullChunk(max)
+
 	// Create/initialize the workers
 	worker := make([]*pChunker, n)
 	for i := 0; i < n; i++ {
@@ -96,11 +101,12 @@ func IndexFromFile(ctx context.Context,
 			return index, stats, err
 		}
 		p := &pChunker{
-			chunker: c,
-			results: make(chan IndexChunk, mChunks),
-			done:    make(chan struct{}),
-			offset:  start,
-			stats:   &stats,
+			chunker:   c,
+			results:   make(chan IndexChunk, mChunks),
+			done:      make(chan struct{}),
+			offset:    start,
+			stats:     &stats,
+			nullChunk: nullChunk,
 		}
 		worker[i] = p
 	}
@@ -163,6 +169,9 @@ type pChunker struct {
 	eof   bool
 	sync  IndexChunk
 	stats *ChunkingStats
+
+	// Null chunk for optimizing chunking sparse files
+	nullChunk *NullChunk
 }
 
 func (c *pChunker) start(ctx context.Context) {
@@ -200,8 +209,24 @@ func (c *pChunker) start(ctx context.Context) {
 
 		// Check if the next worker already has this chunk, at which point we stop
 		// here and let the next continue
-		if c.next != nil && c.next.syncWith(chunk) {
-			return
+		if c.next != nil {
+			inSync, zeroes := c.next.syncWith(chunk)
+			if inSync {
+				return
+			}
+			numNullChunks := int(int(zeroes) / len(c.nullChunk.Data))
+			if numNullChunks > 0 {
+				if err := c.chunker.Advance(numNullChunks * len(c.nullChunk.Data)); err != nil {
+					c.err = err
+					return
+				}
+				nc := chunk
+				for i := 0; i < numNullChunks; i++ {
+					nc = IndexChunk{Start: nc.Start + nc.Size, Size: uint64(len(c.nullChunk.Data)), ID: c.nullChunk.ID}
+					c.results <- nc
+					zeroes -= uint64(len(c.nullChunk.Data))
+				}
+			}
 		}
 
 		// If the next worker has stopped and has no more chunks in its bucket,
@@ -225,24 +250,60 @@ func (c *pChunker) active() bool {
 	}
 }
 
-// Returns true if the given chunk lines up with one in the current bucket
-func (c *pChunker) syncWith(chunk IndexChunk) bool {
+// Returns true if the given chunk lines up with one in the current bucket. Also returns
+// the number of zero bytes this chunker has found from 'chunk'. This helps the previous
+// chunker to skip chunking over those areas and put a null-chunks (always max size) in
+// place instead.
+func (c *pChunker) syncWith(chunk IndexChunk) (bool, uint64) {
 	// Read from our bucket until we're past (or match) where the previous worker
 	// currently is
+	var prev IndexChunk
 	for chunk.Start > c.sync.Start {
+		prev = c.sync
 		var ok bool
 		select {
 		case c.sync, ok = <-c.results:
 			if !ok {
-				return false
+				return false, 0
 			}
 		default: // Nothing in my bucket? Move on
-			return false
+			return false, 0
 		}
 	}
-	// Did we find a match with the previous worker. If so the previous worker
+
+	// Did we find a match with the previous worker? If so, the previous worker
 	// should stop and this one will keep going
-	return chunk.Start == c.sync.Start && chunk.Size == c.sync.Size
+	if chunk.Start == c.sync.Start && chunk.Size == c.sync.Size {
+		return true, 0
+	}
+
+	// The previous chunker didn't sync up with this one, but perhaps we're in a large area
+	// of nulls (chunk split points are unlikely to line up). If so we can tell the previous
+	// chunker how many nulls are coming so it doesn't need to do all the work again and can
+	// skip ahead, producing null-chunks of max size.
+	var n uint64
+	if c.sync.ID == c.nullChunk.ID && prev.ID == c.nullChunk.ID {
+		// We know there're at least some null chunks in front of the previous chunker. Let's
+		// see if there are more in our bucket so we can tell the previous chunker how far to
+		// skip ahead.
+		n = prev.Start + prev.Size - chunk.Start
+		for {
+			var ok bool
+			select {
+			case c.sync, ok = <-c.results:
+				if !ok {
+					return false, n
+				}
+			default: // Nothing more in my bucket? Move on
+				return false, n
+			}
+			if c.sync.ID != c.nullChunk.ID { // Hit the end of the null chunks, stop here
+				break
+			}
+			n += uint64(len(c.nullChunk.Data))
+		}
+	}
+	return false, n
 }
 
 // ChunkingStats is used to report statistics of a parallel chunking operation.
