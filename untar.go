@@ -164,7 +164,7 @@ func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
 	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if err := syscall.Mknod(dst, 0666, int(mkdev(n.Major, n.Minor))); err != nil {
+	if err := syscall.Mknod(dst, uint32(n.Mode)|0666, int(mkdev(n.Major, n.Minor))); err != nil {
 		return errors.Wrapf(err, "mknod %s", dst)
 	}
 	if !opts.NoSameOwner {
