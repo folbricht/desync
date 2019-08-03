@@ -37,9 +37,8 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		return nil, fmt.Errorf("unsupported scheme %s, expected http or https", location.Scheme)
 	}
 	// Make sure we have a trailing / on the path
-	u := *location
-	if !strings.HasSuffix(u.Path, "/") {
-		u.Path = u.Path + "/"
+	if !strings.HasSuffix(location.Path, "/") {
+		location.Path = location.Path + "/"
 	}
 
 	// Build a TLS client config
