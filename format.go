@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 )
@@ -622,4 +623,45 @@ func (e *FormatEncoder) Encode(v interface{}) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported format element '%s'", reflect.TypeOf(v))
 	}
+}
+
+// Create a balanced BST of goodbye items in catar. Modifies the input slice.
+func makeGoodbyeBST(in []FormatGoodbyeItem) []FormatGoodbyeItem {
+	// Sort the list by hash (primary) and offset (secondary)
+	sort.Slice(in, func(i, j int) bool {
+		switch {
+		case in[i].Hash < in[j].Hash:
+			return true
+		case in[i].Hash > in[j].Hash:
+			return false
+		default:
+			return in[i].Offset < in[j].Offset
+		}
+	})
+
+	// Convert the sorted array into a complete BST in array representation
+	out := make([]FormatGoodbyeItem, len(in))
+	e := uint(math.Log2(float64(len(in))) + 1)
+	bst(in, out, 0, e)
+	return out
+}
+
+func bst(in, out []FormatGoodbyeItem, i int, e uint) {
+	if len(in) == 0 {
+		return
+	}
+	p := 1 << (e - 1)
+	q := p << 1
+
+	var k int
+	if len(in) >= p-1+p/2 {
+		k = (q - 2) / 2
+	} else {
+		v := p - 1 + p/2 - len(in)
+		k = (q-2)/2 - v
+	}
+
+	out[i] = in[k]
+	bst(in[:k], out, 2*i+1, e-1)
+	bst(in[k+1:], out, 2*i+2, e-1)
 }

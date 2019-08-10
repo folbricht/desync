@@ -156,3 +156,51 @@ func TestEncoder(t *testing.T) {
 		}
 	}
 }
+
+// Goodbye items in a catar are a complete BST in array form. Test the sorting algorithm
+// for those. The key in the BST is the hash.
+func TestGoodbyeBST(t *testing.T) {
+	in := []FormatGoodbyeItem{
+		{Offset: 0x0, Hash: 0xb4bedf9e7796b4d},
+		{Offset: 0x1, Hash: 0x218f89516a601c9c},
+		{Offset: 0x2, Hash: 0x28b19de616c15f21},
+		{Offset: 0x3, Hash: 0x490c091d8b45918f},
+		{Offset: 0x4, Hash: 0x51ba5a19e058c7ad},
+		{Offset: 0x5, Hash: 0x61cffdbff93ec8e0},
+		{Offset: 0x6, Hash: 0x6b38ee3f1236bc32},
+		{Offset: 0x7, Hash: 0x6ec111ca376a466e},
+		{Offset: 0x8, Hash: 0x7d411df513f323cf},
+		{Offset: 0x9, Hash: 0x9007695395e7df8f},
+		{Offset: 0xa, Hash: 0x99a552eadd2d1199},
+		{Offset: 0xb, Hash: 0x9e09fb7343978b70},
+		{Offset: 0xc, Hash: 0xa1a7aeca9969d80a},
+		{Offset: 0xd, Hash: 0xbcbe4464f8e3043b},
+		{Offset: 0xe, Hash: 0xc01a4819ff41b89c},
+		{Offset: 0xf, Hash: 0xc7bb588a3af1fb89},
+	}
+
+	expected := []FormatGoodbyeItem{
+		{Offset: 0x8, Hash: 0x7d411df513f323cf},
+		{Offset: 0x4, Hash: 0x51ba5a19e058c7ad},
+		{Offset: 0xc, Hash: 0xa1a7aeca9969d80a},
+		{Offset: 0x2, Hash: 0x28b19de616c15f21},
+		{Offset: 0x6, Hash: 0x6b38ee3f1236bc32},
+		{Offset: 0xa, Hash: 0x99a552eadd2d1199},
+		{Offset: 0xe, Hash: 0xc01a4819ff41b89c},
+		{Offset: 0x1, Hash: 0x218f89516a601c9c},
+		{Offset: 0x3, Hash: 0x490c091d8b45918f},
+		{Offset: 0x5, Hash: 0x61cffdbff93ec8e0},
+		{Offset: 0x7, Hash: 0x6ec111ca376a466e},
+		{Offset: 0x9, Hash: 0x9007695395e7df8f},
+		{Offset: 0xb, Hash: 0x9e09fb7343978b70},
+		{Offset: 0xd, Hash: 0xbcbe4464f8e3043b},
+		{Offset: 0xf, Hash: 0xc7bb588a3af1fb89},
+		{Offset: 0x0, Hash: 0xb4bedf9e7796b4d},
+	}
+
+	out := makeGoodbyeBST(in)
+
+	if !reflect.DeepEqual(out, expected) {
+		t.Fatal("BST doesn't match expected")
+	}
+}

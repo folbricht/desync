@@ -163,10 +163,13 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 		}
 
 		// Fix the offsets in the item list, it needs to be the offset (backwards)
-		// from the start of the goodbye element, not offset from the start of the stream
+		// from the start of FormatGoodbye
 		for i := range items {
 			items[i].Offset = uint64(n) - items[i].Offset
 		}
+
+		// Turn the list of Goodbye items into a complete BST
+		items = makeGoodbyeBST(items)
 
 		// Append the tail marker
 		items = append(items, FormatGoodbyeItem{
