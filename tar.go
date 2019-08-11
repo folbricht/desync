@@ -27,7 +27,8 @@ const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
 	CaFormatWithSockets |
 	CaFormatWithXattrs |
 	CaFormatSHA512256 |
-	CaFormatExcludeNoDump
+	CaFormatExcludeNoDump |
+	CaFormatExcludeFile
 
 // Tar implements the tar command which recursively parses a directory tree,
 // and produces a stream of encoded casync format elements (catar file).
