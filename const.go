@@ -71,6 +71,7 @@ const (
 	CaFormatWithSELinux = 0x40000000
 	CaFormatWithFcaps   = 0x80000000
 
+	CaFormatExcludeFile      = 0x1000000000000000
 	CaFormatSHA512256        = 0x2000000000000000
 	CaFormatExcludeSubmounts = 0x4000000000000000
 	CaFormatExcludeNoDump    = 0x8000000000000000
