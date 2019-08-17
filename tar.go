@@ -4,15 +4,11 @@ package desync
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
-	"path/filepath"
-	"syscall"
-
-	"github.com/pkg/xattr"
+	"path"
+	"strings"
 )
 
 // TarFeatureFlags are used as feature flags in the header of catar archives. These
@@ -32,25 +28,14 @@ const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
 
 // Tar implements the tar command which recursively parses a directory tree,
 // and produces a stream of encoded casync format elements (catar file).
-func Tar(ctx context.Context, w io.Writer, src string, oneFileSystem bool) error {
+func Tar(ctx context.Context, w io.Writer, fs FilesystemReader) error {
 	enc := NewFormatEncoder(w)
-	info, err := os.Lstat(src)
-	if err != nil {
-		return err
-	}
-	dev := uint64(0)
-	if oneFileSystem {
-		st, ok := info.Sys().(*syscall.Stat_t)
-		if ok {
-			// Dev (and Rdev) elements of syscall.Stat_t are uint64 on Linux, but int32 on MacOS. Cast it to uint64 everywhere.
-			dev = uint64(st.Dev)
-		}
-	}
-	_, err = tar(ctx, enc, src, info, dev)
+	buf := &fsBufReader{fs, nil}
+	_, err := tar(ctx, enc, buf, nil)
 	return err
 }
 
-func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, dev uint64) (n int64, err error) {
+func tar(ctx context.Context, enc FormatEncoder, fs *fsBufReader, f *File) (n int64, err error) {
 	// See if we're meant to stop
 	select {
 	case <-ctx.Done():
@@ -58,30 +43,18 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 	default:
 	}
 
-	// Get the UID/GID and major/minor for devices from the low-level stat structure
-	var (
-		uid, gid     int
-		major, minor uint64
-		mode         uint32
-	)
-
-	switch sys := info.Sys().(type) {
-	case *syscall.Stat_t:
-		uid = int(sys.Uid)
-		gid = int(sys.Gid)
-		major = uint64((sys.Rdev >> 8) & 0xfff)
-		minor = (uint64(sys.Rdev) % 256) | ((uint64(sys.Rdev) & 0xfff00000) >> 12)
-		mode = uint32(sys.Mode)
-	default:
-		// TODO What should be done here on platforms that don't support this (Windows)?
-		// Default UID/GID to 0 and move on or error?
-		return n, errors.New("unsupported platform")
+	// Read very first entry
+	if f == nil {
+		f, err := fs.Next()
+		if err != nil {
+			return 0, err
+		}
+		return tar(ctx, enc, fs, f)
 	}
-	m := info.Mode()
 
 	// Skip (and warn about) things we can't encode properly
-	if !(m.IsDir() || m.IsRegular() || isSymlink(m) || isDevice(m)) {
-		fmt.Fprintf(os.Stderr, "skipping '%s' : unsupported node type\n", path)
+	if !(f.IsDir() || f.IsRegular() || f.IsSymlink() || f.IsDevice()) {
+		fmt.Fprintf(os.Stderr, "skipping '%s' : unsupported node type\n", f.Name)
 		return 0, nil
 	}
 
@@ -89,10 +62,10 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 	entry := FormatEntry{
 		FormatHeader: FormatHeader{Size: 64, Type: CaFormatEntry},
 		FeatureFlags: TarFeatureFlags,
-		UID:          uid,
-		GID:          gid,
-		Mode:         os.FileMode(mode),
-		MTime:        info.ModTime(),
+		UID:          f.Uid,
+		GID:          f.Gid,
+		Mode:         f.Mode,
+		MTime:        f.ModTime,
 	}
 	nn, err := enc.Encode(entry)
 	n += nn
@@ -100,21 +73,12 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 		return n, err
 	}
 
-	// CaFormatXattrs - Write extended attributes elements
-	keys, err := xattr.LList(filepath.Join(path))
-	if err != nil {
-		return n, err
-	}
-	for _, key := range keys {
-		value, err := xattr.LGet(filepath.Join(path), key)
-		if err != nil {
-			return n, err
-		}
+	// CaFormatXattrs - Write extended attributes elements. TODO: sort these by key like casync does
+	for key, value := range f.Xattrs {
 		x := FormatXAttr{
 			FormatHeader: FormatHeader{Size: uint64(len(key)) + 1 + uint64(len(value)) + 1 + 16, Type: CaFormatXAttr},
 			NameAndValue: key + "\000" + string(value),
 		}
-
 		nn, err = enc.Encode(x)
 		n += nn
 		if err != nil {
@@ -123,34 +87,39 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 	}
 
 	switch {
-	case m.IsDir():
-		stats, err := ioutil.ReadDir(path)
-		if err != nil {
-			return n, err
-		}
+	case f.IsDir():
+		dir := f.Path
+
 		var items []FormatGoodbyeItem
-		for _, s := range stats {
-			if dev != 0 {
-				// one-file-system is set, skip other filesystems
-				st, ok := s.Sys().(*syscall.Stat_t)
-				if !ok || uint64(st.Dev) != dev {
-					continue
+		for {
+			f, err := fs.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
 				}
+				return n, err
+			}
+
+			// End of the current dir?
+			if !strings.HasPrefix(f.Path, dir) {
+				fs.Buffer(f)
+				break
 			}
 
 			start := n
 			// CaFormatFilename - Write the filename element, then recursively encode
 			// the items in the directory
+			name := path.Base(f.Name)
 			filename := FormatFilename{
-				FormatHeader: FormatHeader{Size: uint64(16 + len(s.Name()) + 1), Type: CaFormatFilename},
-				Name:         s.Name(),
+				FormatHeader: FormatHeader{Size: uint64(16 + len(name) + 1), Type: CaFormatFilename},
+				Name:         name,
 			}
 			nn, err = enc.Encode(filename)
 			n += nn
 			if err != nil {
 				return n, err
 			}
-			nn, err = tar(ctx, enc, filepath.Join(path, s.Name()), s, dev)
+			nn, err = tar(ctx, enc, fs, f)
 			n += nn
 			if err != nil {
 				return n, err
@@ -159,7 +128,7 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 			items = append(items, FormatGoodbyeItem{
 				Offset: uint64(start), // This is tempoary, it needs to be re-calculated later as offset from the goodbye marker
 				Size:   uint64(n - start),
-				Hash:   SipHash([]byte(s.Name())),
+				Hash:   SipHash([]byte(name)),
 			})
 		}
 
@@ -190,15 +159,11 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 			return n, err
 		}
 
-	case m.IsRegular():
-		f, err := os.Open(path)
-		if err != nil {
-			return n, err
-		}
+	case f.IsRegular():
 		defer f.Close()
 		payload := FormatPayload{
-			FormatHeader: FormatHeader{Size: 16 + uint64(info.Size()), Type: CaFormatPayload},
-			Data:         f,
+			FormatHeader: FormatHeader{Size: 16 + uint64(f.Size), Type: CaFormatPayload},
+			Data:         f.Data,
 		}
 		nn, err = enc.Encode(payload)
 		n += nn
@@ -206,14 +171,10 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 			return n, err
 		}
 
-	case isSymlink(m):
-		target, err := os.Readlink(path)
-		if err != nil {
-			return n, err
-		}
+	case f.IsSymlink():
 		symlink := FormatSymlink{
-			FormatHeader: FormatHeader{Size: uint64(16 + len(target) + 1), Type: CaFormatSymlink},
-			Target:       target,
+			FormatHeader: FormatHeader{Size: uint64(16 + len(f.LinkTarget) + 1), Type: CaFormatSymlink},
+			Target:       f.LinkTarget,
 		}
 		nn, err = enc.Encode(symlink)
 		n += nn
@@ -221,11 +182,11 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 			return n, err
 		}
 
-	case isDevice(m):
+	case f.IsDevice():
 		device := FormatDevice{
 			FormatHeader: FormatHeader{Size: 32, Type: CaFormatDevice},
-			Major:        major,
-			Minor:        minor,
+			Major:        f.DevMajor,
+			Minor:        f.DevMinor,
 		}
 		nn, err := enc.Encode(device)
 		n += nn
@@ -234,7 +195,29 @@ func tar(ctx context.Context, enc FormatEncoder, path string, info os.FileInfo, 
 		}
 
 	default:
-		return n, fmt.Errorf("unable to determine node type of '%s'", path)
+		return n, fmt.Errorf("unable to determine node type of '%s'", f.Name)
 	}
 	return
+}
+
+// Wrapper for filesystem reader to allow returning elements into a buffer
+type fsBufReader struct {
+	fs  FilesystemReader
+	buf *File
+}
+
+func (b *fsBufReader) Next() (*File, error) {
+	if b.buf != nil {
+		f := b.buf
+		b.buf = nil
+		return f, nil
+	}
+	return b.fs.Next()
+}
+
+func (b *fsBufReader) Buffer(f *File) {
+	if b.buf != nil {
+		panic("can only unbuffer one file")
+	}
+	b.buf = f
 }

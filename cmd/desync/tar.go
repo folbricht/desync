@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -18,6 +19,7 @@ type tarOptions struct {
 	chunkSize     string
 	createIndex   bool
 	oneFileSystem bool
+	inFormat      string
 }
 
 func newTarCommand(ctx context.Context) *cobra.Command {
@@ -28,7 +30,11 @@ func newTarCommand(ctx context.Context) *cobra.Command {
 		Short: "Store a directory tree in a catar archive or index",
 		Long: `Encodes a directory tree into a catar archive or alternatively an index file
 with the archive chunked into a store. Use '-' to write the output,
-catar or index to STDOUT.`,
+catar or index to STDOUT.
+
+By default, input is read from local disk. Using --input-format=tar,
+the input can be a tar file or stream to STDIN with '-'.
+`,
 		Example: `  desync tar documents.catar $HOME/Documents
   desync make -s /path/to/local pics.caibx $HOME/Pictures`,
 		Args: cobra.ExactArgs(2),
@@ -42,6 +48,7 @@ catar or index to STDOUT.`,
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
 	flags.BoolVarP(&opt.oneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
+	flags.StringVar(&opt.inFormat, "input-format", "disk", "input format, 'disk' or 'tar'")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -57,6 +64,32 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	output := args[0]
 	source := args[1]
 
+	// Prepare input
+	var (
+		fs  desync.FilesystemReader
+		err error
+	)
+	switch opt.inFormat {
+	case "disk": // Local filesystem
+		local := desync.NewLocalFS(source)
+		local.OneFileSystem = opt.oneFileSystem
+		fs = local
+	case "tar": // tar archive (different formats), either file or STDOUT
+		var r *os.File
+		if source == "-" {
+			r = os.Stdin
+		} else {
+			r, err = os.Open(source)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+		}
+		fs = desync.NewTarReader(r)
+	default:
+		return fmt.Errorf("invalid input format '%s'", opt.inFormat)
+	}
+
 	// Just make the catar and stop if that's all that was required
 	if !opt.createIndex {
 		var w io.Writer
@@ -70,7 +103,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 			defer f.Close()
 			w = f
 		}
-		return desync.Tar(ctx, w, source, opt.oneFileSystem)
+		return desync.Tar(ctx, w, fs)
 	}
 
 	// An index is requested, so stream the output of the tar command directly
@@ -97,7 +130,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	// Run the tar bit in a goroutine, writing to the pipe
 	var tarErr error
 	go func() {
-		tarErr = desync.Tar(ctx, w, source, opt.oneFileSystem)
+		tarErr = desync.Tar(ctx, w, fs)
 		w.Close()
 	}()
 

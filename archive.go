@@ -30,6 +30,7 @@ type NodeFile struct {
 	Name   string
 	MTime  time.Time
 	Xattrs Xattrs
+	Size   uint64
 	Data   io.Reader
 }
 
@@ -178,6 +179,7 @@ loop:
 			Mode:   entry.Mode,
 			MTime:  entry.MTime,
 			Xattrs: xattrs,
+			Size:   payload.Size - 16,
 			Data:   payload.Data,
 		}, nil
 	}
