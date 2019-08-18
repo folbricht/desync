@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -73,8 +74,14 @@ func tar(ctx context.Context, enc FormatEncoder, fs *fsBufReader, f *File) (n in
 		return n, err
 	}
 
-	// CaFormatXattrs - Write extended attributes elements. TODO: sort these by key like casync does
-	for key, value := range f.Xattrs {
+	// CaFormatXattrs - Write extended attributes elements. These have to be sorted by key.
+	keys := make([]string, 0, len(f.Xattrs))
+	for key := range f.Xattrs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := f.Xattrs[key]
 		x := FormatXAttr{
 			FormatHeader: FormatHeader{Size: uint64(len(key)) + 1 + uint64(len(value)) + 1 + 16, Type: CaFormatXAttr},
 			NameAndValue: key + "\000" + string(value),
