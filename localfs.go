@@ -192,6 +192,9 @@ func (fs *LocalFS) Next() (*File, error) {
 	if !ok {
 		return nil, fs.sErr
 	}
+	if entry.err != nil {
+		return nil, entry.err
+	}
 
 	var (
 		uid, gid     int
