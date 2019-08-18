@@ -21,7 +21,7 @@ func NewTarWriter(w io.Writer) TarWriter {
 	return TarWriter{gnutar.NewWriter(w), gnutar.FormatGNU}
 }
 
-func (fs TarWriter) CreateDir(n NodeDirectory, opts CreateOptions) error {
+func (fs TarWriter) CreateDir(n NodeDirectory) error {
 	hdr := &gnutar.Header{
 		Typeflag: gnutar.TypeDir,
 		Name:     n.Name,
@@ -35,7 +35,7 @@ func (fs TarWriter) CreateDir(n NodeDirectory, opts CreateOptions) error {
 	return fs.w.WriteHeader(hdr)
 }
 
-func (fs TarWriter) CreateFile(n NodeFile, opts CreateOptions) error {
+func (fs TarWriter) CreateFile(n NodeFile) error {
 	hdr := &gnutar.Header{
 		Typeflag: gnutar.TypeReg,
 		Name:     n.Name,
@@ -54,7 +54,7 @@ func (fs TarWriter) CreateFile(n NodeFile, opts CreateOptions) error {
 	return err
 }
 
-func (fs TarWriter) CreateSymlink(n NodeSymlink, opts CreateOptions) error {
+func (fs TarWriter) CreateSymlink(n NodeSymlink) error {
 	hdr := &gnutar.Header{
 		Typeflag: gnutar.TypeSymlink,
 		Linkname: n.Target,
@@ -73,7 +73,7 @@ func (fs TarWriter) CreateSymlink(n NodeSymlink, opts CreateOptions) error {
 // are in the lower half. Can't use os.ModeCharDevice here.
 const modeChar = 0x4000
 
-func (fs TarWriter) CreateDevice(n NodeDevice, opts CreateOptions) error {
+func (fs TarWriter) CreateDevice(n NodeDevice) error {
 	var typ byte = gnutar.TypeBlock
 	if n.Mode&modeChar != 0 {
 		typ = gnutar.TypeChar

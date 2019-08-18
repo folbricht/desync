@@ -27,7 +27,7 @@ func TestGnuTarWrite(t *testing.T) {
 
 	// Write in GNU tar format
 	fs := NewTarWriter(b)
-	if err := UnTar(context.Background(), r, fs, CreateOptions{}); err != nil {
+	if err := UnTar(context.Background(), r, fs); err != nil {
 		t.Fatal(err)
 	}
 	fs.Close()

@@ -46,7 +46,7 @@ func TestTar(t *testing.T) {
 	}
 
 	// Encode it all into a buffer
-	fs := NewLocalFS(base)
+	fs := NewLocalFS(base, LocalFSOptions{})
 	b := new(bytes.Buffer)
 	if err = Tar(context.Background(), b, fs); err != nil {
 		t.Fatal(err)

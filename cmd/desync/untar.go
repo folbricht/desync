@@ -15,7 +15,7 @@ import (
 
 type untarOptions struct {
 	cmdStoreOptions
-	desync.CreateOptions
+	desync.LocalFSOptions
 	stores    []string
 	cache     string
 	readIndex bool
@@ -73,7 +73,7 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 	)
 	switch opt.outFormat {
 	case "disk": // Local filesystem
-		fs = desync.NewLocalFS(target)
+		fs = desync.NewLocalFS(target, opt.LocalFSOptions)
 	case "gnu-tar": // GNU tar, either file or STDOUT
 		var w *os.File
 		if target == "-" {
@@ -112,7 +112,7 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 			pb.SetTotal(int(info.Size()))
 			r = io.TeeReader(f, pb)
 		}
-		return desync.UnTar(ctx, r, fs, opt.CreateOptions)
+		return desync.UnTar(ctx, r, fs)
 	}
 
 	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
@@ -127,5 +127,5 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, fs, index, s, opt.n, opt.CreateOptions, NewProgressBar("Unpacking "))
+	return desync.UnTarIndex(ctx, fs, index, s, opt.n, NewProgressBar("Unpacking "))
 }

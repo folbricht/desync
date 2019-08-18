@@ -18,9 +18,7 @@ type LocalFS struct {
 	// Base directory
 	Root string
 
-	// Only used when reading from the filesystem. Will only return
-	// files from the same device as the first read operation.
-	OneFileSystem bool
+	opts LocalFSOptions
 
 	dev     uint64
 	once    sync.Once
@@ -28,19 +26,33 @@ type LocalFS struct {
 	sErr    error
 }
 
+// LocalFSOptions influence the behavior of the filesystem when reading from or writing too it.
+type LocalFSOptions struct {
+	// Only used when reading from the filesystem. Will only return
+	// files from the same device as the first read operation.
+	OneFileSystem bool
+
+	// When writing files, use the current owner and don't try to apply the original owner.
+	NoSameOwner bool
+
+	// Ignore the incoming permissions when writing files. Use the current default instead.
+	NoSamePermissions bool
+}
+
 var _ FilesystemWriter = &LocalFS{}
 var _ FilesystemReader = &LocalFS{}
 
 // NewLocalFS initializes a new instance of a local filesystem that
 // can be used for tar/untar operations.
-func NewLocalFS(root string) *LocalFS {
+func NewLocalFS(root string, opts LocalFSOptions) *LocalFS {
 	return &LocalFS{
 		Root:    root,
+		opts:    opts,
 		entries: make(chan walkEntry),
 	}
 }
 
-func (fs *LocalFS) CreateDir(n NodeDirectory, opts CreateOptions) error {
+func (fs *LocalFS) CreateDir(n NodeDirectory) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
 	// Let's see if there is a dir with the same name already
@@ -55,7 +67,7 @@ func (fs *LocalFS) CreateDir(n NodeDirectory, opts CreateOptions) error {
 		}
 	}
 	// The dir exists now, fix the UID/GID if needed
-	if !opts.NoSameOwner {
+	if !fs.opts.NoSameOwner {
 		if err := os.Chown(dst, n.UID, n.GID); err != nil {
 			return err
 		}
@@ -68,7 +80,7 @@ func (fs *LocalFS) CreateDir(n NodeDirectory, opts CreateOptions) error {
 			}
 		}
 	}
-	if !opts.NoSamePermissions {
+	if !fs.opts.NoSamePermissions {
 		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
 			return err
 		}
@@ -76,7 +88,7 @@ func (fs *LocalFS) CreateDir(n NodeDirectory, opts CreateOptions) error {
 	return os.Chtimes(dst, n.MTime, n.MTime)
 }
 
-func (fs *LocalFS) CreateFile(n NodeFile, opts CreateOptions) error {
+func (fs *LocalFS) CreateFile(n NodeFile) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
@@ -87,7 +99,7 @@ func (fs *LocalFS) CreateFile(n NodeFile, opts CreateOptions) error {
 	if _, err = io.Copy(f, n.Data); err != nil {
 		return err
 	}
-	if !opts.NoSameOwner {
+	if !fs.opts.NoSameOwner {
 		if err = f.Chown(n.UID, n.GID); err != nil {
 			return err
 		}
@@ -100,7 +112,7 @@ func (fs *LocalFS) CreateFile(n NodeFile, opts CreateOptions) error {
 			}
 		}
 	}
-	if !opts.NoSamePermissions {
+	if !fs.opts.NoSamePermissions {
 		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
 			return err
 		}
@@ -108,7 +120,7 @@ func (fs *LocalFS) CreateFile(n NodeFile, opts CreateOptions) error {
 	return os.Chtimes(dst, n.MTime, n.MTime)
 }
 
-func (fs *LocalFS) CreateSymlink(n NodeSymlink, opts CreateOptions) error {
+func (fs *LocalFS) CreateSymlink(n NodeSymlink) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
 	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
@@ -121,7 +133,7 @@ func (fs *LocalFS) CreateSymlink(n NodeSymlink, opts CreateOptions) error {
 	// set them here. But they do matter somewhat on Mac, so should probably
 	// add some Mac-specific logic for that here.
 	// fchmodat() with flag AT_SYMLINK_NOFOLLOW
-	if !opts.NoSameOwner {
+	if !fs.opts.NoSameOwner {
 		if err := os.Lchown(dst, n.UID, n.GID); err != nil {
 			return err
 		}
@@ -137,7 +149,7 @@ func (fs *LocalFS) CreateSymlink(n NodeSymlink, opts CreateOptions) error {
 	return nil
 }
 
-func (fs *LocalFS) CreateDevice(n NodeDevice, opts CreateOptions) error {
+func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
 	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
@@ -146,7 +158,7 @@ func (fs *LocalFS) CreateDevice(n NodeDevice, opts CreateOptions) error {
 	if err := syscall.Mknod(dst, FilemodeToStatMode(n.Mode)|0666, int(mkdev(n.Major, n.Minor))); err != nil {
 		return errors.Wrapf(err, "mknod %s", dst)
 	}
-	if !opts.NoSameOwner {
+	if !fs.opts.NoSameOwner {
 		if err := os.Chown(dst, n.UID, n.GID); err != nil {
 			return err
 		}
@@ -159,7 +171,7 @@ func (fs *LocalFS) CreateDevice(n NodeDevice, opts CreateOptions) error {
 			}
 		}
 	}
-	if !opts.NoSamePermissions {
+	if !fs.opts.NoSamePermissions {
 		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
 			return errors.Wrapf(err, "chmod %s", dst)
 		}
@@ -262,7 +274,7 @@ func (fs *LocalFS) Next() (*File, error) {
 }
 
 func (fs *LocalFS) initForReading() {
-	if fs.OneFileSystem {
+	if fs.opts.OneFileSystem {
 		info, err := os.Lstat(fs.Root)
 		if err == nil {
 			st, ok := info.Sys().(*syscall.Stat_t)

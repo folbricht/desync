@@ -14,10 +14,10 @@ func isDevice(m os.FileMode) bool {
 // FilesystemWriter is a filesystem implementation that supports untar'ing
 // a catar archive to.
 type FilesystemWriter interface {
-	CreateDir(n NodeDirectory, opts CreateOptions) error
-	CreateFile(n NodeFile, opts CreateOptions) error
-	CreateSymlink(n NodeSymlink, opts CreateOptions) error
-	CreateDevice(n NodeDevice, opts CreateOptions) error
+	CreateDir(n NodeDirectory) error
+	CreateFile(n NodeFile) error
+	CreateSymlink(n NodeSymlink) error
+	CreateDevice(n NodeDevice) error
 }
 
 // FilesystemReader is an interface for source filesystem to be used during

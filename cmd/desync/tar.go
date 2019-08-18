@@ -15,11 +15,11 @@ import (
 
 type tarOptions struct {
 	cmdStoreOptions
-	store         string
-	chunkSize     string
-	createIndex   bool
-	oneFileSystem bool
-	inFormat      string
+	store       string
+	chunkSize   string
+	createIndex bool
+	desync.LocalFSOptions
+	inFormat string
 }
 
 func newTarCommand(ctx context.Context) *cobra.Command {
@@ -47,7 +47,7 @@ the input can be a tar file or stream to STDIN with '-'.
 	flags.StringVarP(&opt.store, "store", "s", "", "target store (used with -i)")
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
-	flags.BoolVarP(&opt.oneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
+	flags.BoolVarP(&opt.OneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
 	flags.StringVar(&opt.inFormat, "input-format", "disk", "input format, 'disk' or 'tar'")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
@@ -71,8 +71,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	)
 	switch opt.inFormat {
 	case "disk": // Local filesystem
-		local := desync.NewLocalFS(source)
-		local.OneFileSystem = opt.oneFileSystem
+		local := desync.NewLocalFS(source, opt.LocalFSOptions)
 		fs = local
 	case "tar": // tar archive (different formats), either file or STDOUT
 		var r *os.File
