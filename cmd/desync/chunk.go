@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -77,7 +76,7 @@ func runChunk(ctx context.Context, opt chunkOptions, args []string) error {
 		if len(b) == 0 {
 			return nil
 		}
-		sum := sha512.Sum512_256(b)
+		sum := desync.Digest.Sum(b)
 		fmt.Printf("%d\t%d\t%x\n", start+opt.startPos, len(b), sum)
 	}
 }

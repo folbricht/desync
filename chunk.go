@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"crypto/sha512"
 	"errors"
 )
 
@@ -80,7 +79,7 @@ func (c *Chunk) ID() ChunkID {
 	if err != nil {
 		return ChunkID{}
 	}
-	c.id = sha512.Sum512_256(b)
+	c.id = Digest.Sum(b)
 	c.idCalculated = true
 	return c.id
 }

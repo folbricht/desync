@@ -160,3 +160,17 @@ func initConfig() {
 		die(errors.Wrap(err, "reading "+cfgFile))
 	}
 }
+
+// Digest algorithm to be used by desync globally.
+var digestAlgorithm string
+
+func setDigestAlgorithm() {
+	switch digestAlgorithm {
+	case "", "sha512-256":
+		desync.Digest = desync.SHA512256{}
+	case "sha256":
+		desync.Digest = desync.SHA256{}
+	default:
+		die(fmt.Errorf("invalid digest algorithm '%s'", digestAlgorithm))
+	}
+}

@@ -1,9 +1,5 @@
 package desync
 
-import (
-	"crypto/sha512"
-)
-
 // NullChunk is used in places where it's common to see requests for chunks
 // containing only 0-bytes. When a chunked file has large areas of 0-bytes,
 // the chunking algorithm does not produce split boundaries, which results
@@ -22,6 +18,6 @@ func NewNullChunk(size uint64) *NullChunk {
 	b := make([]byte, int(size))
 	return &NullChunk{
 		Data: b,
-		ID:   sha512.Sum512_256(b),
+		ID:   Digest.Sum(b),
 	}
 }
