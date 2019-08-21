@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"os"
 
@@ -128,7 +127,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
 						return err
 					}
-					sum := sha512.Sum512_256(b)
+					sum := Digest.Sum(b)
 					if sum == c.ID {
 						// Record this chunk's been written in the self-seed
 						ss.add(job.segment)

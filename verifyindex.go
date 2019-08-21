@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -59,7 +58,7 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 
 				// Calculate this chunks checksum and compare to what it's supposed to be
 				// according to the index
-				sum := sha512.Sum512_256(b)
+				sum := Digest.Sum(b)
 				if sum != c.ID {
 					return fmt.Errorf("checksum does not match chunk %s", c.ID)
 				}

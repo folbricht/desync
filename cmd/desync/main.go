@@ -32,7 +32,7 @@ func main() {
 	}()
 
 	// Read config early
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(initConfig, setDigestAlgorithm)
 
 	// Register the sub-commands under root
 	rootCmd := newRootCommand()

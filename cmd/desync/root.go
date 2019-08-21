@@ -10,5 +10,6 @@ func newRootCommand() *cobra.Command {
 		Short: "Content-addressed binary distribution system.",
 	}
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default $HOME/.config/desync/config.json)")
+	cmd.PersistentFlags().StringVar(&digestAlgorithm, "digest", "sha512-256", "digest algorithm, sha512-256 or sha256")
 	return cmd
 }

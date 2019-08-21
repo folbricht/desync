@@ -3,6 +3,7 @@ package desync
 import (
 	"bufio"
 	"context"
+	"crypto"
 	"fmt"
 	"math"
 	"sync"
@@ -45,8 +46,16 @@ func IndexFromReader(r io.Reader) (c Index, err error) {
 		return c, errors.New("input is not an index file")
 	}
 
-	if c.Index.FeatureFlags&CaFormatSHA512256 == 0 {
-		return c, errors.New("only SHA512/256 is supported")
+	// Ensure the algorithm the library uses matches that of the index file
+	switch Digest.Algorithm() {
+	case crypto.SHA512_256:
+		if c.Index.FeatureFlags&CaFormatSHA512256 == 0 {
+			return c, errors.New("index file uses SHA256")
+		}
+	case crypto.SHA256:
+		if c.Index.FeatureFlags&CaFormatSHA512256 != 0 {
+			return c, errors.New("index file uses SHA512-256")
+		}
 	}
 
 	// Read the table

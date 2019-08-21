@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -135,7 +134,7 @@ func (s *fileSeedSegment) validate(src *os.File) error {
 		if _, err := src.ReadAt(b, int64(c.Start)); err != nil {
 			return err
 		}
-		sum := sha512.Sum512_256(b)
+		sum := Digest.Sum(b)
 		if sum != c.ID {
 			return fmt.Errorf("seed index for %s doesn't match its data", s.file)
 		}

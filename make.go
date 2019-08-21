@@ -2,7 +2,7 @@ package desync
 
 import (
 	"context"
-	"crypto/sha512"
+	"crypto"
 	"fmt"
 	"io"
 	"os"
@@ -31,9 +31,14 @@ func IndexFromFile(ctx context.Context,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	var digestFlag uint64
+	if Digest.Algorithm() == crypto.SHA512_256 {
+		digestFlag = CaFormatSHA512256
+	}
+
 	index := Index{
 		Index: FormatIndex{
-			FeatureFlags: CaFormatExcludeNoDump | CaFormatSHA512256,
+			FeatureFlags: CaFormatExcludeNoDump | digestFlag,
 			ChunkSizeMin: min,
 			ChunkSizeAvg: avg,
 			ChunkSizeMax: max,
@@ -201,7 +206,7 @@ func (c *pChunker) start(ctx context.Context) {
 			return
 		}
 		// Calculate the chunk ID
-		id := sha512.Sum512_256(b)
+		id := Digest.Sum(b)
 
 		// Store it in our bucket
 		chunk := IndexChunk{Start: start, Size: uint64(len(b)), ID: id}
