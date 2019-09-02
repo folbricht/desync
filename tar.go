@@ -9,7 +9,6 @@ import (
 	"os"
 	"path"
 	"sort"
-	"strings"
 )
 
 // TarFeatureFlags are used as feature flags in the header of catar archives. These
@@ -108,7 +107,7 @@ func tar(ctx context.Context, enc FormatEncoder, fs *fsBufReader, f *File) (n in
 			}
 
 			// End of the current dir?
-			if !strings.HasPrefix(f.Path, dir) {
+			if !(path.Dir(f.Path) == dir) {
 				fs.Buffer(f)
 				break
 			}
