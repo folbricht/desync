@@ -19,6 +19,8 @@ var (
 	stderr io.Writer = os.Stderr
 )
 
+var sighup = make(chan os.Signal)
+
 func main() {
 	// Install a signal handler for SIGINT or SIGTERM to cancel a context in
 	// order to clean up and shut down gracefully if Ctrl+C is hit.
@@ -30,6 +32,10 @@ func main() {
 		<-sigs
 		cancel()
 	}()
+
+	// Install a signal handler for SIGHUP. This does not interrupt execution
+	// and is meant to trigger events like a config reload in some commands
+	signal.Notify(sighup, syscall.SIGHUP)
 
 	// Read config early
 	cobra.OnInitialize(initConfig, setDigestAlgorithm)

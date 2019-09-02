@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -266,4 +268,23 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 		}
 	}
 	return s, indexName, nil
+}
+
+// storeFile defines the structure of a file that can be used to pass in the stores
+// not by command line arguments, but a file instead. This allows the configuration
+// to be reloaded for long-running processes on-the-fly without restarting the process.
+type storeFile struct {
+	Stores []string `json:"stores"`
+	Cache  string   `json:"cache"`
+}
+
+func readStoreFile(name string) ([]string, string, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, "", err
+	}
+	defer f.Close()
+	c := new(storeFile)
+	err = json.NewDecoder(f).Decode(&c)
+	return c.Stores, c.Cache, err
 }

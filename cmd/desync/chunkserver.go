@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
-	"errors"
+
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +18,7 @@ type chunkServerOptions struct {
 	cmdServerOptions
 	stores          []string
 	cache           string
+	storeFile       string
 	listenAddresses []string
 	writable        bool
 	skipVerifyWrite bool
@@ -43,6 +46,10 @@ server-side so it's better to also read from uncompressed upstream stores.
 While --concurrency does not limit the number of clients that can be served
 concurrently, it does influence connection pools to remote upstream stores and
 needs to be chosen carefully if the server is under high load.
+
+This command supports the --store-file option which can be used to define the stores
+and caches in a JSON file. The config can then be reloaded by sending a SIGHUP without
+needing to restart the server. This can be done under load as well.
 `,
 		Example: `  desync chunk-server -s sftp://192.168.1.1/store -c /path/to/cache -l :8080`,
 		Args:    cobra.NoArgs,
@@ -52,6 +59,7 @@ needs to be chosen carefully if the server is under high load.
 		SilenceUsage: true,
 	}
 	flags := cmd.Flags()
+	flags.StringVar(&opt.storeFile, "store-file", "", "read store arguments from a file, supports reload on SIGHUP")
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "upstream source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
@@ -81,33 +89,41 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 		addresses = []string{":http"}
 	}
 
-	// Checkout the store
-	if len(opt.stores) == 0 {
-		return errors.New("no store provided")
+	// Extract the store setup from command line options and validate it
+	s, err := chunkServerStore(opt)
+	if err != nil {
+		return err
 	}
 
-	// When supporting writing, only one upstream store is possible
-	if opt.writable && (len(opt.stores) > 1 || opt.cache != "") {
-		return errors.New("Only one upstream store supported for writing")
-	}
+	// When a store file is used, it's possible to reload the store setup from it
+	// on the fly. Wrap the store into a SwapStore and start a handler for SIGHUP,
+	// reloading the store config from file.
+	if opt.storeFile != "" {
+		if _, ok := s.(desync.WriteStore); ok {
+			s = desync.NewSwapWriteStore(s)
+		} else {
+			s = desync.NewSwapStore(s)
+		}
 
-	var (
-		s   desync.Store
-		err error
-	)
-	if opt.writable {
-		s, err = WritableStore(opt.stores[0], opt.cmdStoreOptions)
-		if err != nil {
-			return err
-		}
-	} else {
-		s, err = MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
-		if err != nil {
-			return err
-		}
-		// We want to take the edge of a large number of requests coming in for the same chunk. No need
-		// to hit the (potentially slow) upstream stores for duplicated requests.
-		s = desync.NewDedupQueue(s)
+		go func() {
+			for range sighup {
+				newStore, err := chunkServerStore(opt)
+				if err != nil {
+					fmt.Fprintln(stderr, "failed to reload configuration:", err)
+					continue
+				}
+				switch store := s.(type) {
+				case *desync.SwapStore:
+					if err := store.Swap(newStore); err != nil {
+						fmt.Fprintln(stderr, "failed to reload configuration:", err)
+					}
+				case *desync.SwapWriteStore:
+					if err := store.Swap(newStore); err != nil {
+						fmt.Fprintln(stderr, "failed to reload configuration:", err)
+					}
+				}
+			}
+		}()
 	}
 	defer s.Close()
 
@@ -140,6 +156,53 @@ func withLog(h http.Handler, log *log.Logger) http.HandlerFunc {
 		h.ServeHTTP(lrw, r)
 		log.Printf("Client: %s, Request: %s %s, Response: %d", r.RemoteAddr, r.Method, r.RequestURI, lrw.statusCode)
 	}
+}
+
+// Reads the store-related command line options and returns the appropriate store.
+func chunkServerStore(opt chunkServerOptions) (desync.Store, error) {
+	stores := opt.stores
+	cache := opt.cache
+
+	var err error
+	if opt.storeFile != "" {
+		if len(stores) != 0 {
+			return nil, errors.New("--store and --store-file can't be used together")
+		}
+		if cache != "" {
+			return nil, errors.New("--cache and --store-file can't be used together")
+		}
+		stores, cache, err = readStoreFile(opt.storeFile)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read store-file '%s'", err)
+		}
+	}
+
+	// Got to have at least one upstream store
+	if len(stores) == 0 {
+		return nil, errors.New("no store provided")
+	}
+
+	// When supporting writing, only one upstream store is possible and no cache
+	if opt.writable && (len(stores) > 1 || cache != "") {
+		return nil, errors.New("Only one upstream store supported for writing and no cache")
+	}
+
+	var s desync.Store
+	if opt.writable {
+		s, err = WritableStore(stores[0], opt.cmdStoreOptions)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		s, err = MultiStoreWithCache(opt.cmdStoreOptions, cache, stores...)
+		if err != nil {
+			return nil, err
+		}
+		// We want to take the edge of a large number of requests coming in for the same chunk. No need
+		// to hit the (potentially slow) upstream stores for duplicated requests.
+		s = desync.NewDedupQueue(s)
+	}
+	return s, nil
 }
 
 type loggingResponseWriter struct {
