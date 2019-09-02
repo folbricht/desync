@@ -7,26 +7,14 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"reflect"
-	"syscall"
 
 	"golang.org/x/sync/errgroup"
-
-	"github.com/pkg/errors"
-	"github.com/pkg/xattr"
 )
-
-// UntarOptions are used to influence the behaviour of untar
-type UntarOptions struct {
-	NoSameOwner       bool
-	NoSamePermissions bool
-}
 
 // UnTar implements the untar command, decoding a catar file and writing the
 // contained tree to a target directory.
-func UnTar(ctx context.Context, r io.Reader, dst string, opts UntarOptions) error {
+func UnTar(ctx context.Context, r io.Reader, fs FilesystemWriter) error {
 	dec := NewArchiveDecoder(r)
 loop:
 	for {
@@ -42,13 +30,13 @@ loop:
 		}
 		switch n := c.(type) {
 		case NodeDirectory:
-			err = makeDir(dst, n, opts)
+			err = fs.CreateDir(n)
 		case NodeFile:
-			err = makeFile(dst, n, opts)
+			err = fs.CreateFile(n)
 		case NodeDevice:
-			err = makeDevice(dst, n, opts)
+			err = fs.CreateDevice(n)
 		case NodeSymlink:
-			err = makeSymlink(dst, n, opts)
+			err = fs.CreateSymlink(n)
 		case nil:
 			break loop
 		default:
@@ -61,145 +49,10 @@ loop:
 	return nil
 }
 
-func makeDir(base string, n NodeDirectory, opts UntarOptions) error {
-	dst := filepath.Join(base, n.Name)
-
-	// Let's see if there is a dir with the same name already
-	if info, err := os.Stat(dst); err == nil {
-		if !info.IsDir() {
-			return fmt.Errorf("%s exists and is not a directory", dst)
-		}
-	} else {
-		// Stat error'ed out, presumably because the dir doesn't exist. Create it.
-		if err := os.Mkdir(dst, 0777); err != nil {
-			return err
-		}
-	}
-	// The dir exists now, fix the UID/GID if needed
-	if !opts.NoSameOwner {
-		if err := os.Chown(dst, n.UID, n.GID); err != nil {
-			return err
-		}
-
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if !opts.NoSamePermissions {
-		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
-			return err
-		}
-	}
-	return os.Chtimes(dst, n.MTime, n.MTime)
-}
-
-func makeFile(base string, n NodeFile, opts UntarOptions) error {
-	dst := filepath.Join(base, n.Name)
-
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err = io.Copy(f, n.Data); err != nil {
-		return err
-	}
-	if !opts.NoSameOwner {
-		if err = f.Chown(n.UID, n.GID); err != nil {
-			return err
-		}
-
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if !opts.NoSamePermissions {
-		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
-			return err
-		}
-	}
-	return os.Chtimes(dst, n.MTime, n.MTime)
-}
-
-func makeSymlink(base string, n NodeSymlink, opts UntarOptions) error {
-	dst := filepath.Join(base, n.Name)
-
-	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if err := os.Symlink(n.Target, dst); err != nil {
-		return err
-	}
-	// TODO: On Linux, the permissions of the link don't matter so we don't
-	// set them here. But they do matter somewhat on Mac, so should probably
-	// add some Mac-specific logic for that here.
-	// fchmodat() with flag AT_SYMLINK_NOFOLLOW
-	if !opts.NoSameOwner {
-		if err := os.Lchown(dst, n.UID, n.GID); err != nil {
-			return err
-		}
-
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func makeDevice(base string, n NodeDevice, opts UntarOptions) error {
-	dst := filepath.Join(base, n.Name)
-
-	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if err := syscall.Mknod(dst, uint32(n.Mode)|0666, int(mkdev(n.Major, n.Minor))); err != nil {
-		return errors.Wrapf(err, "mknod %s", dst)
-	}
-	if !opts.NoSameOwner {
-		if err := os.Chown(dst, n.UID, n.GID); err != nil {
-			return err
-		}
-
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if !opts.NoSamePermissions {
-		if err := syscall.Chmod(dst, uint32(n.Mode)); err != nil {
-			return errors.Wrapf(err, "chmod %s", dst)
-		}
-	}
-	return os.Chtimes(dst, n.MTime, n.MTime)
-}
-
-func mkdev(major, minor uint64) uint64 {
-	dev := (major & 0x00000fff) << 8
-	dev |= (major & 0xfffff000) << 32
-	dev |= (minor & 0x000000ff) << 0
-	dev |= (minor & 0xffffff00) << 12
-	return dev
-}
-
 // UnTarIndex takes an index file (of a chunked catar), re-assembles the catar
 // and decodes it on-the-fly into the target directory 'dst'. Uses n gorountines
 // to retrieve and decompress the chunks.
-func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, opts UntarOptions, pb ProgressBar) error {
+func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, n int, pb ProgressBar) error {
 	type requestJob struct {
 		chunk IndexChunk    // requested chunk
 		data  chan ([]byte) // channel for the (decompressed) chunk
@@ -292,7 +145,7 @@ func UnTarIndex(ctx context.Context, dst string, index Index, s Store, n int, op
 
 	// UnTar - Read from the pipe that Assembler pushes into
 	g.Go(func() error {
-		err := UnTar(ctx, r, dst, opts)
+		err := UnTar(ctx, r, fs)
 		if err != nil {
 			// If an error has occurred during the UnTar, we need to stop the Assembler.
 			// If we don't, then it would stall on writing to the pipe.

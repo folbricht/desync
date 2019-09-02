@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -14,10 +15,11 @@ import (
 
 type untarOptions struct {
 	cmdStoreOptions
-	desync.UntarOptions
+	desync.LocalFSOptions
 	stores    []string
 	cache     string
 	readIndex bool
+	outFormat string
 }
 
 func newUntarCommand(ctx context.Context) *cobra.Command {
@@ -27,7 +29,13 @@ func newUntarCommand(ctx context.Context) *cobra.Command {
 		Use:   "untar <catar|index> <target>",
 		Short: "Extract directory tree from a catar archive or index",
 		Long: `Extracts a directory tree from a catar file or an index. Use '-' to read the
-index from STDIN.`,
+index from STDIN.
+
+The input is either a catar archive, or a caidx index file (with -i and -s).
+
+By default, the catar archive is extracted to local disk. Using --output-format=gnu-tar,
+the output can be set to GNU tar, either an archive or STDOUT with '-'.
+`,
 		Example: `  desync untar docs.catar /tmp/documents
   desync untar -s http://192.168.1.1/ -c /path/to/local docs.caidx /tmp/documents`,
 		Args: cobra.ExactArgs(2),
@@ -42,6 +50,7 @@ index from STDIN.`,
 	flags.BoolVarP(&opt.readIndex, "index", "i", false, "read index file (caidx), not catar")
 	flags.BoolVar(&opt.NoSameOwner, "no-same-owner", false, "extract files as current user")
 	flags.BoolVar(&opt.NoSamePermissions, "no-same-permissions", false, "use current user's umask instead of what is in the archive")
+	flags.StringVar(&opt.outFormat, "output-format", "disk", "output format, 'disk' or 'gnu-tar'")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -55,7 +64,33 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 	}
 
 	input := args[0]
-	targetDir := args[1]
+	target := args[1]
+
+	// Prepare output
+	var (
+		fs  desync.FilesystemWriter
+		err error
+	)
+	switch opt.outFormat {
+	case "disk": // Local filesystem
+		fs = desync.NewLocalFS(target, opt.LocalFSOptions)
+	case "gnu-tar": // GNU tar, either file or STDOUT
+		var w *os.File
+		if target == "-" {
+			w = os.Stdout
+		} else {
+			w, err = os.Create(target)
+			if err != nil {
+				return err
+			}
+			defer w.Close()
+		}
+		gtar := desync.NewTarWriter(w)
+		defer gtar.Close()
+		fs = gtar
+	default:
+		return fmt.Errorf("invalid output format '%s'", opt.outFormat)
+	}
 
 	// If we got a catar file unpack that and exit
 	if !opt.readIndex {
@@ -77,7 +112,7 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 			pb.SetTotal(int(info.Size()))
 			r = io.TeeReader(f, pb)
 		}
-		return desync.UnTar(ctx, r, targetDir, opt.UntarOptions)
+		return desync.UnTar(ctx, r, fs)
 	}
 
 	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
@@ -92,5 +127,5 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, targetDir, index, s, opt.n, opt.UntarOptions, NewProgressBar("Unpacking "))
+	return desync.UnTarIndex(ctx, fs, index, s, opt.n, NewProgressBar("Unpacking "))
 }

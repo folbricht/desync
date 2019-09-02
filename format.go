@@ -172,7 +172,7 @@ func (d *FormatDecoder) Next() (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		e.Mode = os.FileMode(mode)
+		e.Mode = StatModeToFilemode(uint32(mode))
 		e.Flags, err = d.r.ReadUint64()
 		if err != nil {
 			return nil, err
@@ -456,7 +456,7 @@ func (e *FormatEncoder) Encode(v interface{}) (int64, error) {
 			t.Size,
 			t.Type,
 			t.FeatureFlags,
-			uint64(t.Mode),
+			uint64(FilemodeToStatMode(t.Mode)),
 			t.Flags,
 			uint64(t.UID),
 			uint64(t.GID),

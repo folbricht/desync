@@ -24,6 +24,7 @@ Among the distinguishing factors:
 - Stores and retrieves index files from remote index stores such as HTTP, SFTP and S3
 - Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
+- catar archives can be created from standard tar archives, and they can also be extracted to GNU tar format.
 
 ## Terminology
 
@@ -50,13 +51,19 @@ extract | Extremely fast - Effectively the speed of a truncate() syscall | Fast 
 
 Copy-on-write filesystems such as Btrfs and XFS support cloning of blocks between files in order to save disk space as well as improve extraction performance. To utilize this feature, desync uses several seeds to clone sections of files rather than reading the data from chunk-stores and copying it in place:
 
-- A built-in seed for Null-chunks (a chunk of Max chunk site containing only 0 bytes). This can significantly reduce the disk usage of files with large 0-byte ranges, such as VM images. This will effectively turn an eager-zeroed VM disk into a sparse disk while retaining all the advantages of eager-zeroed disk images.
+- A built-in seed for Null-chunks (a chunk of Max chunk size containing only 0 bytes). This can significantly reduce disk usage of files with large 0-byte ranges, such as VM images. This will effectively turn an eager-zeroed VM disk into a sparse disk while retaining all the advantages of eager-zeroed disk images.
 - A build-in Self-seed. As chunks are being written to the destination file, the file itself becomes a seed. If one chunk, or a series of chunks is used again later in the file, it'll be cloned from the position written previously. This saves storage when the file contains several repetitive sections.
 - Seed files and their indexes can be provided when extracting a file. For this feature, it's necessary to already have the index plus its blob on disk. So for example `image-v1.vmdk` and `image-v1.vmdk.caibx` can be used as seed for the extract operation of `image-v2.vmdk`. The amount of additional disk space required to store `image-v2.vmdk` will be the delta between it and `image-v1.vmdk`.
 
 ![chunks-from-seeds](doc/seed.png)
 
 Even if cloning is not available, seeds are still useful. `desync` automatically determines if reflinks are available (and the block size used in the filesystem). If cloning is not supported, sections are copied instead of cloned. Copying still improves performance and reduces the load created by retrieving chunks over the network and decompressing them.
+
+## Reading and writing tar streams
+
+In addition to packing local filesystem trees into catar archives, it is possible to read a tar archive stream. Various tar formats such as GNU and BSD tar are supported. See [https://golang.org/pkg/archive/tar/](https://golang.org/pkg/archive/tar/) for details on supported formats. When reading from tar archives, the content is no re-ordered and written to the catar in the same order. This may create output files that are different when comparing to using the local filesystem as input since the order depends entirely on how the tar file is created.
+
+catar archives can also be extracted to GNU tar archive streams. All files in the output stream are ordered the same as in the catar.
 
 ## Tool
 
@@ -386,6 +393,18 @@ Unpack a directory tree using an index file referencing a chunked archive.
 
 ```text
 desync untar -i -s /some/local/store archive.caidx /some/dir
+```
+
+Pack a directory tree currently available as tar archive into a catar. The tar input stream can also be read from STDIN by providing '-' instead of the file name.
+
+```text
+desync tar --input-format=tar archive.catar /path/to/archive.tar
+```
+
+Unpack a directory tree from an index file and store the output filesystem in a GNU tar file rather than the local filesystem. Instead of an archive file, the output can be given as '-' which will write to STDOUT.
+
+```text
+desync untar -i -s /some/local/store --output-format=gnu-tar archive.caidx /path/to/archive.tar
 ```
 
 Prune a store to only contain chunks that are referenced in the provided index files. Possible data loss.
