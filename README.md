@@ -94,6 +94,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
 - `info`         - Show information about an index file, such as number of chunks and optionally chunks from an index that a re present in a store
+- `mtree`        - Print the content of an archive or index in mtree-compatible format.
 
 ### Options (not all apply to all commands)
 
