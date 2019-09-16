@@ -37,8 +37,8 @@ func (fs MtreeFS) CreateFile(n NodeFile) error {
 	attr = append(attr, fmt.Sprintf("mode=%04o", n.Mode.Perm()))
 	attr = append(attr, fmt.Sprintf("uid=%d", n.UID))
 	attr = append(attr, fmt.Sprintf("gid=%d", n.GID))
-	attr = append(attr, fmt.Sprintf("side=%d", n.Size))
-	attr = append(attr, fmt.Sprintf("time=%d.%9d", n.MTime.Unix(), n.MTime.Nanosecond()))
+	attr = append(attr, fmt.Sprintf("size=%d", n.Size))
+	attr = append(attr, fmt.Sprintf("time=%d.%09d", n.MTime.Unix(), n.MTime.Nanosecond()))
 
 	switch Digest.Algorithm() {
 	case crypto.SHA512_256:
