@@ -111,7 +111,11 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 			case <-ctx.Done():
 				break loop
 			case req <- requestJob{chunk: c, data: data}: // request the chunk
-				assemble <- data // and hand over the data channel to the assembler
+				select {
+				case <-ctx.Done():
+					break loop
+				case assemble <- data: // and hand over the data channel to the assembler
+				}
 			}
 		}
 		close(req)      // tell the workers this is it
@@ -121,6 +125,7 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 
 	// Assember - Read from data channels push the chunks into the pipe that untar reads from
 	g.Go(func() error {
+		defer w.Close() // No more chunks to come, stop the untar
 	loop:
 		for {
 			select {
@@ -139,7 +144,6 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 				break loop
 			}
 		}
-		w.Close() // No more chunks to come, stop the untar
 		return nil
 	})
 
