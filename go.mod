@@ -1,5 +1,7 @@
 module github.com/folbricht/desync
 
+go 1.11
+
 require (
 	github.com/datadog/zstd v1.4.0
 	github.com/davecgh/go-spew v1.1.1 // indirect

@@ -55,6 +55,7 @@ func main() {
 		newUntarCommand(ctx),
 		newVerifyCommand(ctx),
 		newVerifyIndexCommand(ctx),
+		newMtreeCommand(ctx),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

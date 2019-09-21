@@ -37,7 +37,7 @@ By default, the catar archive is extracted to local disk. Using --output-format=
 the output can be set to GNU tar, either an archive or STDOUT with '-'.
 `,
 		Example: `  desync untar docs.catar /tmp/documents
-  desync untar -s http://192.168.1.1/ -c /path/to/local docs.caidx /tmp/documents`,
+  desync untar -s http://192.168.1.1/ -c /path/to/local -i docs.caidx /tmp/documents`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUntar(ctx, opt, args)
