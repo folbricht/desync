@@ -49,6 +49,7 @@ the input can be a tar file or stream to STDIN with '-'.
 	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
 	flags.BoolVarP(&opt.OneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
 	flags.StringVar(&opt.inFormat, "input-format", "disk", "input format, 'disk' or 'tar'")
+	flags.BoolVarP(&opt.NoTime, "no-time", "", false, "set file timestamps to zero in the archive")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
