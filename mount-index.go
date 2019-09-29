@@ -8,115 +8,111 @@ import (
 	"io"
 	"os"
 	"sync"
+	"syscall"
+	"time"
 
-	"github.com/hanwen/go-fuse/fuse"
-	"github.com/hanwen/go-fuse/fuse/nodefs"
-	"github.com/hanwen/go-fuse/fuse/pathfs"
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
 // IndexMountFS is used to FUSE mount an index file (as a blob, not an archive).
 // It present a single file underneath the mountpoint.
 type IndexMountFS struct {
+	fs.Inode
+
 	FName string // File name in the mountpoint
 	Idx   Index  // Index of the blob
 	Store Store
-	pathfs.FileSystem
 }
+
+var _ fs.NodeOnAdder = &IndexMountFS{}
 
 // NewIndexMountFS initializes a FUSE filesystem mount based on an index and a chunk store.
 func NewIndexMountFS(idx Index, name string, s Store) *IndexMountFS {
 	return &IndexMountFS{
-		FName:      name,
-		Idx:        idx,
-		Store:      s,
-		FileSystem: pathfs.NewDefaultFileSystem(),
+		FName: name,
+		Idx:   idx,
+		Store: s,
 	}
 }
 
-// GetAttr returns file attributes of a file or directory in a FUSE mount.
-func (me *IndexMountFS) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
-	switch name {
-	case me.FName:
-		return &fuse.Attr{
-			Mode: fuse.S_IFREG | 0444, Size: uint64(me.Idx.Length()),
-		}, fuse.OK
-	case "":
-		return &fuse.Attr{
-			Mode: fuse.S_IFDIR | 0755,
-		}, fuse.OK
+// OnAdd is used to build the static filesystem structure at the start of the mount.
+func (r *IndexMountFS) OnAdd(ctx context.Context) {
+	n := &indexFile{
+		idx:   r.Idx,
+		store: r.Store,
+		mtime: time.Now(),
 	}
-	return nil, fuse.ENOENT
+	ch := r.NewPersistentInode(ctx, n, fs.StableAttr{Mode: fuse.S_IFREG})
+	r.AddChild(r.FName, ch, false)
 }
 
-// OpenDir is called when a directory is opened in FUSE.
-func (me *IndexMountFS) OpenDir(name string, context *fuse.Context) (c []fuse.DirEntry, code fuse.Status) {
-	if name == "" {
-		c = []fuse.DirEntry{{Name: me.FName, Mode: fuse.S_IFREG}}
-		return c, fuse.OK
-	}
-	return nil, fuse.ENOENT
+var _ fs.NodeGetattrer = &indexFile{}
+var _ fs.NodeOpener = &indexFile{}
+
+type indexFile struct {
+	fs.Inode
+
+	idx   Index // Index of the blob
+	store Store
+
+	mtime time.Time
 }
 
-// Open a file in a FUSE mount.
-func (me *IndexMountFS) Open(name string, flags uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
-	if name != me.FName {
-		return nil, fuse.ENOENT
-	}
-	if flags&fuse.O_ANYWRITE != 0 {
-		return nil, fuse.EPERM
-	}
-	fh := NewIndexMountFile(me.Idx, me.Store)
-	return fh, fuse.OK
+func (n *indexFile) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+	fh := newIndexFileHandle(n.idx, n.store)
+	return fh, fuse.FOPEN_KEEP_CACHE, fs.OK
 }
 
-// IndexMountFile represents a (read-only) file handle on a blob in a FUSE
-// mounted filesystem
-type IndexMountFile struct {
+func (n *indexFile) Read(ctx context.Context, fh fs.FileHandle, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+	f := fh.(*indexFileHandle)
+	return f.read(dest, off)
+}
+
+func (n *indexFile) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	out.Mode = fuse.S_IFREG | 0444
+	out.Size = uint64(n.idx.Length())
+	out.Mtime = uint64(n.mtime.Unix())
+	return fs.OK
+}
+
+// indexFileHandle represents a (read-only) file handle on a blob in a FUSE mounted filesystem
+type indexFileHandle struct {
 	r *IndexPos
-	nodefs.File
 
-	// perhaps not needed, but in case something is trying to use the same
-	// filehandle concurrently
+	// perhaps not needed, but in case something is trying to use the same filehandle concurrently
 	mu sync.Mutex
 }
 
 // NewIndexMountFile initializes a blob file opened in a FUSE mount.
-func NewIndexMountFile(idx Index, s Store) *IndexMountFile {
-	return &IndexMountFile{
-		r:    NewIndexReadSeeker(idx, s),
-		File: nodefs.NewReadOnlyFile(nodefs.NewDefaultFile()),
+func newIndexFileHandle(idx Index, s Store) *indexFileHandle {
+	return &indexFileHandle{
+		r: NewIndexReadSeeker(idx, s),
 	}
 }
 
-// Read from a blob file in a FUSE mount.
-func (f *IndexMountFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
+// read from a blob file in a FUSE mount.
+func (f *indexFileHandle) read(dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, err := f.r.Seek(off, io.SeekStart); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return nil, fuse.EIO
+		return nil, syscall.EIO
 	}
 	n, err := f.r.Read(dest)
 	if err != nil && err != io.EOF {
 		fmt.Fprintln(os.Stderr, err)
-		return nil, fuse.EIO
+		return nil, syscall.EIO
 	}
-	return fuse.ReadResultData(dest[:n]), fuse.OK
-}
-
-// GetAttr returns attributes of a blob file in a FUSE mount.
-func (f *IndexMountFile) GetAttr(out *fuse.Attr) fuse.Status {
-	out.Mode = fuse.S_IFREG | 0444
-	out.Size = uint64(f.r.Length)
-	return fuse.OK
+	return fuse.ReadResultData(dest[:n]), fs.OK
 }
 
 // MountIndex mounts an index file under a FUSE mount point. The mount will only expose a single
 // blob file as represented by the index.
 func MountIndex(ctx context.Context, idx Index, path, name string, s Store, n int) error {
 	ifs := NewIndexMountFS(idx, name, s)
-	fs := pathfs.NewPathNodeFs(ifs, nil)
-	server, _, err := nodefs.MountRoot(path, fs.Root(), nil)
+	opts := &fs.Options{}
+	server, err := fs.Mount(path, ifs, opts)
 	if err != nil {
 		return err
 	}
@@ -124,6 +120,6 @@ func MountIndex(ctx context.Context, idx Index, path, name string, s Store, n in
 		<-ctx.Done()
 		server.Unmount()
 	}()
-	server.Serve()
+	server.Wait()
 	return nil
 }
