@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/pkg/xattr"
@@ -39,6 +40,9 @@ type LocalFSOptions struct {
 
 	// Ignore the incoming permissions when writing files. Use the current default instead.
 	NoSamePermissions bool
+
+	// Reads all timestamps as zero. Used in tar operations to avoid unneccessary changes.
+	NoTime bool
 }
 
 var _ FilesystemWriter = &LocalFS{}
@@ -87,6 +91,9 @@ func (fs *LocalFS) CreateDir(n NodeDirectory) error {
 			return err
 		}
 	}
+	if n.MTime == time.Unix(0, 0) {
+		return nil
+	}
 	return os.Chtimes(dst, n.MTime, n.MTime)
 }
 
@@ -118,6 +125,9 @@ func (fs *LocalFS) CreateFile(n NodeFile) error {
 		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
 			return err
 		}
+	}
+	if n.MTime == time.Unix(0, 0) {
+		return nil
 	}
 	return os.Chtimes(dst, n.MTime, n.MTime)
 }
@@ -177,6 +187,9 @@ func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
 			return errors.Wrapf(err, "chmod %s", dst)
 		}
+	}
+	if n.MTime == time.Unix(0, 0) {
+		return nil
 	}
 	return os.Chtimes(dst, n.MTime, n.MTime)
 }
@@ -257,11 +270,16 @@ func (fs *LocalFS) Next() (*File, error) {
 		}
 	}
 
+	mtime := entry.info.ModTime()
+	if fs.opts.NoTime {
+		mtime = time.Unix(0, 0)
+	}
+
 	f := &File{
 		Name:       entry.info.Name(),
 		Path:       path.Clean(entry.path),
 		Mode:       entry.info.Mode(),
-		ModTime:    entry.info.ModTime(),
+		ModTime:    mtime,
 		Size:       uint64(entry.info.Size()),
 		LinkTarget: linkTarget,
 		Uid:        uid,
