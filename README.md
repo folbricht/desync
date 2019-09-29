@@ -144,6 +144,22 @@ Not all types of stores support all operations. The table below lists the suppor
 
 Given stores with identical content (same chunks in each), it is possible to group them in a way that provides resilience to failures. Store groups are specified in the command line using `|` as separator in the same `-s` option. For example using `-s "http://server1/|http://server2/"`, requests will normally be sent to `server1`, but if a failure is encountered, all subsequent requests will be routed to `server2`. There is no automatic fail-back. A failure in `server2` will cause it to switch back to `server1`. Any number of stores can be grouped this way. Note that a missing chunk is treated as a failure immediately, no other servers will be tried, hence the need for all grouped stores to hold the same content.
 
+### Dynamic store configuration
+
+Some long-running processes, namely `chunk-server` and `mount-index` may require a reconfiguration without having to restart them. This can be achieved by starting them with the `--store-file` options which provides the arguments that are normally passed via command line flags `--store` and `--cache` from a JSON file instead. Once the server is running, a SIGHUP to the process will trigger a reload of the configuration and replace the stores internally without restart. This can be done under load. If the configuration in the file is found to be invalid, and error is printed to STDERR and the reload ignored. The structure of the store-file is as follows:
+
+```json
+{
+  "stores": [
+    "/path/to/store1",
+    "/path/to/store2"
+  ],
+  "cache": "/path/to/cache"
+}
+```
+
+This can be combined with store failover by providing the same syntax as is used in the command-line, for example `{"stores":["/path/to/main|/path/to/backup"]}`, See [Examples](#examples) for details on how to use the `--store-file` option.
+
 ### Remote indexes
 
 Indexes can be stored and retrieved from remote locations via SFTP, S3, and HTTP. Storing indexes remotely is optional and deliberately separate from chunk storage. While it's possible to store indexes in the same location as chunks in the case of SFTP and S3, this should only be done in secured environments. The built-in HTTP chunk store (`chunk-server` command) can not be used as index server. Use the `index-server` command instead to start an index server that serves indexes and can optionally store them as well (with `-w`).
@@ -426,6 +442,22 @@ Start a chunk server on port 8080 acting as proxy for other remote HTTP and SSH 
 desync chunk-server -s http://192.168.1.1/ -s ssh://192.168.1.2/store -c cache -l :8080
 ```
 
+Start a chunk server with a store-file, this allows the configuration to be re-read on SIGHUP without restart.
+
+```text
+# Create store file
+echo '{"stores": ["http://192.168.1.1/"], "cache": "/tmp/cache"}` > stores.json
+
+# Start the server
+desync chunk-server --store-file stores.json -l :8080
+
+# Modify
+echo '{"stores": ["http://192.168.1.2/"], "cache": "/tmp/cache"}` > stores.json
+
+# Reload
+killall -1 desync
+```
+
 Start a writable index server, chunk a file and store the index.
 
 ```text
@@ -468,6 +500,22 @@ FUSE mount a chunked and remote index file. First a (small) index file is read f
 
 ```text
 desync cat -s http://192.168.1.1/store http://192.168.1.2/small.caibx | desync mount-index -s http://192.168.1.1/store - /mnt/point
+```
+
+Long-running FUSE mount that may need to have its store setup changed without unmounting. This can be done by using the `--store-file` option rather than speicifying store+cache in the command line. The process will then reload the file when a SIGHUP is sent.
+
+```text
+# Create the store file
+echo '{"stores": ["http://192.168.1.1/"], "cache": "/tmp/cache"}` > stores.json
+
+# Start the mount
+desync mount-index --store-file stores.json index.caibx /some/mnt
+
+# Modify the store setup
+echo '{"stores": ["http://192.168.1.2/"], "cache": "/tmp/cache"}` > stores.json
+
+# Reload
+killall -1 desync
 ```
 
 Show information about an index file to see how many of its chunks are present in a local store or an S3 store. The local store is queried first, S3 is only queried if the chunk is not present in the local store. The output will be in JSON format (`--format=json`) for easier processing in scripts.
