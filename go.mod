@@ -10,7 +10,7 @@ require (
 	github.com/folbricht/tempfile v0.0.1
 	github.com/go-ini/ini v1.38.2
 	github.com/gopherjs/gopherjs v0.0.0-20180825215210-0210a2f0f73c // indirect
-	github.com/hanwen/go-fuse v1.0.0
+	github.com/hanwen/go-fuse/v2 v2.0.2
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jtolds/gls v4.2.1+incompatible // indirect
 	github.com/kr/fs v0.1.0 // indirect
