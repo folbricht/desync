@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -181,10 +182,13 @@ func NewRemoteHTTPStore(location *url.URL, opt StoreOptions) (*RemoteHTTP, error
 // GetChunk reads and returns one chunk from the store
 func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 	p := r.nameFromID(id)
+	log.Printf("Requesting chunk %s from HTTP store", id)
 	b, err := r.GetObject(p)
 	if err != nil {
+		log.Printf("Failed request for chunk %s from HTTP store : %v", id, err)
 		return nil, err
 	}
+	log.Printf("Completed request for chunk %s from HTTP store", id)
 	if r.opt.Uncompressed {
 		return NewChunkWithID(id, b, nil, r.opt.SkipVerify)
 	}
@@ -193,6 +197,7 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 
 // HasChunk returns true if the chunk is in the store
 func (r *RemoteHTTP) HasChunk(id ChunkID) (bool, error) {
+	log.Printf("Testing presence of chunk %s in HTTP store", id)
 	p := r.nameFromID(id)
 	u, _ := r.location.Parse(p)
 	var (
@@ -212,6 +217,7 @@ retry:
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
+			log.Printf("Failed testing presence of chunk %s in HTTP store : %v", id, err)
 			return false, err
 		}
 		goto retry
@@ -220,10 +226,13 @@ retry:
 	resp.Body.Close()
 	switch resp.StatusCode {
 	case 200:
+		log.Printf("Done testing presence of chunk %s in HTTP store : found", id)
 		return true, nil
 	case 404:
+		log.Printf("Done testing presence of chunk %s in HTTP store : not found", id)
 		return false, nil
 	default:
+		log.Printf("Failed testing presence of chunk %s in HTTP store : %v", id, err)
 		return false, fmt.Errorf("unexpected status code: %s", resp.Status)
 	}
 }

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -73,15 +74,18 @@ func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) er
 
 		go func() {
 			for range sighup {
+				log.Println("requested config reload")
 				newStore, err := mountIndexStore(opt)
 				if err != nil {
 					fmt.Fprintln(stderr, "failed to reload configuration:", err)
 					continue
 				}
 				if store, ok := s.(*desync.SwapStore); ok {
+					log.Println("starting config reload")
 					if err := store.Swap(newStore); err != nil {
 						fmt.Fprintln(stderr, "failed to reload configuration:", err)
 					}
+					log.Println("done config reload")
 				}
 			}
 		}()

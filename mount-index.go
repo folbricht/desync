@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync"
 	"syscall"
@@ -95,6 +96,7 @@ func newIndexFileHandle(idx Index, s Store) *indexFileHandle {
 func (f *indexFileHandle) read(dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	log.Printf("Starting read of %d bytes from %d", len(dest), off)
 	if _, err := f.r.Seek(off, io.SeekStart); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return nil, syscall.EIO
@@ -104,6 +106,7 @@ func (f *indexFileHandle) read(dest []byte, off int64) (fuse.ReadResult, syscall
 		fmt.Fprintln(os.Stderr, err)
 		return nil, syscall.EIO
 	}
+	log.Printf("Done read of %d bytes from %d", len(dest), off)
 	return fuse.ReadResultData(dest[:n]), fs.OK
 }
 
