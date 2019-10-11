@@ -20,6 +20,7 @@ type tarOptions struct {
 	createIndex bool
 	desync.LocalFSOptions
 	inFormat string
+	desync.TarReaderOptions
 }
 
 func newTarCommand(ctx context.Context) *cobra.Command {
@@ -50,6 +51,7 @@ the input can be a tar file or stream to STDIN with '-'.
 	flags.BoolVarP(&opt.OneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
 	flags.StringVar(&opt.inFormat, "input-format", "disk", "input format, 'disk' or 'tar'")
 	flags.BoolVarP(&opt.NoTime, "no-time", "", false, "set file timestamps to zero in the archive")
+	flags.BoolVarP(&opt.AddRoot, "tar-add-root", "", false, "pretend that all tar elements have a common root directory")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -60,6 +62,9 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	}
 	if opt.createIndex && opt.store == "" {
 		return errors.New("-i requires a store (-s <location>)")
+	}
+	if opt.AddRoot && opt.inFormat != "tar" {
+		return errors.New("--tar-add-root works only with --input-format tar")
 	}
 
 	output := args[0]
@@ -85,7 +90,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 			}
 			defer r.Close()
 		}
-		fs = desync.NewTarReader(r)
+		fs = desync.NewTarReader(r, opt.TarReaderOptions)
 	default:
 		return fmt.Errorf("invalid input format '%s'", opt.inFormat)
 	}

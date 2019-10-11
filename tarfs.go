@@ -4,6 +4,7 @@ import (
 	gnutar "archive/tar"
 	"io"
 	"io/ioutil"
+	"os"
 	"path"
 )
 
@@ -100,19 +101,41 @@ func (fs TarWriter) Close() error {
 // a catar).
 type TarReader struct {
 	r *gnutar.Reader
+	root *File
 }
 
-var _ FilesystemReader = TarReader{}
+type TarReaderOptions struct {
+	AddRoot bool
+}
+
+var _ FilesystemReader = &TarReader{}
 
 // NewTarFS initializes a new instance of a GNU tar archive that can be used
 // for catar archive tar/untar operations.
-func NewTarReader(r io.Reader) TarReader {
-	return TarReader{gnutar.NewReader(r)}
+func NewTarReader(r io.Reader, opts TarReaderOptions) *TarReader {
+	var root *File
+	if opts.AddRoot {
+		root = &File{
+			Name: ".",
+			Path: ".",
+			Mode: os.ModeDir | 0755,
+		}
+	}
+	return &TarReader{
+		r: gnutar.NewReader(r),
+		root: root,
+	}
 }
 
 // Next returns the next filesystem entry or io.EOF when done. The caller is responsible
 // for closing the returned File object.
-func (fs TarReader) Next() (*File, error) {
+func (fs *TarReader) Next() (f *File, err error) {
+	if fs.root != nil {
+		f = fs.root
+		fs.root = nil
+		return f, nil
+	}
+
 	h, err := fs.r.Next()
 	if err != nil {
 		return nil, err
@@ -120,7 +143,7 @@ func (fs TarReader) Next() (*File, error) {
 
 	info := h.FileInfo()
 
-	f := &File{
+	f = &File{
 		Name:       info.Name(),
 		Path:       path.Clean(h.Name),
 		Mode:       info.Mode(),
