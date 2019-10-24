@@ -100,7 +100,7 @@ func (fs *LocalFS) CreateDir(n NodeDirectory) error {
 func (fs *LocalFS) CreateFile(n NodeFile) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
-	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+	if err := os.RemoveAll(dst); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
