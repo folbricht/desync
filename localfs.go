@@ -62,7 +62,7 @@ func (fs *LocalFS) CreateDir(n NodeDirectory) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
 	// Let's see if there is a dir with the same name already
-	if info, err := os.Stat(dst); err == nil {
+	if info, err := os.Lstat(dst); err == nil {
 		if !info.IsDir() {
 			return fmt.Errorf("%s exists and is not a directory", dst)
 		}
@@ -100,6 +100,9 @@ func (fs *LocalFS) CreateDir(n NodeDirectory) error {
 func (fs *LocalFS) CreateFile(n NodeFile) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
+	if err := os.RemoveAll(dst); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
