@@ -61,7 +61,7 @@ Even if cloning is not available, seeds are still useful. `desync` automatically
 
 ## Reading and writing tar streams
 
-In addition to packing local filesystem trees into catar archives, it is possible to read a tar archive stream. Various tar formats such as GNU and BSD tar are supported. See [https://golang.org/pkg/archive/tar/](https://golang.org/pkg/archive/tar/) for details on supported formats. When reading from tar archives, the content is no re-ordered and written to the catar in the same order. This may create output files that are different when comparing to using the local filesystem as input since the order depends entirely on how the tar file is created.
+In addition to packing local filesystem trees into catar archives, it is possible to read a tar archive stream. Various tar formats such as GNU and BSD tar are supported. See [https://golang.org/pkg/archive/tar/](https://golang.org/pkg/archive/tar/) for details on supported formats. When reading from tar archives, the content is no re-ordered and written to the catar in the same order. This may create output files that are different when comparing to using the local filesystem as input since the order depends entirely on how the tar file is created. Since the catar format does not support hardlinks, the input tar stream needs to follow hardlinks for desync to process them correctly. See the `--hard-dereference` option in the tar utility.
 
 catar archives can also be extracted to GNU tar archive streams. All files in the output stream are ordered the same as in the catar.
 
@@ -416,6 +416,12 @@ Pack a directory tree currently available as tar archive into a catar. The tar i
 
 ```text
 desync tar --input-format=tar archive.catar /path/to/archive.tar
+```
+
+Process a tar stream into a catar. Since catar don't support hardlinks, we need to make sure those are dereferenced in the input stream.
+
+```text
+tar --hard-dereference -C /path/to/dir -c . | desync tar --input-format tar archive.catar -
 ```
 
 Unpack a directory tree from an index file and store the output filesystem in a GNU tar file rather than the local filesystem. Instead of an archive file, the output can be given as '-' which will write to STDOUT.
