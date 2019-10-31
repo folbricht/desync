@@ -86,7 +86,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file. Not available on Windows.
-- `untar`        - unpack a catar file or an index referencing a catar. Not available on Windows.
+- `untar`        - unpack a catar file or an index referencing a catar. Device entries in tar files are unsuppored and `--no-same-owner` and `--no-same-permissions` options are ignored on Windows.
 - `prune`        - remove unreferenced chunks from a local or S3 store. Use with caution, can lead to data loss.
 - `verify-index` - verify that an index file matches a given blob
 - `chunk-server` - start a HTTP(S) chunk server/store
