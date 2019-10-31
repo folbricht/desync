@@ -46,13 +46,15 @@ func (fs *LocalFS) SetDirPermissions(n NodeDirectory) error {
 			return err
 		}
 	}
+
+	return nil
 }
 
 func (fs *LocalFS) SetFilePermissions(n NodeFile) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
 	if !fs.opts.NoSameOwner {
-		if err = f.Chown(n.UID, n.GID); err != nil {
+		if err := os.Chown(dst, n.UID, n.GID); err != nil {
 			return err
 		}
 
@@ -69,6 +71,8 @@ func (fs *LocalFS) SetFilePermissions(n NodeFile) error {
 			return err
 		}
 	}
+
+	return nil
 }
 
 func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
@@ -92,6 +96,8 @@ func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
 			return errors.Wrapf(err, "chmod %s", dst)
 		}
 	}
+
+	return nil
 }
 
 func (fs *LocalFS) CreateDevice(n NodeDevice) error {
