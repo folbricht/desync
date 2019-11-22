@@ -1,5 +1,5 @@
-github.com/datadog/zstd v1.4.0 h1:ejIoT76UJnCJKIQQTwbUHDLJv4e9p7/UIoQQGmSu5/k=
-github.com/datadog/zstd v1.4.0/go.mod h1:inRp+etsHuvVqMPNTXaFlpf/Tj7wqviBtdJoPVrPEFQ=
+github.com/datadog/zstd v1.4.4 h1:VXuvuDMxP8fBcMt66fD2Z4LSC+VmNIhm59jslWe9J5o=
+github.com/datadog/zstd v1.4.4/go.mod h1:inRp+etsHuvVqMPNTXaFlpf/Tj7wqviBtdJoPVrPEFQ=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dchest/siphash v1.2.0 h1:YWOShuhvg0GqbQpMa60QlCGtEyf7O7HC1Jf0VjdQ60M=
