@@ -1,5 +1,3 @@
-// +build !windows
-
 package main
 
 import (
@@ -8,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 
 	"github.com/folbricht/desync"
 	"github.com/spf13/cobra"
@@ -48,10 +47,14 @@ the input can be a tar file or stream to STDIN with '-'.
 	flags.StringVarP(&opt.store, "store", "s", "", "target store (used with -i)")
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
-	flags.BoolVarP(&opt.OneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
 	flags.StringVar(&opt.inFormat, "input-format", "disk", "input format, 'disk' or 'tar'")
 	flags.BoolVarP(&opt.NoTime, "no-time", "", false, "set file timestamps to zero in the archive")
 	flags.BoolVarP(&opt.AddRoot, "tar-add-root", "", false, "pretend that all tar elements have a common root directory")
+
+	if runtime.GOOS != "windows" {
+		flags.BoolVarP(&opt.OneFileSystem, "one-file-system", "x", false, "don't cross filesystem boundaries")
+	}
+
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }

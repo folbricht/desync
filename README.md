@@ -8,7 +8,7 @@ For support and discussion, see [![Gitter chat](https://badges.gitter.im/desync-
 
 Among the distinguishing factors:
 
-- Supported on MacOS, though there could be incompatibilities when exchanging catar-files between Linux and Mac for example since devices and filemodes differ slightly. \*BSD should work as well but hasn't been tested. Windows supports a limited subset of commands.
+- Supported on MacOS, though there could be incompatibilities when exchanging catar-files between Linux and Mac for example since devices and filemodes differ slightly. \*BSD should work as well but hasn't been tested. Windows supports a subset of commands.
 - Where the upstream command has chosen to optimize for storage efficiency (f/e, being able to use local files as "seeds", building temporary indexes into them), this command chooses to optimize for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at cost to storage efficiency.
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
 - Both, SHA512/256 and SHA256 are supported hash functions.
@@ -85,7 +85,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `cache`        - populate a cache from index files without extracting a blob or archive
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
-- `tar`          - pack a catar file, optionally chunk the catar and create an index file. Not available on Windows.
+- `tar`          - pack a catar file, optionally chunk the catar and create an index file.
 - `untar`        - unpack a catar file or an index referencing a catar. Device entries in tar files are unsuppored and `--no-same-owner` and `--no-same-permissions` options are ignored on Windows.
 - `prune`        - remove unreferenced chunks from a local or S3 store. Use with caution, can lead to data loss.
 - `verify-index` - verify that an index file matches a given blob

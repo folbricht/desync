@@ -1,6 +1,11 @@
 package desync
 
 import (
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/pkg/errors"
 )
 
@@ -10,7 +15,7 @@ func NewLocalFS(root string, opts LocalFSOptions) *LocalFS {
 	return &LocalFS{
 		Root:    root,
 		opts:    opts,
-		entries: nil,
+		entries: make(chan walkEntry),
 	}
 }
 
@@ -36,5 +41,68 @@ func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 // Next returns the next filesystem entry or io.EOF when done. The caller is responsible
 // for closing the returned File object.
 func (fs *LocalFS) Next() (*File, error) {
-	return nil, errors.New("Filesystem iteration is not supported on this platform")
+	fs.once.Do(func() {
+		fs.startSerializer()
+	})
+
+	entry, ok := <-fs.entries
+	if !ok {
+		return nil, fs.sErr
+	}
+	if entry.err != nil {
+		return nil, entry.err
+	}
+
+	// If it's a file, open it and return a ReadCloser
+	var r io.ReadCloser
+	if entry.info.Mode().IsRegular() {
+		data, err := os.Open(entry.path)
+		if err != nil {
+			return nil, err
+		}
+		r = data
+	}
+
+	// If this is a symlink we need to get the link target
+	var (
+		linkTarget string
+		err        error
+	)
+	if entry.info.Mode()&os.ModeSymlink != 0 {
+		linkTarget, err = os.Readlink(entry.path)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	mtime := entry.info.ModTime()
+	if fs.opts.NoTime {
+		mtime = time.Unix(0, 0)
+	}
+
+	f := &File{
+		Name:       entry.info.Name(),
+		Path:       filepath.ToSlash(filepath.Clean(entry.path)),
+		Mode:       entry.info.Mode(),
+		ModTime:    mtime,
+		Size:       uint64(entry.info.Size()),
+		LinkTarget: filepath.ToSlash(linkTarget),
+		Data:       r,
+	}
+
+	return f, nil
+}
+
+func (fs *LocalFS) startSerializer() {
+	go func() {
+		err := filepath.Walk(fs.Root, func(path string, info os.FileInfo, err error) error {
+			fs.entries <- walkEntry{path, info, err}
+			return nil
+		})
+		fs.sErr = err
+		if err == nil {
+			fs.sErr = io.EOF
+		}
+		close(fs.entries)
+	}()
 }
