@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -159,7 +160,7 @@ loop:
 
 	// If it doesn't have a payload or is a device/symlink, it must be a directory
 	if payload == nil && device == nil && symlink == nil {
-		a.dir = filepath.Join(a.dir, name)
+		a.dir = path.Join(a.dir, name)
 		return NodeDirectory{
 			Name:   a.dir,
 			UID:    entry.UID,
@@ -173,7 +174,7 @@ loop:
 	// Regular file
 	if payload != nil {
 		return NodeFile{
-			Name:   filepath.Join(a.dir, name),
+			Name:   path.Join(a.dir, name),
 			UID:    entry.UID,
 			GID:    entry.GID,
 			Mode:   entry.Mode,
@@ -187,7 +188,7 @@ loop:
 	// Device
 	if device != nil {
 		return NodeDevice{
-			Name:   filepath.Join(a.dir, name),
+			Name:   path.Join(a.dir, name),
 			UID:    entry.UID,
 			GID:    entry.GID,
 			Mode:   entry.Mode,
@@ -201,7 +202,7 @@ loop:
 	// Symlink
 	if symlink != nil {
 		return NodeSymlink{
-			Name:   filepath.Join(a.dir, name),
+			Name:   path.Join(a.dir, name),
 			UID:    entry.UID,
 			GID:    entry.GID,
 			Mode:   entry.Mode,

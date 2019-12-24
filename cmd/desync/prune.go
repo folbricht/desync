@@ -57,7 +57,13 @@ func runPrune(ctx context.Context, opt pruneOptions, args []string) error {
 	// Make sure this store can be used for pruning
 	s, ok := sr.(desync.PruneStore)
 	if !ok {
-		return fmt.Errorf("store '%s' does not support pruning", opt.store)
+		if q, ok := sr.(*desync.WriteDedupQueue); ok {
+			if s, ok = q.S.(desync.PruneStore); !ok {
+				return fmt.Errorf("store '%s' does not support pruning", q.S)
+			}
+		} else {
+			return fmt.Errorf("store '%s' does not support pruning", opt.store)
+		}
 	}
 
 	// Read the input files and merge all chunk IDs in a map to de-dup them

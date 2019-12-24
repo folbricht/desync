@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/folbricht/desync"
@@ -147,9 +148,18 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 			return nil, err
 		}
 	default:
-		s, err = desync.NewLocalStore(location, opt)
+		local, err := desync.NewLocalStore(location, opt)
 		if err != nil {
 			return nil, err
+		}
+		s = local
+		// On Windows, it's not safe to operate on files concurrently. Operations
+		// like rename can fail if done at the same time with the same target file.
+		// Wrap all local stores and caches into dedup queue that ensures a chunk
+		// is only written (and read) once at any given time. Doing so may also
+		// reduce I/O a bit.
+		if runtime.GOOS == "windows" {
+			s = desync.NewWriteDedupQueue(local)
 		}
 	}
 	return s, nil
