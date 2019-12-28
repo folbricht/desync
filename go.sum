@@ -1,3 +1,5 @@
+github.com/billziss-gh/cgofuse v1.2.0 h1:FMdQSygSBpD4yEPENJcmvfCdmNWMVkPLlD7wWdl/7IA=
+github.com/billziss-gh/cgofuse v1.2.0/go.mod h1:LJjoaUojlVjgo5GQoEJTcJNqZJeRU0nCR84CyxKt2YM=
 github.com/datadog/zstd v1.4.4 h1:VXuvuDMxP8fBcMt66fD2Z4LSC+VmNIhm59jslWe9J5o=
 github.com/datadog/zstd v1.4.4/go.mod h1:inRp+etsHuvVqMPNTXaFlpf/Tj7wqviBtdJoPVrPEFQ=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

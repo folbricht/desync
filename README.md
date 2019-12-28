@@ -10,7 +10,7 @@ For support and discussion, see [![Gitter chat](https://badges.gitter.im/desync-
 
 Among the distinguishing factors:
 
-- Supported on MacOS, though there could be incompatibilities when exchanging catar-files between Linux and Mac for example since devices and filemodes differ slightly. \*BSD should work as well but hasn't been tested. Windows supports a subset of commands.
+- Supported on MacOS, though there could be incompatibilities when exchanging catar-files between Linux, Mac and Windows for example since devices and filemodes differ slightly. \*BSD should work as well but hasn't been tested.
 - Where the upstream command has chosen to optimize for storage efficiency (f/e, being able to use local files as "seeds", building temporary indexes into them), this command chooses to optimize for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at cost to storage efficiency.
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
 - Both, SHA512/256 and SHA256 are supported hash functions.
@@ -73,9 +73,18 @@ The tool is provided for convenience. It uses the desync library and makes most 
 
 ### Installation
 
-If GOPATH is set correctly, building the tool and installing it into `$GOPATH/bin` can be done with:
+#### Linux
 
 ```text
+go get -u github.com/folbricht/desync/cmd/desync
+```
+
+#### Windows
+
+Windows builds require a gcc compiler in PATH (for example [http://mingw-w64.org/](http://mingw-w64.org/)) and [WinFsp](https://github.com/billziss-gh/winfsp).
+
+```text
+set CPATH=C:\Program Files (x86)\WinFsp\inc\fuse
 go get -u github.com/folbricht/desync/cmd/desync
 ```
 

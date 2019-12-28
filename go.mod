@@ -3,6 +3,7 @@ module github.com/folbricht/desync
 go 1.11
 
 require (
+	github.com/billziss-gh/cgofuse v1.2.0
 	github.com/datadog/zstd v1.4.4
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dchest/siphash v1.2.0
