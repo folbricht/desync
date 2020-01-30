@@ -62,16 +62,8 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 	// if access access-key is present, it takes precedence
 	if credsConfig.AccessKey != "" {
 		creds = NewStaticCredentials(credsConfig.AccessKey, credsConfig.SecretKey)
-	} else if credsConfig.AwsCredentialsFile != "" {
-		creds = NewRefreshableSharedCredentials(credsConfig.AwsCredentialsFile, credsConfig.AwsProfile, time.Now)
 	} else {
-		// If credentials still haven't been found fallback to the default AWS credential location
-		creds = credentials.New(&RefreshableSharedCredentialsProvider{
-			// To ensure the credentials are always valid, the provider should fetch the credentials every 5 minutes or so.
-			// It's set to 1 minute here.
-			exp: time.Now().Add(time.Minute),
-			now: time.Now,
-		})
+		creds = NewRefreshableSharedCredentials(credsConfig.AwsCredentialsFile, credsConfig.AwsProfile, time.Now)
 	}
 	return creds, region
 }
