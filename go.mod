@@ -1,6 +1,6 @@
 module github.com/folbricht/desync
 
-go 1.11
+go 1.12
 
 require (
 	github.com/datadog/zstd v1.4.4
