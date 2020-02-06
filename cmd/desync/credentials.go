@@ -17,14 +17,13 @@ import (
 // Builds the shared config file path based on the OS's platform.
 //
 //   - Linux/Unix: $HOME/.aws/credentials
-func SharedCredentialsFilename() string {
-	return filepath.Join(os.Getenv("HOME"), ".aws", "credentials")
-}
-
-// UserHomeDir returns the home directory for the user the process is
-// running under.
-func UserHomeDir() string {
-	return os.Getenv("HOME")
+// 	 - Windows %USERPROFILE%\.aws\credentials
+func SharedCredentialsFilename() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".aws", "credentials"), nil
 }
 
 // StaticCredentialsProvider implements credentials.Provider from github.com/minio/minio-go/pkg/credentials
@@ -159,16 +158,14 @@ func (p *RefreshableSharedCredentialsProvider) filename() (string, error) {
 		return p.Filename, nil
 	}
 
-	homeDir := UserHomeDir()
-	if len(homeDir) == 0 {
-		// Backwards compatibility of home directly not found error being returned.
-		return "", errors.New("user home directory not found")
-	}
-
 	// SDK's default file path
 	// - Linux/Unix: $HOME/.aws/credentials
-	p.Filename = SharedCredentialsFilename()
-
+	// - Windows %USERPROFILE%\.aws\credentials
+	filename, err := SharedCredentialsFilename()
+	if err != nil {
+		return "", errors.Wrap(err, "user home directory not found")
+	}
+	p.Filename = filename
 	return p.Filename, nil
 }
 

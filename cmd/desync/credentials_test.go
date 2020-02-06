@@ -144,9 +144,10 @@ func TestRefreshableSharedCredentialsProvider_DefaultFilename(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expect no error, got %v", err)
 	}
-
-	if e, a := SharedCredentialsFilename(), filename; e != a {
-		t.Errorf("expect %q filename, got %q", e, a)
+	expectedFilename, err := SharedCredentialsFilename()
+	assert.NoError(t, err)
+	if expectedFilename != filename {
+		t.Errorf("expect %q filename, got %q", expectedFilename, filename)
 	}
 }
 
