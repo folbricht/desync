@@ -57,7 +57,7 @@ func (q *DedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
 }
 
 func (q *DedupQueue) HasChunk(id ChunkID) (bool, error) {
-	req, isInFlight := q.getChunkQueue.loadOrStore(id)
+	req, isInFlight := q.hasChunkQueue.loadOrStore(id)
 
 	if isInFlight { // The request is already in-flight, wait for it to come back
 		data, err := req.wait()
@@ -72,7 +72,7 @@ func (q *DedupQueue) HasChunk(id ChunkID) (bool, error) {
 	req.markDone(hasChunk, err)
 
 	// We're done, drop the request from the queue to avoid keeping all in memory
-	q.getChunkQueue.delete(id)
+	q.hasChunkQueue.delete(id)
 	return hasChunk, err
 }
 
