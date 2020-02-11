@@ -1,13 +1,14 @@
 package desync
 
-var _ Store = &TestStore{}
+var _ WriteStore = &TestStore{}
 
 type TestStore struct {
 	Chunks map[ChunkID][]byte
 
 	// Override the default behavior by setting these functions
-	GetChunkFunc func(ChunkID) (*Chunk, error)
-	HasChunkFunc func(ChunkID) (bool, error)
+	GetChunkFunc   func(ChunkID) (*Chunk, error)
+	HasChunkFunc   func(ChunkID) (bool, error)
+	StoreChunkFunc func(chunk *Chunk) error
 }
 
 func (s *TestStore) GetChunk(id ChunkID) (*Chunk, error) {
@@ -27,6 +28,17 @@ func (s *TestStore) HasChunk(id ChunkID) (bool, error) {
 	}
 	_, ok := s.Chunks[id]
 	return ok, nil
+}
+
+func (s *TestStore) StoreChunk(chunk *Chunk) error {
+	if s.StoreChunkFunc != nil {
+		return s.StoreChunkFunc(chunk)
+	}
+	if s.Chunks == nil {
+		s.Chunks = make(map[ChunkID][]byte)
+	}
+	s.Chunks[chunk.ID()] = chunk.compressed
+	return nil
 }
 
 func (s *TestStore) String() string { return "TestStore" }
