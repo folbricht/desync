@@ -1,5 +1,7 @@
 package desync
 
+import "fmt"
+
 var _ WriteStore = &WriteDedupQueue{}
 
 // WriteDedupQueue wraps a writable store and provides deduplication of incoming chunk requests and store
@@ -10,17 +12,37 @@ var _ WriteStore = &WriteDedupQueue{}
 type WriteDedupQueue struct {
 	S WriteStore
 	*DedupQueue
+	storeChunkQueue *queue
 }
 
 // NewWriteDedupQueue initializes a new instance of the wrapper.
 func NewWriteDedupQueue(store WriteStore) *WriteDedupQueue {
 	return &WriteDedupQueue{
-		S:          store,
-		DedupQueue: NewDedupQueue(store),
+		S:               store,
+		DedupQueue:      NewDedupQueue(store),
+		storeChunkQueue: newQueue(),
 	}
 }
 
 func (q *WriteDedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
+	// If the chunk is being stored just wait and return the data
+	q.storeChunkQueue.mu.Lock()
+	req, isInFlight := q.storeChunkQueue.requests[id]
+	q.storeChunkQueue.mu.Unlock()
+
+	if isInFlight {
+		data, err := req.wait()
+		switch b := data.(type) {
+		case nil:
+			return nil, err
+		case *Chunk:
+			return b, err
+		default:
+			return nil, fmt.Errorf("internal error: unexpected type %T", data)
+		}
+	}
+
+	// If the chunk is not currently being stored get the chunk as usual
 	return q.DedupQueue.GetChunk(id)
 }
 
@@ -30,7 +52,7 @@ func (q *WriteDedupQueue) HasChunk(id ChunkID) (bool, error) {
 
 func (q *WriteDedupQueue) StoreChunk(chunk *Chunk) error {
 	id := chunk.ID()
-	req, isInFlight := q.getChunkQueue.loadOrStore(id)
+	req, isInFlight := q.storeChunkQueue.loadOrStore(id)
 
 	if isInFlight { // The request is already in-flight, wait for it to come back
 		_, err := req.wait()
@@ -46,7 +68,7 @@ func (q *WriteDedupQueue) StoreChunk(chunk *Chunk) error {
 
 	// We're done, drop the request from the queue to avoid keeping all the chunk data
 	// in memory after the request is done
-	q.getChunkQueue.delete(id)
+	q.storeChunkQueue.delete(id)
 
 	return err
 }
