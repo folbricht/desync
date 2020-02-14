@@ -78,8 +78,12 @@ func (fs *LocalFS) SetFilePermissions(n NodeFile) error {
 func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
 	dst := filepath.Join(fs.Root, n.Name)
 
+	// TODO: On Linux, the permissions of the link don't matter so we don't
+	// set them here. But they do matter somewhat on Mac, so should probably
+	// add some Mac-specific logic for that here.
+	// fchmodat() with flag AT_SYMLINK_NOFOLLOW
 	if !fs.opts.NoSameOwner {
-		if err := os.Chown(dst, n.UID, n.GID); err != nil {
+		if err := os.Lchown(dst, n.UID, n.GID); err != nil {
 			return err
 		}
 
@@ -89,11 +93,6 @@ func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
 					return err
 				}
 			}
-		}
-	}
-	if !fs.opts.NoSamePermissions {
-		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
-			return errors.Wrapf(err, "chmod %s", dst)
 		}
 	}
 
