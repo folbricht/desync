@@ -74,6 +74,13 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, erro
 		cancel()
 		return nil, err
 	}
+	// The stat has really two jobs. Confirm that the path actually exists on the
+	// server, and also make sure the handshake has happened successfully. SSH
+	// may fail if multiple instances access the SSH agent concurrently.
+	if _, err = client.Stat(path); err != nil {
+		cancel()
+		return nil, errors.Wrapf(err, "failed to stat '%s'", path)
+	}
 	return &SFTPStoreBase{location, path, client, cancel, opt}, nil
 }
 
