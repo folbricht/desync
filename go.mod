@@ -13,6 +13,7 @@ require (
 	github.com/hanwen/go-fuse/v2 v2.0.2
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jtolds/gls v4.2.1+incompatible // indirect
+	github.com/klauspost/compress v1.10.1
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/mattn/go-colorable v0.0.9 // indirect
 	github.com/mattn/go-isatty v0.0.4 // indirect
