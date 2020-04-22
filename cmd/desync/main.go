@@ -38,7 +38,7 @@ func main() {
 	signal.Notify(sighup, syscall.SIGHUP)
 
 	// Read config early
-	cobra.OnInitialize(initConfig, setDigestAlgorithm)
+	cobra.OnInitialize(initConfig, setDigestAlgorithm, setVerbose)
 
 	// Register the sub-commands under root
 	rootCmd := newRootCommand()

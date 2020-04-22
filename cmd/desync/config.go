@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -172,5 +174,15 @@ func setDigestAlgorithm() {
 		desync.Digest = desync.SHA256{}
 	default:
 		die(fmt.Errorf("invalid digest algorithm '%s'", digestAlgorithm))
+	}
+}
+
+// Verbose mode
+var verbose bool
+
+func setVerbose() {
+	if !verbose {
+		log.SetFlags(0)
+		log.SetOutput(ioutil.Discard)
 	}
 }
