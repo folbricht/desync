@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -110,13 +111,17 @@ retry:
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
+	log.Printf("HTTP GET: %s: request sent\n", u.String())
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
+			log.Printf("HTTP GET: %s: error: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
 			return nil, errors.Wrap(err, u.String())
 		}
+		log.Printf("HTTP GET: %s: error: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
 		goto retry
 	}
+	log.Printf("HTTP GET: %s: response received: %s\n", u.String(), resp.Status)
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 200: // expected
@@ -128,8 +133,10 @@ retry:
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
+			log.Printf("HTTP GET: %s: error while reading response body: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
 			return nil, errors.Wrap(err, u.String())
 		}
+		log.Printf("HTTP GET: %s: error while reading response body: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
 		goto retry
 	}
 	return b, nil
@@ -153,13 +160,17 @@ retry:
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
+	log.Printf("HTTP PUT: %s: request sent\n", u.String())
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
+			log.Printf("HTTP PUT: %s: error: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
 			return err
 		}
+		log.Printf("HTTP PUT: %s: error: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
 		goto retry
 	}
+	log.Printf("HTTP PUT: %s: response received: %s\n", u.String(), resp.Status)
 	defer resp.Body.Close()
 	msg, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
@@ -209,13 +220,17 @@ retry:
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
+	log.Printf("HTTP HEAD: %s: request sent\n", u.String())
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
+			log.Printf("HTTP HEAD: %s: error: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
 			return false, err
 		}
+		log.Printf("HTTP HEAD: %s: error: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
 		goto retry
 	}
+	log.Printf("HTTP HEAD: %s: response received: %s\n", u.String(), resp.Status)
 	io.Copy(ioutil.Discard, resp.Body)
 	resp.Body.Close()
 	switch resp.StatusCode {
