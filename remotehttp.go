@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -16,6 +15,7 @@ import (
 	"crypto/x509"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var _ WriteStore = &RemoteHTTP{}
@@ -101,6 +101,10 @@ func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 	var (
 		resp    *http.Response
 		attempt int
+		log     = Log.WithFields(logrus.Fields{
+			"method": "GET",
+			"url":    u.String(),
+		})
 	)
 retry:
 	attempt++
@@ -111,17 +115,17 @@ retry:
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
-	log.Printf("HTTP GET: %s: request sent\n", u.String())
+	log.Debug("request sent")
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
-			log.Printf("HTTP GET: %s: error: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
+			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
 			return nil, errors.Wrap(err, u.String())
 		}
-		log.Printf("HTTP GET: %s: error: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
+		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
 		goto retry
 	}
-	log.Printf("HTTP GET: %s: response received: %s\n", u.String(), resp.Status)
+	log.WithField("status", resp.StatusCode).Debug("response received")
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case 200: // expected
@@ -133,10 +137,10 @@ retry:
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
-			log.Printf("HTTP GET: %s: error while reading response body: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
+			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
 			return nil, errors.Wrap(err, u.String())
 		}
-		log.Printf("HTTP GET: %s: error while reading response body: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
+		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
 		goto retry
 	}
 	return b, nil
@@ -150,6 +154,10 @@ func (r *RemoteHTTPBase) StoreObject(name string, rdr io.Reader) error {
 		resp    *http.Response
 		err     error
 		attempt int
+		log     = Log.WithFields(logrus.Fields{
+			"method": "PUT",
+			"url":    u.String(),
+		})
 	)
 retry:
 	attempt++
@@ -160,17 +168,17 @@ retry:
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
-	log.Printf("HTTP PUT: %s: request sent\n", u.String())
+	log.Debug("request sent")
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
-			log.Printf("HTTP PUT: %s: error: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
+			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
 			return err
 		}
-		log.Printf("HTTP PUT: %s: error: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
+		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
 		goto retry
 	}
-	log.Printf("HTTP PUT: %s: response received: %s\n", u.String(), resp.Status)
+	log.WithField("status", resp.StatusCode).Debug("response received")
 	defer resp.Body.Close()
 	msg, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
@@ -210,6 +218,10 @@ func (r *RemoteHTTP) HasChunk(id ChunkID) (bool, error) {
 		resp    *http.Response
 		err     error
 		attempt int
+		log     = Log.WithFields(logrus.Fields{
+			"method": "HEAD",
+			"url":    u.String(),
+		})
 	)
 retry:
 	attempt++
@@ -220,17 +232,17 @@ retry:
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
-	log.Printf("HTTP HEAD: %s: request sent\n", u.String())
+	log.Debug("request sent")
 	resp, err = r.client.Do(req)
 	if err != nil {
 		if attempt >= r.opt.ErrorRetry {
-			log.Printf("HTTP HEAD: %s: error: %v -- %d attempts failed, giving up\n", u.String(), err, attempt)
+			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
 			return false, err
 		}
-		log.Printf("HTTP HEAD: %s: error: %v -- attempt %d failed, retrying\n", u.String(), err, attempt)
+		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
 		goto retry
 	}
-	log.Printf("HTTP HEAD: %s: response received: %s\n", u.String(), resp.Status)
+	log.WithField("status", resp.StatusCode).Debug("response received")
 	io.Copy(ioutil.Discard, resp.Body)
 	resp.Body.Close()
 	switch resp.StatusCode {

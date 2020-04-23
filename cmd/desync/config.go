@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,6 +15,7 @@ import (
 	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/pkg/credentials"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -181,8 +180,12 @@ func setDigestAlgorithm() {
 var verbose bool
 
 func setVerbose() {
-	if !verbose {
-		log.SetFlags(0)
-		log.SetOutput(ioutil.Discard)
+	if verbose {
+		desync.Log = &logrus.Logger{
+			Out:       os.Stderr,
+			Formatter: new(logrus.TextFormatter),
+			// Hooks:     make(logrus.LevelHooks),
+			Level: logrus.DebugLevel,
+		}
 	}
 }
