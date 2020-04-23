@@ -4,7 +4,6 @@ go 1.12
 
 require (
 	github.com/datadog/zstd v1.4.4
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dchest/siphash v1.2.0
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/folbricht/tempfile v0.0.1
@@ -23,7 +22,7 @@ require (
 	github.com/pkg/errors v0.8.0
 	github.com/pkg/sftp v1.8.2
 	github.com/pkg/xattr v0.4.0
-	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/sirupsen/logrus v1.5.0
 	github.com/smartystreets/assertions v0.0.0-20180820201707-7c9eb446e3cf // indirect
 	github.com/smartystreets/goconvey v0.0.0-20180222194500-ef6db91d284a // indirect
 	github.com/spf13/cobra v0.0.3

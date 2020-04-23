@@ -15,6 +15,7 @@ import (
 	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/pkg/credentials"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -172,5 +173,19 @@ func setDigestAlgorithm() {
 		desync.Digest = desync.SHA256{}
 	default:
 		die(fmt.Errorf("invalid digest algorithm '%s'", digestAlgorithm))
+	}
+}
+
+// Verbose mode
+var verbose bool
+
+func setVerbose() {
+	if verbose {
+		desync.Log = &logrus.Logger{
+			Out:       os.Stderr,
+			Formatter: new(logrus.TextFormatter),
+			// Hooks:     make(logrus.LevelHooks),
+			Level: logrus.DebugLevel,
+		}
 	}
 }
