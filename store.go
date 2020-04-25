@@ -71,6 +71,11 @@ type StoreOptions struct {
 	// with unreliable connections. Default: 0
 	ErrorRetry int `json:"error-retry,omitempty"`
 
+	// Number of seconds to wait before first retry attempt.
+	// Retry attempt number N for the same request will wait N times this interval.
+	// Default: 1 second
+	ErrorRetryBaseInterval time.Duration `json:"error-retry-base-interval,omitempty"`
+
 	// If SkipVerify is true, this store will not verfiy the data it reads and serves up. This is
 	// helpful when a store is merely a proxy and the data will pass through additional stores
 	// before being used. Verifying the checksum of a chunk requires it be uncompressed, so if
