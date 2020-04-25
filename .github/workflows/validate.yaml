@@ -5,7 +5,7 @@ on:
   push:
     # Always run when there are new commits
     branches:
-      - **
+      - '**'
   # Always run when there are pull requests
   pull_request:
     branches:
