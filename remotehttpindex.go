@@ -44,11 +44,16 @@ func (r *RemoteHTTPIndex) GetIndex(name string) (i Index, e error) {
 
 // StoreIndex adds a new chunk to the store
 func (r *RemoteHTTPIndex) StoreIndex(name string, idx Index) error {
-	rdr, w := io.Pipe()
 
-	go func() {
-		defer w.Close()
-		idx.WriteTo(w)
-	}()
-	return r.StoreObject(name, rdr)
+	getReader := func() io.Reader {
+
+		rdr, w := io.Pipe()
+		go func() {
+			defer w.Close()
+			idx.WriteTo(w)
+		}()
+		return rdr
+	}
+
+	return r.StoreObject(name, getReader)
 }

@@ -32,6 +32,8 @@ type RemoteHTTP struct {
 	*RemoteHTTPBase
 }
 
+type GetReaderForRequestBody func() io.Reader
+
 // NewRemoteHTTPStoreBase initializes a base object for HTTP index or chunk stores.
 func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBase, error) {
 	if location.Scheme != "http" && location.Scheme != "https" {
@@ -96,7 +98,7 @@ func (r *RemoteHTTPBase) String() string {
 func (r *RemoteHTTPBase) Close() error { return nil }
 
 // Send a single HTTP request.
-func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, rdr io.Reader, attempt int) (int, []byte, error) {
+func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader GetReaderForRequestBody, attempt int) (int, []byte, error) {
 
 	var (
 		resp *http.Response
@@ -107,7 +109,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, rdr io.Read
 		})
 	)
 
-	req, err := http.NewRequest(method, u.String(), rdr)
+	req, err := http.NewRequest(method, u.String(), getReader())
 	if err != nil {
 		log.Debug("unable to create new request")
 		return 0, nil, err
@@ -136,7 +138,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, rdr io.Read
 }
 
 // Send a single HTTP request, retrying if a retryable error has occurred.
-func (r *RemoteHTTPBase) IssueRetryableHttpRequest(method string, u *url.URL, rdr io.Reader) (int, []byte, error) {
+func (r *RemoteHTTPBase) IssueRetryableHttpRequest(method string, u *url.URL, getReader GetReaderForRequestBody) (int, []byte, error) {
 
 	var (
 		attempt int
@@ -148,7 +150,7 @@ func (r *RemoteHTTPBase) IssueRetryableHttpRequest(method string, u *url.URL, rd
 
 retry:
 	attempt++
-	statusCode, responseBody, err := r.IssueHttpRequest(method, u, rdr, attempt)
+	statusCode, responseBody, err := r.IssueHttpRequest(method, u, getReader, attempt)
 
 	if (err != nil) || (statusCode >= 500 && statusCode < 600) {
 		if attempt >= r.opt.ErrorRetry {
@@ -171,7 +173,7 @@ retry:
 // GetObject reads and returns an object in the form of []byte from the store
 func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 	u, _ := r.location.Parse(name)
-	statusCode, responseBody, err := r.IssueRetryableHttpRequest("GET", u, nil)
+	statusCode, responseBody, err := r.IssueRetryableHttpRequest("GET", u, func() io.Reader { return nil })
 	if err != nil {
 		return nil, err
 	}
@@ -186,9 +188,9 @@ func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 }
 
 // StoreObject stores an object to the store.
-func (r *RemoteHTTPBase) StoreObject(name string, rdr io.Reader) error {
+func (r *RemoteHTTPBase) StoreObject(name string, getReader GetReaderForRequestBody) error {
 	u, _ := r.location.Parse(name)
-	statusCode, responseBody, err := r.IssueRetryableHttpRequest("PUT", u, rdr)
+	statusCode, responseBody, err := r.IssueRetryableHttpRequest("PUT", u, getReader)
 	if err != nil {
 		return err
 	}
@@ -226,7 +228,7 @@ func (r *RemoteHTTP) HasChunk(id ChunkID) (bool, error) {
 	p := r.nameFromID(id)
 	u, _ := r.location.Parse(p)
 
-	statusCode, _, err := r.IssueRetryableHttpRequest("HEAD", u, nil)
+	statusCode, _, err := r.IssueRetryableHttpRequest("HEAD", u, func() io.Reader { return nil })
 	if err != nil {
 		return false, err
 	}
@@ -255,7 +257,7 @@ func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 	if err != nil {
 		return err
 	}
-	return r.StoreObject(p, bytes.NewReader(b))
+	return r.StoreObject(p, func() io.Reader { return bytes.NewReader(b) })
 }
 
 func (r *RemoteHTTP) nameFromID(id ChunkID) string {
