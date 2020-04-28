@@ -12,10 +12,14 @@ on:
       - '**'
 
 jobs:
-  validate-linux:
-    name: Validate on Linux
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  build:
+    name: Validate on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-go@v2
@@ -23,16 +27,3 @@ jobs:
           go-version: '^1.14.1'
       - run: go test
       - run: go build ./cmd/desync
-
-  validate-windows:
-    name: Validate on Windows
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v1
-      - uses: actions/setup-go@v2
-        with:
-          go-version: '^1.14.1'
-      - run: go test
-      - run: go build .\cmd\desync
-      
