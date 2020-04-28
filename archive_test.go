@@ -2,7 +2,7 @@ package desync
 
 import (
 	"os"
-	"path/filepath"
+	"path"
 	"reflect"
 	"testing"
 )
@@ -55,13 +55,13 @@ func TestArchiveDecoderNesting(t *testing.T) {
 	}{
 		{Type: NodeDirectory{}, Name: ".", UID: 500, GID: 500},
 		{Type: NodeDirectory{}, Name: "dir1", UID: 500, GID: 500},
-		{Type: NodeDirectory{}, Name: filepath.Join("dir1", "sub11"), UID: 500, GID: 500},
-		{Type: NodeFile{}, Name: filepath.Join("dir1", "sub11", "f11"), UID: 500, GID: 500},
-		{Type: NodeFile{}, Name: filepath.Join("dir1", "sub11", "f12"), UID: 500, GID: 500},
-		{Type: NodeDirectory{}, Name: filepath.Join("dir1", "sub12"), UID: 500, GID: 500},
+		{Type: NodeDirectory{}, Name: path.Join("dir1", "sub11"), UID: 500, GID: 500},
+		{Type: NodeFile{}, Name: path.Join("dir1", "sub11", "f11"), UID: 500, GID: 500},
+		{Type: NodeFile{}, Name: path.Join("dir1", "sub11", "f12"), UID: 500, GID: 500},
+		{Type: NodeDirectory{}, Name: path.Join("dir1", "sub12"), UID: 500, GID: 500},
 		{Type: NodeDirectory{}, Name: "dir2", UID: 500, GID: 500},
-		{Type: NodeDirectory{}, Name: filepath.Join("dir2", "sub21"), UID: 500, GID: 500},
-		{Type: NodeDirectory{}, Name: filepath.Join("dir2", "sub22"), UID: 500, GID: 500},
+		{Type: NodeDirectory{}, Name: path.Join("dir2", "sub21"), UID: 500, GID: 500},
+		{Type: NodeDirectory{}, Name: path.Join("dir2", "sub22"), UID: 500, GID: 500},
 		{Type: nil},
 	}
 
