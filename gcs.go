@@ -94,7 +94,7 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 		switch err {
 		case storage.ErrBucketNotExist:
 			err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
-		case storage.ErrBucketNotExist:
+		case storage.ErrObjectNotExist:
 			err = ChunkMissing{ID: id}
 		default:
 			err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
