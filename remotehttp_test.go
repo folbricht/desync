@@ -106,7 +106,7 @@ func TestHasChunk(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
-			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Duration(1) * time.Microsecond})
+			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -192,7 +192,7 @@ func TestGetChunk(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
-			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Duration(1) * time.Microsecond, Uncompressed: true})
+			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -280,7 +280,7 @@ func TestPutChunk(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
-			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Duration(1) * time.Microsecond, Uncompressed: true})
+			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
 			if err != nil {
 				t.Fatal(err)
 			}

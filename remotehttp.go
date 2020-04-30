@@ -160,7 +160,7 @@ retry:
 			log.WithField("attempt", attempt).WithField("delay", attempt).Debug("waiting, then retrying")
 			baseInterval := r.opt.ErrorRetryBaseInterval
 			if baseInterval == 0 {
-				baseInterval = 1 * time.Second
+				baseInterval = time.Duration(0)
 			}
 			time.Sleep(time.Duration(attempt) * baseInterval)
 			goto retry

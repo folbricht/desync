@@ -238,7 +238,7 @@ Available configuration values:
 - `store-options` - Allows customization of chunk and index stores, for example comression settings, timeouts, retry behavior and keys. Not all options are applicable to every store, some of these like `timeout` are ignored for local stores. Some of these options, such as the client certificates are overwritten with any values set in the command line. Note that the store location used in the command line needs to match the key under `store-options` exactly for these options to be used. Watch out for trailing `/` in URLs.
   - `timeout` - Time limit for chunk read or write operation in nanoseconds. Default: 1 minute. If set to a negative value, timeout is infinite.
   - `error-retry` - Number of times to retry failed chunk requests. Default: 0.
-  - `error-retry-base-interval` - Number of seconds to wait before first retry attempt. Retry attempt number N for the same request will wait N times this interval. Default: 1 second.
+  - `error-retry-base-interval` - Number of seconds to wait before first retry attempt. Retry attempt number N for the same request will wait N times this interval. Default: 0 seconds.
   - `client-cert` - Cerificate file to be used for stores where the server requires mutual SSL.
   - `client-key` - Key file to be used for stores where the server requires mutual SSL.
   - `ca-cert` - Certificate file containing trusted certs or CAs.
