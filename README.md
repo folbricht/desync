@@ -22,8 +22,8 @@ Among the distinguishing factors:
 - Supports chunking with the same algorithm used by casync (see `make` command) but executed in parallel. Results are identical to what casync produces, same chunks and index files, but with significantly better performance. For example, up to 10x faster than casync if the chunks are already present in the store. If the chunks are new, it heavily depends on I/O, but it's still likely several times faster than casync.
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 - Allows FUSE mounting of blob indexes
-- S3 protocol support to access chunk stores for read operations and some some commands that write chunks
-- Stores and retrieves index files from remote index stores such as HTTP, SFTP and S3
+- S3/GC protocol support to access chunk stores for read operations and some some commands that write chunks
+- Stores and retrieves index files from remote index stores such as HTTP, SFTP, Google Storage and S3
 - Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 - catar archives can be created from standard tar archives, and they can also be extracted to GNU tar format.
@@ -33,9 +33,9 @@ Among the distinguishing factors:
 The documentation below uses terms that may not be clear to readers not already familiar with casync.
 
 - **chunk** - A chunk is a section of data from a file. Typically it's between 16kB and 256kB. Chunks are identified by the SHA512-256 checksum of their uncompressed data. Files are split into several chunks with the `make` command which tries to find chunk boundaries intelligently using the algorithm outlined in this [blog post](http://0pointer.net/blog/casync-a-tool-for-distributing-file-system-images.html). By default, chunks are stored as files compressed with [zstd](https://github.com/facebook/zstd) and extension `.cacnk`.
-- **chunk store** - Location, either local or remote that stores chunks. In its most basic form, a chunk store can be a local directory, containing chunk files named after the checksum of the chunk. Other protocols like HTTP, S3, SFTP and SSH are available as well.
+- **chunk store** - Location, either local or remote that stores chunks. In its most basic form, a chunk store can be a local directory, containing chunk files named after the checksum of the chunk. Other protocols like HTTP, S3, GC, SFTP and SSH are available as well.
 - **index** - Indexes are data structures containing references to chunks and their location within a file. An index is a small representation of a much larger file. Given an index and a chunk store, it's possible to re-assemble the large file or make it available via a FUSE mount. Indexes are produced during chunking operations such as the `create` command. The most common file extension for an index is `.caibx`. When catar archives are chunked, the extension `.caidx` is used instead.
-- **index store** - Index stores are used to keep index files. It could simply be a local directory, or accessed over SFTP, S3 or HTTP.
+- **index store** - Index stores are used to keep index files. It could simply be a local directory, or accessed over SFTP, S3, GC or HTTP.
 - **catar** - Archives of directory trees, similar to what is produced by the `tar` command. These commonly have the `.catar` extension.
 - **caidx** - Index file of a chunked catar.
 - **caibx** - Index of a chunked regular blob.
@@ -89,7 +89,7 @@ go get -u github.com/folbricht/desync/cmd/desync
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file.
 - `untar`        - unpack a catar file or an index referencing a catar. Device entries in tar files are unsuppored and `--no-same-owner` and `--no-same-permissions` options are ignored on Windows.
-- `prune`        - remove unreferenced chunks from a local or S3 store. Use with caution, can lead to data loss.
+- `prune`        - remove unreferenced chunks from a local, S3 or GC store. Use with caution, can lead to data loss.
 - `verify-index` - verify that an index file matches a given blob
 - `chunk-server` - start a HTTP(S) chunk server/store
 - `index-server` - start a HTTP(S) index server/store

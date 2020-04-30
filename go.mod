@@ -3,6 +3,7 @@ module github.com/folbricht/desync
 go 1.12
 
 require (
+	cloud.google.com/go/storage v1.6.0
 	github.com/datadog/zstd v1.4.4
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dchest/siphash v1.2.0
@@ -29,11 +30,10 @@ require (
 	github.com/smartystreets/goconvey v0.0.0-20180222194500-ef6db91d284a // indirect
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.2
-	github.com/stretchr/testify v1.2.2
-	golang.org/x/crypto v0.0.0-20180904163835-0709b304e793
-	golang.org/x/net v0.0.0-20180906233101-161cd47e91fd // indirect
-	golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f
-	golang.org/x/text v0.3.0 // indirect
+	github.com/stretchr/testify v1.4.0
+	golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550
+	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+	google.golang.org/api v0.18.0
 	gopkg.in/cheggaaa/pb.v1 v1.0.25
 	gopkg.in/ini.v1 v1.38.2 // indirect
 )
