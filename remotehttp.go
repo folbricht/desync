@@ -32,6 +32,8 @@ type RemoteHTTP struct {
 	*RemoteHTTPBase
 }
 
+type GetReaderForRequestBody func() io.Reader
+
 // NewRemoteHTTPStoreBase initializes a base object for HTTP index or chunk stores.
 func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBase, error) {
 	if location.Scheme != "http" && location.Scheme != "https" {
@@ -95,94 +97,105 @@ func (r *RemoteHTTPBase) String() string {
 // Close the HTTP store. NOP operation but needed to implement the interface.
 func (r *RemoteHTTPBase) Close() error { return nil }
 
+// Send a single HTTP request.
+func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader GetReaderForRequestBody, attempt int) (int, []byte, error) {
+
+	var (
+		resp *http.Response
+		log  = Log.WithFields(logrus.Fields{
+			"method":  method,
+			"url":     u.String(),
+			"attempt": attempt,
+		})
+	)
+
+	req, err := http.NewRequest(method, u.String(), getReader())
+	if err != nil {
+		log.Debug("unable to create new request")
+		return 0, nil, err
+	}
+	if r.opt.HTTPAuth != "" {
+		req.Header.Set("Authorization", r.opt.HTTPAuth)
+	}
+
+	log.Debug("sending request")
+	resp, err = r.client.Do(req)
+	if err != nil {
+		log.WithError(err).Error("error while sending request")
+		return 0, nil, errors.Wrap(err, u.String())
+	}
+
+	defer resp.Body.Close()
+
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.WithError(err).Error("error while reading response")
+		return 0, nil, errors.Wrap(err, u.String())
+	}
+
+	log.WithField("statusCode", resp.StatusCode).Debug("response received")
+	return resp.StatusCode, b, nil
+}
+
+// Send a single HTTP request, retrying if a retryable error has occurred.
+func (r *RemoteHTTPBase) IssueRetryableHttpRequest(method string, u *url.URL, getReader GetReaderForRequestBody) (int, []byte, error) {
+
+	var (
+		attempt int
+		log     = Log.WithFields(logrus.Fields{
+			"method": method,
+			"url":    u.String(),
+		})
+	)
+
+retry:
+	attempt++
+	statusCode, responseBody, err := r.IssueHttpRequest(method, u, getReader, attempt)
+
+	if (err != nil) || (statusCode >= 500 && statusCode < 600) {
+		if attempt >= r.opt.ErrorRetry {
+			log.WithField("attempt", attempt).Debug("failed, giving up")
+			return 0, nil, err
+		} else {
+			log.WithField("attempt", attempt).WithField("delay", attempt).Debug("waiting, then retrying")
+			baseInterval := r.opt.ErrorRetryBaseInterval
+			if baseInterval == 0 {
+				baseInterval = time.Duration(0)
+			}
+			time.Sleep(time.Duration(attempt) * baseInterval)
+			goto retry
+		}
+	}
+
+	return statusCode, responseBody, nil
+}
+
 // GetObject reads and returns an object in the form of []byte from the store
 func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 	u, _ := r.location.Parse(name)
-	var (
-		resp    *http.Response
-		attempt int
-		log     = Log.WithFields(logrus.Fields{
-			"method": "GET",
-			"url":    u.String(),
-		})
-	)
-retry:
-	attempt++
-	req, err := http.NewRequest("GET", u.String(), nil)
+	statusCode, responseBody, err := r.IssueRetryableHttpRequest("GET", u, func() io.Reader { return nil })
 	if err != nil {
 		return nil, err
 	}
-	if r.opt.HTTPAuth != "" {
-		req.Header.Set("Authorization", r.opt.HTTPAuth)
-	}
-	log.Debug("request sent")
-	resp, err = r.client.Do(req)
-	if err != nil {
-		if attempt >= r.opt.ErrorRetry {
-			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
-			return nil, errors.Wrap(err, u.String())
-		}
-		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
-		goto retry
-	}
-	log.WithField("status", resp.StatusCode).Debug("response received")
-	defer resp.Body.Close()
-	switch resp.StatusCode {
+	switch statusCode {
 	case 200: // expected
+		return responseBody, nil
 	case 404:
 		return nil, NoSuchObject{name}
 	default:
-		return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, name)
+		return nil, fmt.Errorf("unexpected status code %d from %s", statusCode, name)
 	}
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		if attempt >= r.opt.ErrorRetry {
-			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
-			return nil, errors.Wrap(err, u.String())
-		}
-		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
-		goto retry
-	}
-	return b, nil
 }
 
 // StoreObject stores an object to the store.
-func (r *RemoteHTTPBase) StoreObject(name string, rdr io.Reader) error {
-
+func (r *RemoteHTTPBase) StoreObject(name string, getReader GetReaderForRequestBody) error {
 	u, _ := r.location.Parse(name)
-	var (
-		resp    *http.Response
-		err     error
-		attempt int
-		log     = Log.WithFields(logrus.Fields{
-			"method": "PUT",
-			"url":    u.String(),
-		})
-	)
-retry:
-	attempt++
-	req, err := http.NewRequest("PUT", u.String(), rdr)
+	statusCode, responseBody, err := r.IssueRetryableHttpRequest("PUT", u, getReader)
 	if err != nil {
 		return err
 	}
-	if r.opt.HTTPAuth != "" {
-		req.Header.Set("Authorization", r.opt.HTTPAuth)
-	}
-	log.Debug("request sent")
-	resp, err = r.client.Do(req)
-	if err != nil {
-		if attempt >= r.opt.ErrorRetry {
-			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
-			return err
-		}
-		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
-		goto retry
-	}
-	log.WithField("status", resp.StatusCode).Debug("response received")
-	defer resp.Body.Close()
-	msg, _ := ioutil.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return errors.New(string(msg))
+	if statusCode != 200 {
+		return errors.New(string(responseBody))
 	}
 	return nil
 }
@@ -214,44 +227,18 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 func (r *RemoteHTTP) HasChunk(id ChunkID) (bool, error) {
 	p := r.nameFromID(id)
 	u, _ := r.location.Parse(p)
-	var (
-		resp    *http.Response
-		err     error
-		attempt int
-		log     = Log.WithFields(logrus.Fields{
-			"method": "HEAD",
-			"url":    u.String(),
-		})
-	)
-retry:
-	attempt++
-	req, err := http.NewRequest("HEAD", u.String(), nil)
+
+	statusCode, _, err := r.IssueRetryableHttpRequest("HEAD", u, func() io.Reader { return nil })
 	if err != nil {
 		return false, err
 	}
-	if r.opt.HTTPAuth != "" {
-		req.Header.Set("Authorization", r.opt.HTTPAuth)
-	}
-	log.Debug("request sent")
-	resp, err = r.client.Do(req)
-	if err != nil {
-		if attempt >= r.opt.ErrorRetry {
-			log.WithField("attempt", attempt).WithError(err).Error("failed, giving up")
-			return false, err
-		}
-		log.WithField("attempt", attempt).WithError(err).Error("failed, retrying")
-		goto retry
-	}
-	log.WithField("status", resp.StatusCode).Debug("response received")
-	io.Copy(ioutil.Discard, resp.Body)
-	resp.Body.Close()
-	switch resp.StatusCode {
+	switch statusCode {
 	case 200:
 		return true, nil
 	case 404:
 		return false, nil
 	default:
-		return false, fmt.Errorf("unexpected status code: %s", resp.Status)
+		return false, fmt.Errorf("unexpected status code: %d", statusCode)
 	}
 }
 
@@ -270,7 +257,7 @@ func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 	if err != nil {
 		return err
 	}
-	return r.StoreObject(p, bytes.NewReader(b))
+	return r.StoreObject(p, func() io.Reader { return bytes.NewReader(b) })
 }
 
 func (r *RemoteHTTP) nameFromID(id ChunkID) string {
