@@ -11,6 +11,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 )
 
@@ -83,24 +84,37 @@ func NewGCStore(location *url.URL, opt StoreOptions) (s GCStore, e error) {
 func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 	ctx := context.TODO()
 	name := s.nameFromID(id)
+
+	var (
+		log = Log.WithFields(logrus.Fields{
+			"bucket": s.bucket,
+			"name":   name,
+		})
+	)
+
 	rc, err := s.client.Object(name).NewReader(ctx)
-	if err != nil {
+
+	if err == storage.ErrObjectNotExist {
+		log.Warning("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
+		return nil, ChunkMissing{ID: id}
+	} else if err != nil {
+		log.WithError(err).Error("Unable to retrieve object from GCS bucket")
 		return nil, errors.Wrap(err, s.String())
 	}
 	defer rc.Close()
 
 	b, err := ioutil.ReadAll(rc)
-	if err != nil {
-		switch err {
-		case storage.ErrBucketNotExist:
-			err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
-		case storage.ErrObjectNotExist:
-			err = ChunkMissing{ID: id}
-		default:
-			err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
-		}
-		return nil, err
+
+	if err == storage.ErrObjectNotExist {
+		log.Warning("Unable to read from object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
+		return nil, ChunkMissing{ID: id}
+	} else if err != nil {
+		log.WithError(err).Error("Unable to retrieve object from GCS bucket")
+		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from GCS bucket", id))
 	}
+
+	log.Debug("Retrieved chunk from GCS bucket")
+
 	if s.opt.Uncompressed {
 		return NewChunkWithID(id, b, nil, s.opt.SkipVerify)
 	}
@@ -109,41 +123,76 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 // StoreChunk adds a new chunk to the store
 func (s GCStore) StoreChunk(chunk *Chunk) error {
+
 	ctx := context.TODO()
 	contentType := "application/zstd"
 	name := s.nameFromID(chunk.ID())
+
 	var (
 		b   []byte
 		err error
+		log = Log.WithFields(logrus.Fields{
+			"bucket": s.bucket,
+			"name":   name,
+		})
 	)
+
 	if s.opt.Uncompressed {
 		b, err = chunk.Uncompressed()
 	} else {
 		b, err = chunk.Compressed()
 	}
+
 	if err != nil {
+		log.WithError(err).Error("Cannot retrieve chunk data")
 		return errors.Wrap(err, s.String())
 	}
+
 	r := bytes.NewReader(b)
 	w := s.client.Object(name).NewWriter(ctx)
 	w.ContentType = contentType
 	_, err = io.Copy(w, r)
+
 	if err != nil {
+		log.WithError(err).Error("Error when copying data from local filesystem to object in GCS bucket")
 		return errors.Wrap(err, s.String())
 	}
 	err = w.Close()
 	if err != nil {
+		log.WithError(err).Error("Error when finalizing copying of data from local filesystem to object in GCS bucket")
 		return errors.Wrap(err, s.String())
 	}
+
+	log.Debug("Uploaded chunk to GCS bucket")
+
 	return nil
 }
 
 // HasChunk returns true if the chunk is in the store
 func (s GCStore) HasChunk(id ChunkID) (bool, error) {
+
 	ctx := context.TODO()
 	name := s.nameFromID(id)
+
+	var (
+		log = Log.WithFields(logrus.Fields{
+			"bucket": s.bucket,
+			"name":   name,
+		})
+	)
+
 	_, err := s.client.Object(name).Attrs(ctx)
-	return err == nil, nil
+
+	if err == storage.ErrObjectNotExist {
+		log.WithField("exists", false).Debug("Chunk does not exist in GCS bucket")
+		return false, nil
+	} else if err != nil {
+		log.WithError(err).Error("Unable to query attributes for object in GCS bucket")
+		return false, err
+	} else {
+		log.WithField("exists", true).Debug("Chunk exists in GCS bucket")
+		return true, nil
+	}
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -151,7 +200,21 @@ func (s GCStore) HasChunk(id ChunkID) (bool, error) {
 func (s GCStore) RemoveChunk(id ChunkID) error {
 	ctx := context.TODO()
 	name := s.nameFromID(id)
-	return s.client.Object(name).Delete(ctx)
+
+	var (
+		log = Log.WithFields(logrus.Fields{
+			"bucket": s.bucket,
+			"name":   name,
+		})
+	)
+
+	err := s.client.Object(name).Delete(ctx)
+
+	if err != nil {
+		log.WithError(err).Error("Unable to delete object in GCS bucket")
+	}
+	log.Debug("Removed chunk from GCS bucket")
+	return err
 }
 
 // Prune removes any chunks from the store that are not contained in a list (map)
