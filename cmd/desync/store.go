@@ -272,7 +272,7 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 			return nil, "", err
 		}
 	case "gs":
-		s, err = desync.NewGCIndexStore(loc, opt)
+		s, err = desync.NewGCIndexStore(&p, opt)
 		if err != nil {
 			return nil, "", err
 		}
