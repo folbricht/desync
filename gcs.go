@@ -157,6 +157,7 @@ func (s GCStore) StoreChunk(chunk *Chunk) error {
 		log.WithError(err).Error("Error when copying data from local filesystem to object in GCS bucket")
 		return errors.Wrap(err, s.String())
 	}
+
 	err = w.Close()
 	if err != nil {
 		log.WithError(err).Error("Error when finalizing copying of data from local filesystem to object in GCS bucket")
@@ -164,7 +165,6 @@ func (s GCStore) StoreChunk(chunk *Chunk) error {
 	}
 
 	log.Debug("Uploaded chunk to GCS bucket")
-
 	return nil
 }
 
