@@ -212,9 +212,11 @@ func (s GCStore) RemoveChunk(id ChunkID) error {
 
 	if err != nil {
 		log.WithError(err).Error("Unable to delete object in GCS bucket")
+		return err
+	} else {
+		log.Debug("Removed chunk from GCS bucket")
+		return nil
 	}
-	log.Debug("Removed chunk from GCS bucket")
-	return err
 }
 
 // Prune removes any chunks from the store that are not contained in a list (map)
