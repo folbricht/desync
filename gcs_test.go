@@ -10,7 +10,7 @@ func TestNormalizeGCPrefix(t *testing.T) {
 		path           string
 		expectedPrefix string
 	}{
-		"blank path":                              {"/", ""},
+		"blank path":                              {"", ""},
 		"slash only":                              {"/", ""},
 		"path with no slash":                      {"path", "path/"},
 		"path with leading slash":                 {"/path", "path/"},
