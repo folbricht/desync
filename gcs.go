@@ -32,6 +32,23 @@ type GCStore struct {
 	GCStoreBase
 }
 
+// normalizeGCPrefix converts path to a regular format,
+// where there never is a leading slash,
+// and every folder name always is followed by a slash
+// so example outputs will be:
+// 		<blank string>
+// 		folder1/
+//		folder1/folder2/folder3/
+func normalizeGCPrefix(path string) string {
+	prefix := strings.Trim(path, "/")
+
+	if prefix != "" {
+		prefix += "/"
+	}
+
+	return prefix
+}
+
 // NewGCStoreBase initializes a base object used for chunk or index stores
 // backed by Google Storage.
 func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
@@ -44,14 +61,7 @@ func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
 
 	// Pull the bucket as well as the prefix from a path-style URL
 	s.bucket = u.Host
-	s.prefix = u.Path
-
-	if s.prefix != "" {
-		if s.prefix[0] == '/' {
-			s.prefix = s.prefix[1:]
-		}
-		s.prefix += "/"
-	}
+	s.prefix = normalizeGCPrefix(u.Path)
 
 	client, err := storage.NewClient(ctx)
 	if err != nil {
