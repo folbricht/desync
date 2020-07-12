@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/folbricht/tempfile"
 )
@@ -42,7 +43,9 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 	_, p := s.nameFromID(id)
+	start := time.Now()
 	b, err := ioutil.ReadFile(p)
+	bench.addDiskRead(start)
 	if os.IsNotExist(err) {
 		return nil, ChunkMissing{id}
 	}

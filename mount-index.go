@@ -95,15 +95,20 @@ func newIndexFileHandle(idx Index, s Store) *indexFileHandle {
 func (f *indexFileHandle) read(dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	bench.incReads()
+	start := time.Now()
 	if _, err := f.r.Seek(off, io.SeekStart); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return nil, syscall.EIO
 	}
+	bench.addSeek(start)
+	start = time.Now()
 	n, err := f.r.Read(dest)
 	if err != nil && err != io.EOF {
 		fmt.Fprintln(os.Stderr, err)
 		return nil, syscall.EIO
 	}
+	bench.addRead(start)
 	return fuse.ReadResultData(dest[:n]), fs.OK
 }
 

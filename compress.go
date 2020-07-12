@@ -2,7 +2,11 @@
 
 package desync
 
-import "github.com/klauspost/compress/zstd"
+import (
+	"time"
+
+	"github.com/klauspost/compress/zstd"
+)
 
 // Create a reader/writer that caches compressors.
 var (
@@ -19,5 +23,8 @@ func Compress(src []byte) ([]byte, error) {
 // a buffer it can be passed into out and will be used. If out=nil, a buffer
 // will be allocated.
 func Decompress(dst, src []byte) ([]byte, error) {
-	return decoder.DecodeAll(src, dst)
+	start := time.Now()
+	b, err := decoder.DecodeAll(src, dst)
+	bench.addDecompress(start)
+	return b, err
 }
