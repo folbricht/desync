@@ -73,10 +73,17 @@ The tool is provided for convenience. It uses the desync library and makes most 
 
 ### Installation
 
-If GOPATH is set correctly, building the tool and installing it into `$GOPATH/bin` can be done with:
+The following builds the binary and installs it into $HOME/go/bin by default.
 
 ```text
-go get -u github.com/folbricht/desync/cmd/desync
+GO111MODULE=on go get -v github.com/folbricht/desync/cmd/desync
+```
+
+Alternative method using a clone, building from the tip of the master branch.
+
+```text
+git clone https://github.com/folbricht/desync.git
+cd desync/cmd/desync && go install
 ```
 
 ### Subcommands
