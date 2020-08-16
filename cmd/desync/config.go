@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/folbricht/desync"
-	"github.com/minio/minio-go/pkg/credentials"
+	"github.com/minio/minio-go/v6/pkg/credentials"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

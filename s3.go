@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	minio "github.com/minio/minio-go"
-	"github.com/minio/minio-go/pkg/credentials"
+	minio "github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v6/pkg/credentials"
 	"github.com/pkg/errors"
 )
 
