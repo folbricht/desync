@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-ini/ini"
-	"github.com/minio/minio-go/pkg/credentials"
+	"github.com/minio/minio-go/v6/pkg/credentials"
 	"github.com/pkg/errors"
 )
 
