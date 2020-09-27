@@ -109,14 +109,13 @@ func (f *indexFileHandle) read(dest []byte, off int64) (fuse.ReadResult, syscall
 
 // MountIndex mounts an index file under a FUSE mount point. The mount will only expose a single
 // blob file as represented by the index.
-func MountIndex(ctx context.Context, idx Index, path, name string, s Store, n int) error {
-	ifs := NewIndexMountFS(idx, name, s)
+func MountIndex(ctx context.Context, idx Index, ifs fs.InodeEmbedder, path string, s Store, n int) error {
 	opts := &fs.Options{}
 	server, err := fs.Mount(path, ifs, opts)
 	if err != nil {
 		return err
 	}
-	go func() { // Unmount the server when the contex expires
+	go func() { // Unmount the server when the context expires
 		<-ctx.Done()
 		server.Unmount()
 	}()

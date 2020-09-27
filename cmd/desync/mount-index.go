@@ -9,15 +9,17 @@ import (
 	"strings"
 
 	"github.com/folbricht/desync"
+	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
 type mountIndexOptions struct {
 	cmdStoreOptions
-	stores    []string
-	cache     string
-	storeFile string
+	stores     []string
+	cache      string
+	storeFile  string
+	sparseFile string
 }
 
 func newMountIndexCommand(ctx context.Context) *cobra.Command {
@@ -31,12 +33,18 @@ the index available for read access. Use 'extract' if the goal is to
 assemble the whole blob locally as that is more efficient. Use '-' to read
 the index from STDIN.
 
+When a Copy-on-Read file is given (with -x), the file is used as a fast cache. All chunks
+that are retrieved from the store are written into the file as read operations are
+performed. Once all chunks have been accessed once, the COR file is fully populated.
+
 This command supports the --store-file option which can be used to define the stores
 and caches in a JSON file. The config can then be reloaded by sending a SIGHUP without
 needing to restart the server. This can be done under load as well.
 `,
-		Example: `  desync mount-index -s http://192.168.1.1/ file.caibx /mnt/blob`,
-		Args:    cobra.ExactArgs(2),
+		Example: `  desync mount-index -s http://192.168.1.1/ file.caibx /mnt/blob
+  desync mount-index -s /path/to/store -x /var/tmp/blob.cor blob.caibx /mnt/blob
+`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMountIndex(ctx, opt, args)
 		},
@@ -46,6 +54,7 @@ needing to restart the server. This can be done under load as well.
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.StringVar(&opt.storeFile, "store-file", "", "read store arguments from a file, supports reload on SIGHUP")
+	flags.StringVarP(&opt.sparseFile, "cor", "x", "", "use a copy-on-read sparse file as cache")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -95,8 +104,20 @@ func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) er
 		return err
 	}
 
+	// Pick a filesystem based on the options
+	var ifs fs.InodeEmbedder
+	if opt.sparseFile != "" {
+		ifs, err = desync.NewSparseMountFS(idx, mountFName, s, opt.sparseFile)
+		if err != nil {
+			return err
+		}
+
+	} else {
+		ifs = desync.NewIndexMountFS(idx, mountFName, s)
+	}
+
 	// Mount it
-	return desync.MountIndex(ctx, idx, mountPoint, mountFName, s, opt.n)
+	return desync.MountIndex(ctx, idx, ifs, mountPoint, s, opt.n)
 }
 
 // Reads the store-related command line options and returns the appropriate store.
