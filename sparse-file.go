@@ -30,6 +30,10 @@ func NewSparseFile(name string, idx Index, s Store) (*SparseFile, error) {
 		return nil, err
 	}
 	defer f.Close()
+	// Create the new file at full size, that was we can skip loading null-chunks
+	if err = f.Truncate(idx.Length()); err != nil {
+		return nil, err
+	}
 
 	return &SparseFile{
 		name:   name,
@@ -77,7 +81,8 @@ type sparseFileLoader struct {
 	mu   sync.RWMutex
 	s    Store
 
-	chunks []*sparseIndexChunk
+	nullChunk *NullChunk
+	chunks    []*sparseIndexChunk
 }
 
 func newSparseFileLoader(name string, idx Index, s Store) *sparseFileLoader {
@@ -87,10 +92,11 @@ func newSparseFileLoader(name string, idx Index, s Store) *sparseFileLoader {
 	}
 
 	return &sparseFileLoader{
-		name:   name,
-		done:   make([]bool, len(idx.Chunks)),
-		chunks: chunks,
-		s:      s,
+		name:      name,
+		done:      make([]bool, len(idx.Chunks)),
+		chunks:    chunks,
+		s:         s,
+		nullChunk: NewNullChunk(idx.Index.ChunkSizeMax),
 	}
 }
 
@@ -124,6 +130,10 @@ func (l *sparseFileLoader) loadRange(start, length int64) error {
 	l.mu.RLock()
 	for i := first; i <= last; i++ {
 		if l.done[i] {
+			continue
+		}
+		// The file is truncated and blank, so no need to load null chunks
+		if l.chunks[i].ID == l.nullChunk.ID {
 			continue
 		}
 		chunksNeeded = append(chunksNeeded, i)
