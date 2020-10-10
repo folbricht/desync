@@ -64,7 +64,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 			return nil, err
 		}
 		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return nil, errors.New("no CA certficates found in ca-cert file")
+			return nil, errors.New("no CA certificates found in ca-cert file")
 		}
 		tlsConfig.RootCAs = certPool
 	}
@@ -75,6 +75,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		MaxIdleConnsPerHost: opt.N,
 		IdleConnTimeout:     60 * time.Second,
 		TLSClientConfig:     tlsConfig,
+		ForceAttemptHTTP2:   true,
 	}
 
 	// If no timeout was given in config (set to 0), then use 1 minute. If timeout is negative, use 0 to
