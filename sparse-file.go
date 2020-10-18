@@ -1,6 +1,9 @@
 package desync
 
 import (
+	"errors"
+	"io"
+	"io/ioutil"
 	"os"
 	"sort"
 	"sync"
@@ -35,10 +38,23 @@ func NewSparseFile(name string, idx Index, s Store) (*SparseFile, error) {
 		return nil, err
 	}
 
+	loader := newSparseFileLoader(name, idx, s)
+
+	// See if we have a state file from a prior run, and if so load the state
+	// from it.
+	state, err := os.Open(name + ".state")
+	if err == nil {
+		defer state.Close()
+
+		// Don't fail if this isn't successful, ignore it and just operate
+		// as if it's a blank sparse file.
+		_ = loader.loadState(state)
+	}
+
 	return &SparseFile{
 		name:   name,
 		idx:    idx,
-		loader: newSparseFileLoader(name, idx, s),
+		loader: loader,
 	}, nil
 }
 
@@ -54,6 +70,17 @@ func (sf *SparseFile) Open() (*SparseFileHandle, error) {
 // Length returns the size of the index used for the sparse file.
 func (sf *SparseFile) Length() int64 {
 	return sf.idx.Length()
+}
+
+// Close saves the state of file, basically which chunks were loaded
+// and which ones weren't.
+func (sf *SparseFile) Close() error {
+	f, err := os.Create(sf.name + ".state")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return sf.loader.writeState(f)
 }
 
 // ReadAt reads from the sparse file. All accessed ranges are first written
@@ -180,4 +207,52 @@ func (l *sparseFileLoader) loadChunk(i int) error {
 		l.mu.Unlock()
 	})
 	return loadErr
+}
+
+// writeState saves the current internal state about which chunks have
+// been loaded. It's basically just a sequence of '0' and '1' of the
+// same length as the index, with 0 = chunk has not been loaded and
+// 1 = chunk has been loaded. TODO: could do that with a proper bitmap
+// to save space in the file.
+func (l *sparseFileLoader) writeState(w io.Writer) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b := make([]byte, 0, len(l.done))
+	for _, done := range l.done {
+		if done {
+			b = append(b, '1')
+		} else {
+			b = append(b, '0')
+		}
+	}
+	_, err := w.Write(b)
+	return err
+}
+
+// loadState reads the "done" state from a reader. It's expected to be
+// a list of '0' and '1' bytes where 0 means the chunk hasn't been
+// written to the sparse file yet.
+func (l *sparseFileLoader) loadState(r io.Reader) error {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	// Very basic check that the state file really is for the sparse
+	// file and not something else.
+	if len(b) != len(l.chunks) {
+		return errors.New("sparse state file does not match the index")
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	for i, value := range b {
+		if value == '1' {
+			l.done[i] = true
+		} else {
+			l.done[i] = false
+		}
+	}
+	return nil
 }

@@ -23,6 +23,7 @@ type SparseMountFS struct {
 }
 
 var _ fs.NodeOnAdder = &SparseMountFS{}
+var _ MountFS = &SparseMountFS{}
 
 // NewSparseMountFS initializes a FUSE filesystem mount based on an index, a sparse file and a chunk store.
 func NewSparseMountFS(idx Index, name string, s Store, sparseFile string) (*SparseMountFS, error) {
@@ -45,6 +46,11 @@ func (r *SparseMountFS) OnAdd(ctx context.Context) {
 	}
 	ch := r.NewPersistentInode(ctx, n, fs.StableAttr{Mode: fuse.S_IFREG})
 	r.AddChild(r.FName, ch, false)
+}
+
+// Close the sparse file and save its state.
+func (r *SparseMountFS) Close() error {
+	return r.sf.Close()
 }
 
 var _ fs.NodeGetattrer = &indexFile{}

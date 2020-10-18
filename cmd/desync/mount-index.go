@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/folbricht/desync"
-	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +34,10 @@ the index from STDIN.
 
 When a Copy-on-Read file is given (with -x), the file is used as a fast cache. All chunks
 that are retrieved from the store are written into the file as read operations are
-performed. Once all chunks have been accessed once, the COR file is fully populated.
+performed. Once all chunks have been accessed once, the COR file is fully populated. On
+termination, a <name>.state file is written containing information about which chunks
+of the index have or have not been read. A state file is only valid for one cache-file and
+one index. When re-using it with a different index, data corruption can occur.
 
 This command supports the --store-file option which can be used to define the stores
 and caches in a JSON file. The config can then be reloaded by sending a SIGHUP without
@@ -105,7 +107,7 @@ func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) er
 	}
 
 	// Pick a filesystem based on the options
-	var ifs fs.InodeEmbedder
+	var ifs desync.MountFS
 	if opt.sparseFile != "" {
 		ifs, err = desync.NewSparseMountFS(idx, mountFName, s, opt.sparseFile)
 		if err != nil {
