@@ -27,7 +27,7 @@ type FilesystemReader interface {
 	Next() (*File, error)
 }
 
-// File represents a filesystem object such as directoy, file, symlink or device.
+// File represents a filesystem object such as directory, file, symlink or device.
 // It's used when creating archives from a source filesystem which can be a real
 // OS filesystem, or another archive stream such as tar.
 type File struct {
@@ -51,7 +51,7 @@ type File struct {
 	DevMajor uint64
 	DevMinor uint64
 
-	// Extented attributes
+	// Extended attributes
 	Xattrs map[string]string
 
 	// File content. Nil for non-regular files.

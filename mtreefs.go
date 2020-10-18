@@ -15,8 +15,8 @@ type MtreeFS struct {
 
 var _ FilesystemWriter = MtreeFS{}
 
-// NewLocalFS initializes a new instance of a local filesystem that
-// can be used for tar/untar operations.
+// NewMtreeFS initializes a new instance of an mtree decoder that
+// writes its output into the provided stream.
 func NewMtreeFS(w io.Writer) (MtreeFS, error) {
 	_, err := fmt.Fprintln(w, "#mtree v1.0")
 	return MtreeFS{w: w}, err
