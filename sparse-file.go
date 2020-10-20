@@ -28,27 +28,38 @@ type SparseFileHandle struct {
 }
 
 func NewSparseFile(name string, idx Index, s Store) (*SparseFile, error) {
-	f, err := os.Create(name)
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	// Create the new file at full size, that was we can skip loading null-chunks
-	if err = f.Truncate(idx.Length()); err != nil {
-		return nil, err
-	}
 
 	loader := newSparseFileLoader(name, idx, s)
 
-	// See if we have a state file from a prior run, and if so load the state
-	// from it.
-	state, err := os.Open(name + ".state")
-	if err == nil {
-		defer state.Close()
+	// Simple check to see if the file is correct for the given index by
+	// just comparing the size. If it's not, then just reset the file and
+	// don't load a state.
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if stat.Size() == idx.Length() {
+		// See if we have a state file from a prior run, and if so load the state
+		// from it.
+		state, err := os.Open(name + ".state")
+		if err == nil {
+			defer state.Close()
 
-		// Don't fail if this isn't successful, ignore it and just operate
-		// as if it's a blank sparse file.
-		_ = loader.loadState(state)
+			// Don't fail if this isn't successful, ignore it and just operate
+			// as if it's a blank sparse file.
+			_ = loader.loadState(state)
+		}
+	} else {
+		// Create the new file at full size, that was we can skip loading null-chunks,
+		// this should be a NOP if the file matches the index size already.
+		if err = f.Truncate(idx.Length()); err != nil {
+			return nil, err
+		}
 	}
 
 	return &SparseFile{
