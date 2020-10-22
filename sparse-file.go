@@ -237,7 +237,7 @@ func (l *sparseFileLoader) writeState() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	return ioutil.WriteFile(l.name+".state", l.done.Data(false), 0755)
+	return ioutil.WriteFile(l.name+".state", l.done.Data(false), 0644)
 }
 
 // loadState reads the "done" state from a reader. It's expected to be
