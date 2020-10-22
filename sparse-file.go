@@ -5,8 +5,12 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/signal"
 	"sort"
 	"sync"
+	"syscall"
+
+	"github.com/boljen/go-bitmap"
 )
 
 // SparseFile represents a file that is written as it is read (Copy-on-read). It is
@@ -62,6 +66,15 @@ func NewSparseFile(name string, idx Index, s Store) (*SparseFile, error) {
 		}
 	}
 
+	// save state file on SIGHUP.
+	sighup := make(chan os.Signal)
+	signal.Notify(sighup, syscall.SIGHUP)
+	go func() {
+		for range sighup {
+			loader.writeState()
+		}
+	}()
+
 	return &SparseFile{
 		name:   name,
 		idx:    idx,
@@ -86,12 +99,7 @@ func (sf *SparseFile) Length() int64 {
 // Close saves the state of file, basically which chunks were loaded
 // and which ones weren't.
 func (sf *SparseFile) Close() error {
-	f, err := os.Create(sf.name + ".state")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return sf.loader.writeState(f)
+	return sf.loader.writeState()
 }
 
 // ReadAt reads from the sparse file. All accessed ranges are first written
@@ -115,7 +123,7 @@ type sparseIndexChunk struct {
 // Loader for sparse files
 type sparseFileLoader struct {
 	name string
-	done []bool
+	done bitmap.Bitmap
 	mu   sync.RWMutex
 	s    Store
 
@@ -131,7 +139,7 @@ func newSparseFileLoader(name string, idx Index, s Store) *sparseFileLoader {
 
 	return &sparseFileLoader{
 		name:      name,
-		done:      make([]bool, len(idx.Chunks)),
+		done:      bitmap.New(len(idx.Chunks)),
 		chunks:    chunks,
 		s:         s,
 		nullChunk: NewNullChunk(idx.Index.ChunkSizeMax),
@@ -167,7 +175,8 @@ func (l *sparseFileLoader) loadRange(start, length int64) error {
 	var chunksNeeded []int
 	l.mu.RLock()
 	for i := first; i <= last; i++ {
-		if l.done[i] {
+		b := l.done.Get(i)
+		if b {
 			continue
 		}
 		// The file is truncated and blank, so no need to load null chunks
@@ -214,30 +223,21 @@ func (l *sparseFileLoader) loadChunk(i int) error {
 		}
 
 		l.mu.Lock()
-		l.done[i] = true
+		l.done.Set(i, true)
 		l.mu.Unlock()
 	})
 	return loadErr
 }
 
 // writeState saves the current internal state about which chunks have
-// been loaded. It's basically just a sequence of '0' and '1' of the
+// been loaded. It's a bitmap of the
 // same length as the index, with 0 = chunk has not been loaded and
-// 1 = chunk has been loaded. TODO: could do that with a proper bitmap
-// to save space in the file.
-func (l *sparseFileLoader) writeState(w io.Writer) error {
+// 1 = chunk has been loaded.
+func (l *sparseFileLoader) writeState() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	b := make([]byte, 0, len(l.done))
-	for _, done := range l.done {
-		if done {
-			b = append(b, '1')
-		} else {
-			b = append(b, '0')
-		}
-	}
-	_, err := w.Write(b)
-	return err
+
+	return ioutil.WriteFile(l.name+".state", l.done.Data(false), 0644)
 }
 
 // loadState reads the "done" state from a reader. It's expected to be
@@ -258,12 +258,7 @@ func (l *sparseFileLoader) loadState(r io.Reader) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	for i, value := range b {
-		if value == '1' {
-			l.done[i] = true
-		} else {
-			l.done[i] = false
-		}
-	}
+	l.done = b
+
 	return nil
 }
