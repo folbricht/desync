@@ -22,7 +22,7 @@ type mountIndexOptions struct {
 	cache     string
 	storeFile string
 	corFile   string
-	desync.SparseMountOptions
+	desync.SparseFileOptions
 }
 
 func newMountIndexCommand(ctx context.Context) *cobra.Command {
@@ -63,7 +63,7 @@ needing to restart the server. This can be done under load as well.
 	flags.StringVarP(&opt.corFile, "cor-file", "", "", "use a copy-on-read sparse file as cache")
 	flags.StringVarP(&opt.StateSaveFile, "cor-state-save", "", "", "file to store the state for copy-on-read")
 	flags.StringVarP(&opt.StateInitFile, "cor-state-init", "", "", "copy-on-read state init file")
-	flags.IntVarP(&opt.StateInitConcurrency, "cor-init-n", "", 1, "number of gorooutines to use for initialization (with --cor-state-init)")
+	flags.IntVarP(&opt.StateInitConcurrency, "cor-init-n", "", 10, "number of gorooutines to use for initialization (with --cor-state-init)")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -116,7 +116,7 @@ func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) er
 	// Pick a filesystem based on the options
 	var ifs desync.MountFS
 	if opt.corFile != "" {
-		fs, err := desync.NewSparseMountFS(idx, mountFName, s, opt.corFile, opt.SparseMountOptions)
+		fs, err := desync.NewSparseMountFS(idx, mountFName, s, opt.corFile, opt.SparseFileOptions)
 		if err != nil {
 			return err
 		}

@@ -17,9 +17,24 @@ import (
 type SparseFile struct {
 	name string
 	idx  Index
-	opt  SparseMountOptions
+	opt  SparseFileOptions
 
 	loader *sparseFileLoader
+}
+type SparseFileOptions struct {
+	// Optional, save the state of the sparse file on exit or SIGHUP. The state file
+	// contains information which chunks from the index have been read and are
+	// populated in the sparse file. If the state and sparse file exist and match,
+	// the sparse file is used as is (not re-populated).
+	StateSaveFile string
+
+	// Optional, load all chunks that are marked as read in this state file. It is used
+	// to pre-populate a new sparse file if the sparse file or the save state file aren't
+	// present or don't match the index. SaveStateFile and StateInitFile can be the same.
+	StateInitFile string
+
+	// Optional, number of goroutines to preload chunks from StateInitFile.
+	StateInitConcurrency int
 }
 
 // SparseFileHandle is used to access a sparse file. All read operations performed
@@ -30,7 +45,7 @@ type SparseFileHandle struct {
 	file *os.File
 }
 
-func NewSparseFile(name string, idx Index, s Store, opt SparseMountOptions) (*SparseFile, error) {
+func NewSparseFile(name string, idx Index, s Store, opt SparseFileOptions) (*SparseFile, error) {
 	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
 		return nil, err
