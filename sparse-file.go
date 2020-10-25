@@ -249,16 +249,18 @@ func (l *sparseFileLoader) loadState(r io.Reader) error {
 		return err
 	}
 
-	// Very basic check that the state file really is for the sparse
-	// file and not something else.
-	if len(b) != len(l.chunks) {
-		return errors.New("sparse state file does not match the index")
-	}
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	l.done = b
+
+	// Very basic check that the state file really is for the sparse
+	// file and not something else.
+	// comparaison in octet. integer division
+	chunks := len(l.chunks)
+	if (chunks%8 == 0 && l.done.Len()/8 != chunks/8) || (chunks%8 != 0 && l.done.Len()/8 != 1+chunks/8) {
+		return errors.New("sparse state file does not match the index")
+	}
 
 	return nil
 }
