@@ -5,8 +5,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/folbricht/desync"
 	"github.com/pkg/errors"
@@ -15,10 +18,11 @@ import (
 
 type mountIndexOptions struct {
 	cmdStoreOptions
-	stores     []string
-	cache      string
-	storeFile  string
-	sparseFile string
+	stores    []string
+	cache     string
+	storeFile string
+	corFile   string
+	desync.SparseMountOptions
 }
 
 func newMountIndexCommand(ctx context.Context) *cobra.Command {
@@ -56,7 +60,10 @@ needing to restart the server. This can be done under load as well.
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.StringVar(&opt.storeFile, "store-file", "", "read store arguments from a file, supports reload on SIGHUP")
-	flags.StringVarP(&opt.sparseFile, "cor", "x", "", "use a copy-on-read sparse file as cache")
+	flags.StringVarP(&opt.corFile, "cor-file", "", "", "use a copy-on-read sparse file as cache")
+	flags.StringVarP(&opt.StateSaveFile, "cor-state-save", "", "", "file to store the state for copy-on-read")
+	flags.StringVarP(&opt.StateInitFile, "cor-state-init", "", "", "copy-on-read state init file")
+	flags.IntVarP(&opt.StateInitConcurrency, "cor-init-n", "", 1, "number of gorooutines to use for initialization (with --cor-state-init)")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -108,12 +115,24 @@ func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) er
 
 	// Pick a filesystem based on the options
 	var ifs desync.MountFS
-	if opt.sparseFile != "" {
-		ifs, err = desync.NewSparseMountFS(idx, mountFName, s, opt.sparseFile)
+	if opt.corFile != "" {
+		fs, err := desync.NewSparseMountFS(idx, mountFName, s, opt.corFile, opt.SparseMountOptions)
 		if err != nil {
 			return err
 		}
 
+		// Save state file on SIGHUP
+		sighup := make(chan os.Signal)
+		signal.Notify(sighup, syscall.SIGHUP)
+		go func() {
+			for range sighup {
+				if err := fs.WriteState(); err != nil {
+					fmt.Fprintln(os.Stderr, "failed to save state:", err)
+				}
+			}
+		}()
+
+		ifs = fs
 	} else {
 		ifs = desync.NewIndexMountFS(idx, mountFName, s)
 	}

@@ -73,7 +73,7 @@ func TestSparseFileRead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initialize the sparse file and open a handle
-	sparse, err := NewSparseFile(sparseFile.Name(), index, s)
+	sparse, err := NewSparseFile(sparseFile.Name(), index, s, SparseMountOptions{})
 	require.NoError(t, err)
 	h, err := sparse.Open()
 	require.NoError(t, err)

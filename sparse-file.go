@@ -5,10 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/signal"
 	"sort"
 	"sync"
-	"syscall"
 
 	"github.com/boljen/go-bitmap"
 )
@@ -19,6 +17,7 @@ import (
 type SparseFile struct {
 	name string
 	idx  Index
+	opt  SparseMountOptions
 
 	loader *sparseFileLoader
 }
@@ -31,14 +30,19 @@ type SparseFileHandle struct {
 	file *os.File
 }
 
-func NewSparseFile(name string, idx Index, s Store) (*SparseFile, error) {
+func NewSparseFile(name string, idx Index, s Store, opt SparseMountOptions) (*SparseFile, error) {
 	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-
 	loader := newSparseFileLoader(name, idx, s)
+	sf := &SparseFile{
+		name:   name,
+		idx:    idx,
+		loader: loader,
+		opt:    opt,
+	}
 
 	// Simple check to see if the file is correct for the given index by
 	// just comparing the size. If it's not, then just reset the file and
@@ -47,39 +51,45 @@ func NewSparseFile(name string, idx Index, s Store) (*SparseFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	if stat.Size() == idx.Length() {
-		// See if we have a state file from a prior run, and if so load the state
-		// from it.
-		state, err := os.Open(name + ".state")
-		if err == nil {
-			defer state.Close()
+	sparseFileMatch := stat.Size() == idx.Length()
 
-			// Don't fail if this isn't successful, ignore it and just operate
-			// as if it's a blank sparse file.
-			_ = loader.loadState(state)
+	// If the sparse-file looks like it's of the right size, and we have a
+	// save state file, try to use those. No need to further initialize if
+	// that's successful
+	if sparseFileMatch && opt.StateSaveFile != "" {
+		stateFile, err := os.Open(opt.StateSaveFile)
+		if err == nil {
+			defer stateFile.Close()
+
+			// If we can load the state file, we have everything needed,
+			// no need to initialize it.
+			if err := loader.loadState(stateFile); err == nil {
+				return sf, nil
+			}
 		}
-	} else {
-		// Create the new file at full size, that was we can skip loading null-chunks,
-		// this should be a NOP if the file matches the index size already.
-		if err = f.Truncate(idx.Length()); err != nil {
+	}
+
+	// Create the new file at full size, that was we can skip loading null-chunks,
+	// this should be a NOP if the file matches the index size already.
+	if err = f.Truncate(idx.Length()); err != nil {
+		return nil, err
+	}
+
+	// Try to initialize the sparse file from a prior state file if one is provided.
+	// This will concurrently load all chunks marked "done" in the state file and
+	// write them to the sparse file.
+	if opt.StateInitFile != "" {
+		initFile, err := os.Open(opt.StateInitFile)
+		if err != nil {
+			return nil, err
+		}
+		defer initFile.Close()
+		if err := loader.preloadChunksFromState(initFile, opt.StateInitConcurrency); err != nil {
 			return nil, err
 		}
 	}
 
-	// save state file on SIGHUP.
-	sighup := make(chan os.Signal)
-	signal.Notify(sighup, syscall.SIGHUP)
-	go func() {
-		for range sighup {
-			loader.writeState()
-		}
-	}()
-
-	return &SparseFile{
-		name:   name,
-		idx:    idx,
-		loader: loader,
-	}, nil
+	return sf, nil
 }
 
 // Open returns a handle for a sparse file.
@@ -96,10 +106,18 @@ func (sf *SparseFile) Length() int64 {
 	return sf.idx.Length()
 }
 
-// Close saves the state of file, basically which chunks were loaded
+// WriteState saves the state of file, basically which chunks were loaded
 // and which ones weren't.
-func (sf *SparseFile) Close() error {
-	return sf.loader.writeState()
+func (sf *SparseFile) WriteState() error {
+	if sf.opt.StateSaveFile == "" {
+		return nil
+	}
+	f, err := os.Create(sf.opt.StateSaveFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return sf.loader.writeState(f)
 }
 
 // ReadAt reads from the sparse file. All accessed ranges are first written
@@ -233,34 +251,71 @@ func (l *sparseFileLoader) loadChunk(i int) error {
 // been loaded. It's a bitmap of the
 // same length as the index, with 0 = chunk has not been loaded and
 // 1 = chunk has been loaded.
-func (l *sparseFileLoader) writeState() error {
+func (l *sparseFileLoader) writeState(w io.Writer) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	return ioutil.WriteFile(l.name+".state", l.done.Data(false), 0644)
+	_, err := w.Write(l.done.Data(false))
+	return err
 }
 
 // loadState reads the "done" state from a reader. It's expected to be
 // a list of '0' and '1' bytes where 0 means the chunk hasn't been
 // written to the sparse file yet.
 func (l *sparseFileLoader) loadState(r io.Reader) error {
-	b, err := ioutil.ReadAll(r)
+	done, err := l.stateFromReader(r)
+	if err != nil {
+		return err
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.done = done
+	return nil
+}
+
+// Starts n goroutines to pre-load chunks that were marked as "done" in a state
+// file.
+func (l *sparseFileLoader) preloadChunksFromState(r io.Reader, n int) error {
+	state, err := l.stateFromReader(r)
 	if err != nil {
 		return err
 	}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	// Start the workers for parallel pre-loading
+	ch := make(chan int)
+	for i := 0; i < n; i++ {
+		go func() {
+			for chunkIdx := range ch {
+				_ = l.loadChunk(chunkIdx)
+			}
+		}()
+	}
 
-	l.done = b
+	// Start the feeder. Iterate over the chunks and see if any of them
+	// are marked done in the state. If so, load those chunks.
+	go func() {
+		for chunkIdx := range l.chunks {
+			if state.Get(chunkIdx) {
+				ch <- chunkIdx
+			}
+		}
+		close(ch)
+	}()
+	return nil
+}
+
+func (l *sparseFileLoader) stateFromReader(r io.Reader) (bitmap.Bitmap, error) {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
 
 	// Very basic check that the state file really is for the sparse
 	// file and not something else.
-	// comparaison in octet. integer division
 	chunks := len(l.chunks)
-	if (chunks%8 == 0 && l.done.Len()/8 != chunks/8) || (chunks%8 != 0 && l.done.Len()/8 != 1+chunks/8) {
-		return errors.New("sparse state file does not match the index")
+	if (chunks%8 == 0 && len(b) != chunks/8) || (chunks%8 != 0 && len(b) != 1+chunks/8) {
+		return nil, errors.New("sparse state file does not match the index")
 	}
-
-	return nil
+	return b, nil
 }
