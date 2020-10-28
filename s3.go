@@ -88,8 +88,14 @@ func NewS3Store(location *url.URL, s3Creds *credentials.Credentials, region stri
 // GetChunk reads and returns one chunk from the store
 func (s S3Store) GetChunk(id ChunkID) (*Chunk, error) {
 	name := s.nameFromID(id)
+	var attempt int
+retry:
+	attempt++
 	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
+		if attempt < s.opt.ErrorRetry {
+			goto retry
+		}
 		return nil, errors.Wrap(err, s.String())
 	}
 	defer obj.Close()
@@ -130,7 +136,15 @@ func (s S3Store) StoreChunk(chunk *Chunk) error {
 	if err != nil {
 		return err
 	}
+	var attempt int
+retry:
+	attempt++
 	_, err = s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
+	if err != nil {
+		if attempt < s.opt.ErrorRetry {
+			goto retry
+		}
+	}
 	return errors.Wrap(err, s.String())
 }
 
