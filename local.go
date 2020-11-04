@@ -15,6 +15,10 @@ import (
 
 var _ WriteStore = LocalStore{}
 
+const (
+	tmpChunkPrefix = ".tmp-cacnk"
+)
+
 // LocalStore casync store
 type LocalStore struct {
 	Base string
@@ -80,7 +84,7 @@ func (s LocalStore) StoreChunk(chunk *Chunk) error {
 	if err := os.MkdirAll(d, 0755); err != nil {
 		return err
 	}
-	tmp, err := tempfile.NewMode(d, ".tmp-cacnk", 0644)
+	tmp, err := tempfile.NewMode(d, tmpChunkPrefix, 0644)
 	if err != nil {
 		return err
 	}
@@ -186,6 +190,13 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		if info.IsDir() { // Skip dirs
 			return nil
 		}
+
+		// If the chunk is only partially downloaded remove it
+		if strings.HasPrefix(filepath.Base(path), tmpChunkPrefix) {
+			_ = os.Remove(path)
+			return nil
+		}
+
 		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
 		var sID string
 		if s.opt.Uncompressed {
