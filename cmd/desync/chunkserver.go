@@ -127,7 +127,12 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	}
 	defer s.Close()
 
-	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, opt.uncompressed, opt.auth)
+	var converters desync.Converters
+	if !opt.uncompressed {
+		converters = desync.Converters{desync.Compressor{}}
+	}
+
+	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, converters, opt.auth)
 
 	// Wrap the handler in a logger if requested
 	switch opt.logFile {

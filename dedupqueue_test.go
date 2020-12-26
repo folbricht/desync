@@ -61,7 +61,7 @@ func TestDedupQueueParallel(t *testing.T) {
 		GetChunkFunc: func(ChunkID) (*Chunk, error) {
 			time.Sleep(time.Millisecond) // make it artificially slow to not complete too early
 			atomic.AddInt64(&requests, 1)
-			return NewChunkFromUncompressed([]byte{0}), nil
+			return NewChunk([]byte{0}), nil
 		},
 	}
 	q := NewDedupQueue(store)

@@ -237,7 +237,7 @@ func (l *sparseFileLoader) loadChunk(i int) error {
 			loadErr = err
 			return
 		}
-		b, err := c.Uncompressed()
+		b, err := c.Data()
 		if err != nil {
 			loadErr = err
 			return

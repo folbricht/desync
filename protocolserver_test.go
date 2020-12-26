@@ -15,14 +15,11 @@ func TestProtocolServer(t *testing.T) {
 
 	// Test data
 	uncompressed := []byte{4, 3, 2, 1}
-	chunkIn := NewChunkFromUncompressed(uncompressed)
-	compressed, _ := chunkIn.Compressed()
+	chunkIn := NewChunk(uncompressed)
 	id := chunkIn.ID()
-	store := &TestStore{
-		Chunks: map[ChunkID][]byte{
-			id: compressed,
-		},
-	}
+	store := &TestStore{}
+	store.StoreChunk(chunkIn)
+
 	ps := NewProtocolServer(r2, w1, store)
 
 	go ps.Serve(context.Background())
@@ -41,7 +38,7 @@ func TestProtocolServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := chunk.Uncompressed()
+	b, _ := chunk.Data()
 	if !bytes.Equal(b, uncompressed) {
 		t.Fatal("chunk data doesn't match expected")
 	}
@@ -49,6 +46,6 @@ func TestProtocolServer(t *testing.T) {
 	// This one's missing
 	_, err = server.RequestChunk(ChunkID{0})
 	if _, ok := err.(ChunkMissing); !ok {
-		t.Fatal("expectec ChunkMissing error, got:", err)
+		t.Fatal("expected ChunkMissing error, got:", err)
 	}
 }

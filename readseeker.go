@@ -100,7 +100,7 @@ func (ip *IndexPos) loadChunk() error {
 	if err != nil {
 		return err
 	}
-	b, err := chunk.Uncompressed()
+	b, err := chunk.Data()
 	if err != nil {
 		return err
 	}

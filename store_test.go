@@ -19,7 +19,7 @@ func (s *TestStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if !ok {
 		return nil, ChunkMissing{id}
 	}
-	return &Chunk{compressed: b}, nil
+	return NewChunk(b), nil
 }
 
 func (s *TestStore) HasChunk(id ChunkID) (bool, error) {
@@ -37,7 +37,8 @@ func (s *TestStore) StoreChunk(chunk *Chunk) error {
 	if s.Chunks == nil {
 		s.Chunks = make(map[ChunkID][]byte)
 	}
-	s.Chunks[chunk.ID()] = chunk.compressed
+	b, _ := chunk.Data()
+	s.Chunks[chunk.ID()] = b
 	return nil
 }
 

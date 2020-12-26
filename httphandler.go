@@ -16,12 +16,18 @@ type HTTPHandler struct {
 	HTTPHandlerBase
 	s               Store
 	SkipVerifyWrite bool
-	Uncompressed    bool
+
+	// Storage-side of the converters in this case is towards the client
+	converters Converters
+
+	// Use the file extension for compressed chunks
+	compressed bool
 }
 
-// NewHTTPHandler initializes and returns a new HTTP handler for a chunks erver.
-func NewHTTPHandler(s Store, writable, skipVerifyWrite, uncompressed bool, auth string) http.Handler {
-	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, uncompressed}
+// NewHTTPHandler initializes and returns a new HTTP handler for a chunks server.
+func NewHTTPHandler(s Store, writable, skipVerifyWrite bool, converters Converters, auth string) http.Handler {
+	compressed := converters.hasCompression()
+	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, converters, compressed}
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +49,7 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.put(id, w, r)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte("only GET, PUT and HEAD are supported"))
+		_, _ = w.Write([]byte("only GET, PUT and HEAD are supported"))
 	}
 }
 
@@ -51,10 +57,17 @@ func (h HTTPHandler) get(id ChunkID, w http.ResponseWriter) {
 	var b []byte
 	chunk, err := h.s.GetChunk(id)
 	if err == nil {
-		if h.Uncompressed {
-			b, err = chunk.Uncompressed()
+		// Optimization for when the chunk modifiers match those
+		// of the chunk server. In that case it's not necessary
+		// to convert back and forth. Just use the raw data as loaded
+		// from the store.
+		if len(chunk.storage) > 0 && h.converters.equal(chunk.converters) {
+			b = chunk.storage
 		} else {
-			b, err = chunk.Compressed()
+			b, err = chunk.Data()
+			if err == nil {
+				b, err = h.converters.toStorage(b)
+			}
 		}
 	}
 	h.HTTPHandlerBase.get(id.String(), b, err, w)
@@ -87,7 +100,7 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the chunk into memory
+	// Read the raw chunk data into memory
 	b := new(bytes.Buffer)
 	if _, err := io.Copy(b, r.Body); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -96,12 +109,7 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Turn it into a chunk, and validate the ID unless verification is disabled
-	var chunk *Chunk
-	if h.Uncompressed {
-		chunk, err = NewChunkWithID(id, b.Bytes(), nil, h.SkipVerifyWrite)
-	} else {
-		chunk, err = NewChunkWithID(id, nil, b.Bytes(), h.SkipVerifyWrite)
-	}
+	chunk, err := NewChunkFromStorage(id, b.Bytes(), h.converters, h.SkipVerifyWrite)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -117,7 +125,7 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 
 func (h HTTPHandler) idFromPath(p string) (ChunkID, error) {
 	ext := CompressedChunkExt
-	if h.Uncompressed {
+	if !h.compressed {
 		if strings.HasSuffix(p, CompressedChunkExt) {
 			return ChunkID{}, errors.New("compressed chunk requested from http chunk store serving uncompressed chunks")
 		}

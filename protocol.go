@@ -153,8 +153,8 @@ func (p *Protocol) RequestChunk(id ChunkID) (*Chunk, error) {
 		if len(m.Body) < 40 {
 			return nil, errors.New("received chunk too small")
 		}
-		// The rest should be the chunk data
-		return NewChunkWithID(id, nil, m.Body[40:], false)
+		// The rest should be the (compressed) chunk data
+		return NewChunkFromStorage(id, m.Body[40:], []converter{Compressor{}}, false)
 	default:
 		return nil, fmt.Errorf("unexpected protocol message type %x", m.Type)
 	}

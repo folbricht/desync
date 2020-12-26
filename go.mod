@@ -1,6 +1,6 @@
 module github.com/folbricht/desync
 
-go 1.13
+go 1.15
 
 require (
 	cloud.google.com/go/storage v1.6.0

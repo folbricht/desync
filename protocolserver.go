@@ -61,7 +61,11 @@ func (s *ProtocolServer) Serve(ctx context.Context) error {
 				}
 				return errors.Wrap(err, "unable to read chunk from store")
 			}
-			b, err := chunk.Compressed()
+			b, err := chunk.Data()
+			if err != nil {
+				return err
+			}
+			b, err = Compressor{}.toStorage(b)
 			if err != nil {
 				return err
 			}

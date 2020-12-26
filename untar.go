@@ -82,7 +82,7 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 					close(r.data)
 					return err
 				}
-				b, err := chunk.Uncompressed()
+				b, err := chunk.Data()
 				if err != nil {
 					close(r.data)
 					return err

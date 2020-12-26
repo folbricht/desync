@@ -8,7 +8,7 @@ import (
 // Test read access before write access to ensure a failing read doesn't
 // impact the write operation (should use separate queues).
 func TestWriteDedupQueueParallelReadWrite(t *testing.T) {
-	c := NewChunkFromUncompressed([]byte{1, 2, 3, 4})
+	c := NewChunk([]byte{1, 2, 3, 4})
 	sleeping := make(chan struct{})
 	store := &TestStore{
 		// Slow GetChunk operation

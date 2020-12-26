@@ -22,9 +22,10 @@ var _ WriteStore = &RemoteHTTP{}
 
 // RemoteHTTPBase is the base object for a remote, HTTP-based chunk or index stores.
 type RemoteHTTPBase struct {
-	location *url.URL
-	client   *http.Client
-	opt      StoreOptions
+	location   *url.URL
+	client     *http.Client
+	opt        StoreOptions
+	converters Converters
 }
 
 // RemoteHTTP is a remote casync store accessed via HTTP.
@@ -88,7 +89,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	}
 	client := &http.Client{Transport: tr, Timeout: timeout}
 
-	return &RemoteHTTPBase{location: location, client: client, opt: opt}, nil
+	return &RemoteHTTPBase{location: location, client: client, opt: opt, converters: opt.converters()}, nil
 }
 
 func (r *RemoteHTTPBase) String() string {
@@ -214,10 +215,7 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	if r.opt.Uncompressed {
-		return NewChunkWithID(id, b, nil, r.opt.SkipVerify)
-	}
-	return NewChunkWithID(id, nil, b, r.opt.SkipVerify)
+	return NewChunkFromStorage(id, b, r.converters, r.opt.SkipVerify)
 }
 
 // HasChunk returns true if the chunk is in the store
@@ -242,15 +240,11 @@ func (r *RemoteHTTP) HasChunk(id ChunkID) (bool, error) {
 // StoreChunk adds a new chunk to the store
 func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 	p := r.nameFromID(chunk.ID())
-	var (
-		b   []byte
-		err error
-	)
-	if r.opt.Uncompressed {
-		b, err = chunk.Uncompressed()
-	} else {
-		b, err = chunk.Compressed()
+	b, err := chunk.Data()
+	if err != nil {
+		return err
 	}
+	b, err = r.converters.toStorage(b)
 	if err != nil {
 		return err
 	}
