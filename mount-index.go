@@ -15,6 +15,12 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
+type MountFS interface {
+	fs.InodeEmbedder
+
+	Close() error
+}
+
 // IndexMountFS is used to FUSE mount an index file (as a blob, not an archive).
 // It present a single file underneath the mountpoint.
 type IndexMountFS struct {
@@ -26,6 +32,7 @@ type IndexMountFS struct {
 }
 
 var _ fs.NodeOnAdder = &IndexMountFS{}
+var _ MountFS = &IndexMountFS{}
 
 // NewIndexMountFS initializes a FUSE filesystem mount based on an index and a chunk store.
 func NewIndexMountFS(idx Index, name string, s Store) *IndexMountFS {
@@ -45,6 +52,10 @@ func (r *IndexMountFS) OnAdd(ctx context.Context) {
 	}
 	ch := r.NewPersistentInode(ctx, n, fs.StableAttr{Mode: fuse.S_IFREG})
 	r.AddChild(r.FName, ch, false)
+}
+
+func (r *IndexMountFS) Close() error {
+	return nil
 }
 
 var _ fs.NodeGetattrer = &indexFile{}
@@ -109,15 +120,17 @@ func (f *indexFileHandle) read(dest []byte, off int64) (fuse.ReadResult, syscall
 
 // MountIndex mounts an index file under a FUSE mount point. The mount will only expose a single
 // blob file as represented by the index.
-func MountIndex(ctx context.Context, idx Index, path, name string, s Store, n int) error {
-	ifs := NewIndexMountFS(idx, name, s)
+func MountIndex(ctx context.Context, idx Index, ifs MountFS, path string, s Store, n int) error {
 	opts := &fs.Options{}
 	server, err := fs.Mount(path, ifs, opts)
 	if err != nil {
 		return err
 	}
-	go func() { // Unmount the server when the contex expires
+	go func() { // Unmount the server when the context expires
 		<-ctx.Done()
+		if err := ifs.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "error during unmount:", err)
+		}
 		server.Unmount()
 	}()
 	server.Wait()

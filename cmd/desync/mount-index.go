@@ -5,8 +5,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/folbricht/desync"
 	"github.com/pkg/errors"
@@ -18,6 +21,8 @@ type mountIndexOptions struct {
 	stores    []string
 	cache     string
 	storeFile string
+	corFile   string
+	desync.SparseFileOptions
 }
 
 func newMountIndexCommand(ctx context.Context) *cobra.Command {
@@ -31,12 +36,21 @@ the index available for read access. Use 'extract' if the goal is to
 assemble the whole blob locally as that is more efficient. Use '-' to read
 the index from STDIN.
 
+When a Copy-on-Read file is given (with -x), the file is used as a fast cache. All chunks
+that are retrieved from the store are written into the file as read operations are
+performed. Once all chunks have been accessed once, the COR file is fully populated. On
+termination, a <name>.state file is written containing information about which chunks
+of the index have or have not been read. A state file is only valid for one cache-file and
+one index. When re-using it with a different index, data corruption can occur.
+
 This command supports the --store-file option which can be used to define the stores
 and caches in a JSON file. The config can then be reloaded by sending a SIGHUP without
 needing to restart the server. This can be done under load as well.
 `,
-		Example: `  desync mount-index -s http://192.168.1.1/ file.caibx /mnt/blob`,
-		Args:    cobra.ExactArgs(2),
+		Example: `  desync mount-index -s http://192.168.1.1/ file.caibx /mnt/blob
+  desync mount-index -s /path/to/store -x /var/tmp/blob.cor blob.caibx /mnt/blob
+`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMountIndex(ctx, opt, args)
 		},
@@ -46,6 +60,10 @@ needing to restart the server. This can be done under load as well.
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.StringVar(&opt.storeFile, "store-file", "", "read store arguments from a file, supports reload on SIGHUP")
+	flags.StringVarP(&opt.corFile, "cor-file", "", "", "use a copy-on-read sparse file as cache")
+	flags.StringVarP(&opt.StateSaveFile, "cor-state-save", "", "", "file to store the state for copy-on-read")
+	flags.StringVarP(&opt.StateInitFile, "cor-state-init", "", "", "copy-on-read state init file")
+	flags.IntVarP(&opt.StateInitConcurrency, "cor-init-n", "", 10, "number of gorooutines to use for initialization (with --cor-state-init)")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -95,8 +113,32 @@ func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) er
 		return err
 	}
 
+	// Pick a filesystem based on the options
+	var ifs desync.MountFS
+	if opt.corFile != "" {
+		fs, err := desync.NewSparseMountFS(idx, mountFName, s, opt.corFile, opt.SparseFileOptions)
+		if err != nil {
+			return err
+		}
+
+		// Save state file on SIGHUP
+		sighup := make(chan os.Signal)
+		signal.Notify(sighup, syscall.SIGHUP)
+		go func() {
+			for range sighup {
+				if err := fs.WriteState(); err != nil {
+					fmt.Fprintln(os.Stderr, "failed to save state:", err)
+				}
+			}
+		}()
+
+		ifs = fs
+	} else {
+		ifs = desync.NewIndexMountFS(idx, mountFName, s)
+	}
+
 	// Mount it
-	return desync.MountIndex(ctx, idx, mountPoint, mountFName, s, opt.n)
+	return desync.MountIndex(ctx, idx, ifs, mountPoint, s, opt.n)
 }
 
 // Reads the store-related command line options and returns the appropriate store.

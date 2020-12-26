@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	cloud.google.com/go/storage v1.6.0
+	github.com/boljen/go-bitmap v0.0.0-20151001105940-23cd2fb0ce7d
 	github.com/datadog/zstd v1.4.5
 	github.com/dchest/siphash v1.2.1
 	github.com/fatih/color v1.7.0 // indirect
