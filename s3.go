@@ -32,8 +32,11 @@ type S3Store struct {
 
 // NewS3StoreBase initializes a base object used for chunk or index stores backed by S3.
 func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions, lookupType minio.BucketLookupType) (S3StoreBase, error) {
-	var err error
-	s := S3StoreBase{Location: u.String(), opt: opt, converters: opt.converters()}
+	converters, err := opt.converters()
+	if err != nil {
+		return S3StoreBase{}, err
+	}
+	s := S3StoreBase{Location: u.String(), opt: opt, converters: converters}
 	if !strings.HasPrefix(u.Scheme, "s3+http") {
 		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http' or 's3+https'", u.Scheme)
 	}

@@ -53,9 +53,12 @@ func normalizeGCPrefix(path string) string {
 // NewGCStoreBase initializes a base object used for chunk or index stores
 // backed by Google Storage.
 func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
-	var err error
 	ctx := context.TODO()
-	s := GCStoreBase{Location: u.String(), opt: opt, converters: opt.converters()}
+	converters, err := opt.converters()
+	if err != nil {
+		return GCStoreBase{}, err
+	}
+	s := GCStoreBase{Location: u.String(), opt: opt, converters: converters}
 	if u.Scheme != "gs" {
 		return s, fmt.Errorf("invalid scheme '%s', expected 'gs'", u.Scheme)
 	}

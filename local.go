@@ -42,7 +42,11 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if !info.IsDir() {
 		return LocalStore{}, fmt.Errorf("%s is not a directory", dir)
 	}
-	return LocalStore{Base: dir, opt: opt, converters: opt.converters()}, nil
+	converters, err := opt.converters()
+	if err != nil {
+		return LocalStore{}, err
+	}
+	return LocalStore{Base: dir, opt: opt, converters: converters}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store

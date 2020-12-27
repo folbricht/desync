@@ -77,21 +77,3 @@ type converter interface {
 
 	equal(converter) bool
 }
-
-// Compression layer
-type Compressor struct{}
-
-var _ converter = Compressor{}
-
-func (d Compressor) toStorage(in []byte) ([]byte, error) {
-	return Compress(in)
-}
-
-func (d Compressor) fromStorage(in []byte) ([]byte, error) {
-	return Decompress(nil, in)
-}
-
-func (d Compressor) equal(c converter) bool {
-	_, ok := c.(Compressor)
-	return ok
-}
