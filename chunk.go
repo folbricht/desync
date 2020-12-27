@@ -4,28 +4,31 @@ import (
 	"errors"
 )
 
-// Chunk holds chunk data compressed, uncompressed, or both. If a chunk is created
-// from compressed data, such as read from a compressed chunk store, and later the
-// application requires the uncompressed data, it'll be decompressed on demand and
-// also stored in Chunk. The same happens when the Chunk is made from uncompressed
-// bytes and then to be stored in a compressed form.
+// Chunk holds chunk data plain, storage format, or both. If a chunk is created
+// from storage data, such as read from a compressed chunk store, and later the
+// application requires the plain data, it'll be converted on demand by applying
+// the given storage converters in reverse order. The converters can only be used
+// to read the plain data, not to convert back to storage format.
 type Chunk struct {
-	compressed, uncompressed []byte
-	id                       ChunkID
-	idCalculated             bool
+	data         []byte     // Plain data if available
+	storage      []byte     // Storage format (compressed, encrypted, etc)
+	converters   Converters // Modifiers to convert from storage format to plain
+	id           ChunkID
+	idCalculated bool
 }
 
-// NewChunkFromUncompressed creates a new chunk from uncompressed data.
-func NewChunkFromUncompressed(b []byte) *Chunk {
-	return &Chunk{uncompressed: b}
+// NewChunk creates a new chunk from plain data. The data is trusted and the ID is
+// calculated on demand.
+func NewChunk(b []byte) *Chunk {
+	return &Chunk{data: b}
 }
 
 // NewChunkWithID creates a new chunk from either compressed or uncompressed data
 // (or both if available). It also expects an ID and validates that it matches
 // the uncompressed data unless skipVerify is true. If called with just compressed
 // data, it'll decompress it for the ID validation.
-func NewChunkWithID(id ChunkID, uncompressed, compressed []byte, skipVerify bool) (*Chunk, error) {
-	c := &Chunk{id: id, uncompressed: uncompressed, compressed: compressed}
+func NewChunkWithID(id ChunkID, b []byte, skipVerify bool) (*Chunk, error) {
+	c := &Chunk{id: id, data: b}
 	if skipVerify {
 		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
@@ -37,32 +40,33 @@ func NewChunkWithID(id ChunkID, uncompressed, compressed []byte, skipVerify bool
 	return c, nil
 }
 
-// Compressed returns the chunk data in compressed form. If the chunk was created
-// with uncompressed data only, it'll be compressed, stored and returned. The
-// caller must not modify the data in the returned slice.
-func (c *Chunk) Compressed() ([]byte, error) {
-	if len(c.compressed) > 0 {
-		return c.compressed, nil
+// NewChunkFromStorage builds a new chunk from data that is not in plain format.
+// It uses raw storage format from it source and the modifiers are used to convert
+// into plain data as needed.
+func NewChunkFromStorage(id ChunkID, b []byte, modifiers Converters, skipVerify bool) (*Chunk, error) {
+	c := &Chunk{id: id, storage: b, converters: modifiers}
+	if skipVerify {
+		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
+		return c, nil
 	}
-	if len(c.uncompressed) > 0 {
-		var err error
-		c.compressed, err = Compress(c.uncompressed)
-		return c.compressed, err
+	sum := c.ID()
+	if sum != id {
+		return nil, ChunkInvalid{ID: id, Sum: sum}
 	}
-	return nil, errors.New("no data in chunk")
+	return c, nil
 }
 
-// Uncompressed returns the chunk data in uncompressed form. If the chunk was created
+// Data returns the chunk data in uncompressed form. If the chunk was created
 // with compressed data only, it'll be decompressed, stored and returned. The
 // caller must not modify the data in the returned slice.
-func (c *Chunk) Uncompressed() ([]byte, error) {
-	if len(c.uncompressed) > 0 {
-		return c.uncompressed, nil
+func (c *Chunk) Data() ([]byte, error) {
+	if len(c.data) > 0 {
+		return c.data, nil
 	}
-	if len(c.compressed) > 0 {
+	if len(c.storage) > 0 {
 		var err error
-		c.uncompressed, err = Decompress(nil, c.compressed)
-		return c.uncompressed, err
+		c.data, err = c.converters.fromStorage(c.storage)
+		return c.data, err
 	}
 	return nil, errors.New("no data in chunk")
 }
@@ -71,11 +75,10 @@ func (c *Chunk) Uncompressed() ([]byte, error) {
 // after the first call and doesn't need to be re-calculated. Note that calculating
 // the ID may mean decompressing the data first.
 func (c *Chunk) ID() ChunkID {
-
 	if c.idCalculated {
 		return c.id
 	}
-	b, err := c.Uncompressed()
+	b, err := c.Data()
 	if err != nil {
 		return ChunkID{}
 	}

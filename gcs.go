@@ -20,11 +20,12 @@ var _ WriteStore = GCStore{}
 // GCStoreBase is the base object for all chunk and index stores with Google
 // Storage backing
 type GCStoreBase struct {
-	Location string
-	client   *storage.BucketHandle
-	bucket   string
-	prefix   string
-	opt      StoreOptions
+	Location   string
+	client     *storage.BucketHandle
+	bucket     string
+	prefix     string
+	opt        StoreOptions
+	converters Converters
 }
 
 // GCStore is a read-write store with Google Storage backing
@@ -54,7 +55,7 @@ func normalizeGCPrefix(path string) string {
 func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
 	var err error
 	ctx := context.TODO()
-	s := GCStoreBase{Location: u.String(), opt: opt}
+	s := GCStoreBase{Location: u.String(), opt: opt, converters: opt.converters()}
 	if u.Scheme != "gs" {
 		return s, fmt.Errorf("invalid scheme '%s', expected 'gs'", u.Scheme)
 	}
@@ -125,10 +126,7 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 	log.Debug("Retrieved chunk from GCS bucket")
 
-	if s.opt.Uncompressed {
-		return NewChunkWithID(id, b, nil, s.opt.SkipVerify)
-	}
-	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
+	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
 }
 
 // StoreChunk adds a new chunk to the store
@@ -139,23 +137,21 @@ func (s GCStore) StoreChunk(chunk *Chunk) error {
 	name := s.nameFromID(chunk.ID())
 
 	var (
-		b   []byte
-		err error
 		log = Log.WithFields(logrus.Fields{
 			"bucket": s.bucket,
 			"name":   name,
 		})
 	)
 
-	if s.opt.Uncompressed {
-		b, err = chunk.Uncompressed()
-	} else {
-		b, err = chunk.Compressed()
-	}
-
+	b, err := chunk.Data()
 	if err != nil {
 		log.WithError(err).Error("Cannot retrieve chunk data")
-		return errors.Wrap(err, s.String())
+		return err
+	}
+	b, err = s.converters.toStorage(b)
+	if err != nil {
+		log.WithError(err).Error("Cannot retrieve chunk data")
+		return err
 	}
 
 	r := bytes.NewReader(b)

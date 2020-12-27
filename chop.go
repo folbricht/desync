@@ -81,5 +81,5 @@ func readChunkFromFile(f *os.File, c IndexChunk) (*Chunk, error) {
 	if _, err = io.ReadFull(f, b); err != nil {
 		return nil, err
 	}
-	return NewChunkWithID(c.ID, b, nil, false)
+	return NewChunkWithID(c.ID, b, false)
 }

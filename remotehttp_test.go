@@ -201,7 +201,7 @@ func TestGetChunk(t *testing.T) {
 			content, err := s.GetChunk(test.chunkId)
 			content_string := ""
 			if content != nil {
-				uncompressedContent, _ := content.Uncompressed()
+				uncompressedContent, _ := content.Data()
 				content_string = string(uncompressedContent)
 			}
 			if (content_string != test.content) || ((err != nil) != test.hasError) || (attemptCount != test.attemptCount) {
@@ -287,7 +287,7 @@ func TestPutChunk(t *testing.T) {
 
 			attemptCount = 0
 			writtenContent = nil
-			chunk, _ := NewChunkWithID(test.chunkId, []byte(test.content), nil, true)
+			chunk, _ := NewChunkWithID(test.chunkId, []byte(test.content), true)
 			err = s.StoreChunk(chunk)
 			writtenContentString := ""
 			if writtenContent != nil {

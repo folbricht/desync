@@ -32,9 +32,10 @@ type SFTPStoreBase struct {
 
 // SFTPStore is a chunk store that uses SFTP over SSH.
 type SFTPStore struct {
-	pool     chan *SFTPStoreBase
-	location *url.URL
-	n        int
+	pool       chan *SFTPStoreBase
+	location   *url.URL
+	n          int
+	converters Converters
 }
 
 // Creates a base sftp client
@@ -142,7 +143,7 @@ func (s *SFTPStoreBase) nameFromID(id ChunkID) string {
 
 // NewSFTPStore initializes a chunk store using SFTP over SSH.
 func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
-	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N}
+	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N, opt.converters()}
 	for i := 0; i < opt.N; i++ {
 		c, err := newSFTPStoreBase(location, opt)
 		if err != nil {
@@ -170,10 +171,7 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to read from %s", name)
 	}
-	if c.opt.Uncompressed {
-		return NewChunkWithID(id, b, nil, c.opt.SkipVerify)
-	}
-	return NewChunkWithID(id, nil, b, c.opt.SkipVerify)
+	return NewChunkFromStorage(id, b, s.converters, c.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -193,18 +191,15 @@ func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 	c := <-s.pool
 	defer func() { s.pool <- c }()
 	name := c.nameFromID(chunk.ID())
-	var (
-		b   []byte
-		err error
-	)
-	if c.opt.Uncompressed {
-		b, err = chunk.Uncompressed()
-	} else {
-		b, err = chunk.Compressed()
-	}
+	b, err := chunk.Data()
 	if err != nil {
 		return err
 	}
+	b, err = s.converters.toStorage(b)
+	if err != nil {
+		return err
+	}
+
 	return c.StoreObject(name, bytes.NewReader(b))
 }
 

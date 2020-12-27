@@ -76,7 +76,7 @@ type StoreOptions struct {
 	// Default: 1 second
 	ErrorRetryBaseInterval time.Duration `json:"error-retry-base-interval,omitempty"`
 
-	// If SkipVerify is true, this store will not verfiy the data it reads and serves up. This is
+	// If SkipVerify is true, this store will not verify the data it reads and serves up. This is
 	// helpful when a store is merely a proxy and the data will pass through additional stores
 	// before being used. Verifying the checksum of a chunk requires it be uncompressed, so if
 	// a compressed chunkstore is being proxied, all chunks would have to be decompressed first.
@@ -86,4 +86,17 @@ type StoreOptions struct {
 
 	// Store and read chunks uncompressed, without chunk file extension
 	Uncompressed bool `json:"uncompressed"`
+}
+
+// Returns data converters that convert between plain and storage-format. Each layer
+// represents a modification such as compression or encryption and is applied in order
+// depending the direction of data. If data is written to storage, the layer's toStorage
+// method is called in the order they are returned. If data is read, the fromStorage
+// method is called in reverse order.
+func (o StoreOptions) converters() []converter {
+	var m []converter
+	if !o.Uncompressed {
+		m = append(m, Compressor{})
+	}
+	return m
 }

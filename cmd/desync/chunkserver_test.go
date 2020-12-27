@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,22 +15,19 @@ import (
 )
 
 func TestChunkServerReadCommand(t *testing.T) {
+	outdir := t.TempDir()
+
 	// Start a read-only server
 	addr, cancel := startChunkServer(t, "-s", "testdata/blob1.store")
 	defer cancel()
 	store := fmt.Sprintf("http://%s/", addr)
 
-	outdir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outdir)
-	blob := filepath.Join(outdir, "blob")
-
 	// Run an "extract" command to confirm the chunk server provides chunks
 	extractCmd := newExtractCommand(context.Background())
-	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", blob})
+	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob")})
 	stdout = ioutil.Discard
 	extractCmd.SetOutput(ioutil.Discard)
-	_, err = extractCmd.ExecuteC()
+	_, err := extractCmd.ExecuteC()
 	require.NoError(t, err)
 
 	// The server should not be serving up arbitrary files from disk. Expect a 400 error
@@ -57,10 +53,7 @@ func TestChunkServerReadCommand(t *testing.T) {
 }
 
 func TestChunkServerWriteCommand(t *testing.T) {
-	// Create a blank store
-	outdir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outdir)
+	outdir := t.TempDir()
 
 	// Start a (writable) server
 	addr, cancel := startChunkServer(t, "-s", outdir, "-w")
@@ -71,7 +64,7 @@ func TestChunkServerWriteCommand(t *testing.T) {
 	chopCmd := newChopCommand(context.Background())
 	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
 	chopCmd.SetOutput(ioutil.Discard)
-	_, err = chopCmd.ExecuteC()
+	_, err := chopCmd.ExecuteC()
 	require.NoError(t, err)
 
 	// The server should not accept arbitrary (non-chunk) files.
@@ -82,9 +75,7 @@ func TestChunkServerWriteCommand(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 func TestChunkServerVerifiedTLS(t *testing.T) {
-	outdir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outdir)
+	outdir := t.TempDir()
 
 	// Start a (writable) server
 	addr, cancel := startChunkServer(t, "-s", "testdata/blob1.store", "--key", "testdata/server.key", "--cert", "testdata/server.crt")
@@ -96,14 +87,12 @@ func TestChunkServerVerifiedTLS(t *testing.T) {
 	extractCmd := newExtractCommand(context.Background())
 	extractCmd.SetArgs([]string{"--ca-cert", "testdata/ca.crt", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
 	extractCmd.SetOutput(ioutil.Discard)
-	_, err = extractCmd.ExecuteC()
+	_, err := extractCmd.ExecuteC()
 	require.NoError(t, err)
 }
 
 func TestChunkServerInsecureTLS(t *testing.T) {
-	outdir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outdir)
+	outdir := t.TempDir()
 
 	stderr = ioutil.Discard
 	stdout = ioutil.Discard
@@ -118,7 +107,7 @@ func TestChunkServerInsecureTLS(t *testing.T) {
 	extractCmd := newExtractCommand(context.Background())
 	extractCmd.SetArgs([]string{"-t", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
 	// extractCmd.SetOutput(ioutil.Discard)
-	_, err = extractCmd.ExecuteC()
+	_, err := extractCmd.ExecuteC()
 	require.NoError(t, err)
 
 	// Run the "extract" command without accepting any cert. Should fail.
@@ -132,9 +121,7 @@ func TestChunkServerInsecureTLS(t *testing.T) {
 }
 
 func TestChunkServerMutualTLS(t *testing.T) {
-	outdir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outdir)
+	outdir := t.TempDir()
 
 	stderr = ioutil.Discard
 	stdout = ioutil.Discard
@@ -158,7 +145,7 @@ func TestChunkServerMutualTLS(t *testing.T) {
 		"--client-cert", "testdata/client.crt",
 		"--ca-cert", "testdata/ca.crt",
 		"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
-	_, err = extractCmd.ExecuteC()
+	_, err := extractCmd.ExecuteC()
 	require.NoError(t, err)
 
 	// Same without client certs, should fail.

@@ -28,6 +28,8 @@ type LocalStore struct {
 	UpdateTimes bool
 
 	opt StoreOptions
+
+	converters Converters
 }
 
 // NewLocalStore creates an instance of a local castore, it only checks presence
@@ -40,7 +42,7 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if !info.IsDir() {
 		return LocalStore{}, fmt.Errorf("%s is not a directory", dir)
 	}
-	return LocalStore{Base: dir, opt: opt}, nil
+	return LocalStore{Base: dir, opt: opt, converters: opt.converters()}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -50,10 +52,7 @@ func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if os.IsNotExist(err) {
 		return nil, ChunkMissing{id}
 	}
-	if s.opt.Uncompressed {
-		return NewChunkWithID(id, b, nil, s.opt.SkipVerify)
-	}
-	return NewChunkWithID(id, nil, b, s.opt.SkipVerify)
+	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -69,15 +68,11 @@ func (s LocalStore) RemoveChunk(id ChunkID) error {
 // StoreChunk adds a new chunk to the store
 func (s LocalStore) StoreChunk(chunk *Chunk) error {
 	d, p := s.nameFromID(chunk.ID())
-	var (
-		b   []byte
-		err error
-	)
-	if s.opt.Uncompressed {
-		b, err = chunk.Uncompressed()
-	} else {
-		b, err = chunk.Compressed()
+	b, err := chunk.Data()
+	if err != nil {
+		return err
 	}
+	b, err = s.converters.toStorage(b)
 	if err != nil {
 		return err
 	}

@@ -164,7 +164,7 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 		g.Go(func() error {
 			for c := range in {
 				// Create a chunk object, needed to calculate the checksum
-				chunk := NewChunkFromUncompressed(c.b)
+				chunk := NewChunk(c.b)
 
 				// Record the index row
 				idxChunk := IndexChunk{Start: c.start, Size: uint64(len(c.b)), ID: chunk.ID()}
