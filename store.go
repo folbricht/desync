@@ -90,9 +90,9 @@ type StoreOptions struct {
 
 	// Store encryption settings. The only algorithm currently supported is aes-256-ctr which
 	// is also the default.
-	Encryption          bool   `json:"encryption"`
-	EncryptionAlgorithm string `json:"encryption-algorithm"`
-	EncryptionPassword  string `json:"encryption-password"`
+	Encryption          bool   `json:"encryption,omitempty"`
+	EncryptionAlgorithm string `json:"encryption-algorithm,omitempty"`
+	EncryptionPassword  string `json:"encryption-password,omitempty"`
 }
 
 // Returns data converters that convert between plain and storage-format. Each layer

@@ -24,6 +24,8 @@ type chunkServerOptions struct {
 	skipVerifyWrite bool
 	uncompressed    bool
 	logFile         string
+	encryptionAlg   string
+	encryptionPw    string
 }
 
 func newChunkServerCommand(ctx context.Context) *cobra.Command {
@@ -68,6 +70,8 @@ needing to restart the server. This can be done under load as well.
 	flags.BoolVar(&opt.skipVerifyWrite, "skip-verify-write", true, "don't verify chunk data written to this server (faster)")
 	flags.BoolVarP(&opt.uncompressed, "uncompressed", "u", false, "serve uncompressed chunks")
 	flags.StringVar(&opt.logFile, "log", "", "request log file or - for STDOUT")
+	flags.StringVar(&opt.encryptionPw, "encryption-password", "", "serve chunks encrypted with this password")
+	flags.StringVar(&opt.encryptionAlg, "encryption-algorithm", "aes-256-ctr", "encryption algorithm")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
@@ -127,9 +131,23 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	}
 	defer s.Close()
 
+	// Build the converters. In this case, the "storage" side is what is served
+	// up by the server towards the client.
 	var converters desync.Converters
 	if !opt.uncompressed {
-		converters = desync.Converters{desync.Compressor{}}
+		converters = append(converters, desync.Compressor{})
+	}
+	if opt.encryptionPw != "" {
+		switch opt.encryptionAlg {
+		case "", "aes-256-ctr":
+			enc, err := desync.NewAES256CTR(opt.encryptionPw)
+			if err != nil {
+				return err
+			}
+			converters = append(converters, enc)
+		default:
+			return fmt.Errorf("unsupported encryption algorithm %q", opt.encryptionAlg)
+		}
 	}
 
 	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, converters, opt.auth)

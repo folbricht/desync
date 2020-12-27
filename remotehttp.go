@@ -157,11 +157,10 @@ func (r *RemoteHTTPBase) IssueRetryableHttpRequest(method string, u *url.URL, ge
 retry:
 	attempt++
 	statusCode, responseBody, err := r.IssueHttpRequest(method, u, getReader, attempt)
-
 	if (err != nil) || (statusCode >= 500 && statusCode < 600) {
 		if attempt >= r.opt.ErrorRetry {
 			log.WithField("attempt", attempt).Debug("failed, giving up")
-			return 0, nil, err
+			return statusCode, responseBody, err
 		} else {
 			log.WithField("attempt", attempt).WithField("delay", attempt).Debug("waiting, then retrying")
 			time.Sleep(time.Duration(attempt) * r.opt.ErrorRetryBaseInterval)
