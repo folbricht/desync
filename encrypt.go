@@ -39,7 +39,8 @@ func (d aes256ctr) toStorage(in []byte) ([]byte, error) {
 }
 
 // decrypt from storage. The IV is taken from the start of the
-// chunk data.
+// chunk data. This by itself does not verify integrity. That
+// is achieved by the existing chunk validation.
 func (d aes256ctr) fromStorage(in []byte) ([]byte, error) {
 	if len(in) < aes.BlockSize {
 		return nil, errors.New("no iv prefix found in chunk, not encrypted or wrong algorithm")
