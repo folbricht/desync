@@ -242,10 +242,10 @@ Chunk extensions are chosen based on compression or encryption settings as follo
 
 | Compressed | Encrypted | Extension | Example |
 |:---:|:---:|:---:|:---:|
-| no | no | n/a | `fbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78` |
-| yes | no | `.cacnk` | `ffbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78.cacnk` |
-| no | yes | `.<algorithm>-<keyID>` | `fbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78.aes-256-ctr-635af003` |
-| yes | yes | `.cacnk.<algorithm>-<keyID>` | `fbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78.cacnk.aes-256-ctr-635af003` |
+| no | no | n/a | `fbef/fbef1a00ced..9280ce78` |
+| yes | no | `.cacnk` | `ffbef/fbef1a00ced..9280ce78.cacnk` |
+| no | yes | `.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.aes-256-ctr-635af003` |
+| yes | yes | `.cacnk.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.cacnk.aes-256-ctr-635af003` |
 
 ### Configuration
 
