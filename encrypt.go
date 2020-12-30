@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -16,14 +17,19 @@ import (
 type aes256ctr struct {
 	key   []byte
 	block cipher.Block
+
+	// Chunk extension with identifier derived from the key.
+	extension string
 }
 
 var _ converter = aes256ctr{}
 
 func NewAES256CTR(passphrase string) (aes256ctr, error) {
 	key := sha256.Sum256([]byte(passphrase))
+	keyHash := sha256.Sum256(key[:])
+	extension := fmt.Sprintf(".aes-256-ctr-%x", keyHash[:4])
 	block, err := aes.NewCipher(key[:])
-	return aes256ctr{key: key[:], block: block}, err
+	return aes256ctr{key: key[:], block: block, extension: extension}, err
 }
 
 // encrypt for storage. The IV is prepended to the data.
@@ -58,4 +64,8 @@ func (d aes256ctr) equal(c converter) bool {
 		return false
 	}
 	return bytes.Equal(d.key, other.key)
+}
+
+func (d aes256ctr) storageExtension() string {
+	return d.extension
 }

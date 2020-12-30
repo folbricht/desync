@@ -55,3 +55,17 @@ func TestAES256CTRCompare(t *testing.T) {
 	require.False(t, diffPw.equal(enc1))
 	require.False(t, enc1.equal(diffPw))
 }
+
+func TestAES256CTRExtension(t *testing.T) {
+	enc1, err := NewAES256CTR("secret-password")
+	require.NoError(t, err)
+
+	// Confirm that we have a key-handle in the file extension
+	require.Equal(t, ".aes-256-ctr-16db3403", enc1.extension)
+
+	// If algorithm and password are the same, the same key
+	// handle (extension) should be produced every time
+	enc2, err := NewAES256CTR("secret-password")
+	require.NoError(t, err)
+	require.Equal(t, enc1.extension, enc2.extension)
+}

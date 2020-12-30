@@ -282,11 +282,12 @@ func TestLocalStorePasswordMismatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, dataIn, dataOut)
 
-	// Try to get the chunk with a bad password, expect a signature mismatch
+	// Try to get the chunk with a bad password, expect a not-found
+	// since the chunk extensions are different for diff keys.
 	_, err = s2.GetChunk(id)
 	require.Error(t, err)
 
-	if _, ok := err.(ChunkInvalid); !ok {
-		t.Fatalf("expected ChunkInvalid error, but got %T", err)
+	if _, ok := err.(ChunkMissing); !ok {
+		t.Fatalf("expected ChunkMissing error, but got %T", err)
 	}
 }

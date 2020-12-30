@@ -256,11 +256,6 @@ func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 
 func (r *RemoteHTTP) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := path.Join(sID[0:4], sID)
-	if r.opt.Uncompressed {
-		name += UncompressedChunkExt
-	} else {
-		name += CompressedChunkExt
-	}
+	name := path.Join(sID[0:4], sID) + r.converters.storageExtension()
 	return name
 }

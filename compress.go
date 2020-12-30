@@ -40,3 +40,7 @@ func (d Compressor) equal(c converter) bool {
 	_, ok := c.(Compressor)
 	return ok
 }
+
+func (d Compressor) storageExtension() string {
+	return ".cacnk"
+}

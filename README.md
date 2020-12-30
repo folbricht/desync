@@ -236,7 +236,16 @@ Compressed and uncompressed chunks can live in the same store and don't interfer
 
 ### Chunk Encryption
 
-Chunks can be encrypted with a symmetric algorithm on a per-store basis. To use encryption, it has to be enabled in the [configuration](Configuration) file, and an algorithm needs to be specified. A single instance of desync can use multiple stores at the same time, each with a different (or the same) encryption mode and key. Encryption passwords can not be changed for a store as that would invalidate the existing chunks in the store. To change the key, create a new store, then either re-chunk the data, or use `desync cache -c <new-store> -s <old-store> <index>` to decrypt the chunks from the old store and re-encrypt with the new key in the new store.
+Chunks can be encrypted with a symmetric algorithm on a per-store basis. To use encryption, it has to be enabled in the [configuration](Configuration) file, and an algorithm needs to be specified. A single instance of desync can use multiple stores at the same time, each with a different (or the same) encryption mode and key. Encrypted chunks are stores with file extensions containing the algorithm and a key identifier. If the password for a store is changed, all existing chunks in it will become "invisible" since the extension would no longer match. To change the key, chunks have to be re-encrypted with the new key. That could happen into same, or better, a new store. Create a new store, then either re-chunk the data, or use `desync cache -c <new-store> -s <old-store> <index>` to decrypt the chunks from the old store and re-encrypt with the new key in the new store.
+
+Chunk extensions are chosen based on compression or encryption settings as follows:
+
+| Compressed | Encrypted | Extension | Example |
+|:---:|:---:|:---:|:---:|
+| no | no | n/a | `fbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78` |
+| yes | no | `.cacnk` | `ffbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78.cacnk` |
+| no | yes | `.<algorithm>-<keyID>` | `fbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78.aes-256-ctr-635af003` |
+| yes | yes | `.cacnk.<algorithm>-<keyID>` | `fbef/fbef1a00ceda67e2abc49f707fd70e315fab60eacd19c257e23897339280ce78.cacnk.aes-256-ctr-635af003` |
 
 ### Configuration
 

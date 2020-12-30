@@ -192,28 +192,16 @@ func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 func (s S3Store) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := s.prefix + sID[0:4] + "/" + sID
-	if s.opt.Uncompressed {
-		name += UncompressedChunkExt
-	} else {
-		name += CompressedChunkExt
-	}
+	name := s.prefix + sID[0:4] + "/" + sID + s.converters.storageExtension()
 	return name
 }
 
 func (s S3Store) idFromName(name string) (ChunkID, error) {
-	var n string
-	if s.opt.Uncompressed {
-		if !strings.HasSuffix(name, UncompressedChunkExt) {
-			return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
-		}
-		n = strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), UncompressedChunkExt)
-	} else {
-		if !strings.HasSuffix(name, CompressedChunkExt) {
-			return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
-		}
-		n = strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), CompressedChunkExt)
+	extension := s.converters.storageExtension()
+	if !strings.HasSuffix(name, extension) {
+		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
 	}
+	n := strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), extension)
 	fragments := strings.Split(n, "/")
 	if len(fragments) != 2 {
 		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
