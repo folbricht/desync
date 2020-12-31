@@ -27,7 +27,7 @@ Among the distinguishing factors:
 - Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 - catar archives can be created from standard tar archives, and they can also be extracted to GNU tar format.
-- Optional chunk store encryption with AES-265-CTR.
+- Optional chunk store encryption with XChaCha20-Poly1305, AES-265-GCM and AES-265-CTR.
 
 ## Terminology
 
@@ -239,11 +239,11 @@ Compressed and uncompressed chunks can live in the same store and don't interfer
 Chunks can be encrypted with a symmetric algorithm on a per-store basis. To use encryption, it has to be enabled in the [configuration](Configuration) file, and an algorithm needs to be specified. A single instance of desync can use multiple stores at the same time, each with a different (or the same) encryption mode and key. Encrypted chunks are stores with file extensions containing the algorithm and a key identifier. If the password for a store is changed, all existing chunks in it will become "invisible" since the extension would no longer match. To change the key, chunks have to be re-encrypted with the new key. That could happen into same, or better, a new store. Create a new store, then either re-chunk the data, or use `desync cache -c <new-store> -s <old-store> <index>` to decrypt the chunks from the old store and re-encrypt with the new key in the new store.
 For all available algorithms, the 256bit encryption key is derived from the configured password by hashing it with SHA256. Encryption nonces or IVs are generated randomly per chunk which can weaken encryption in some modes when used on very large chunk stores, see notes below.
 
-| ID | Algorithm | Notes |
-|:---:|:---:|:---:|
-| `xchacha20-poly1305` | XChaCha20-Poly1305 (AEAD) | Default |
-| `aes-256-gcm` | AES 256bit Galois Counter Mode (AEAD) | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
-| `aes-256-ctr` | AES 256bit Counter Mode | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
+| ID | Algorithm | Key | Nonce/IV | Notes |
+|:---:|:---:|:---:|:---:|:---:|
+| `xchacha20-poly1305` | XChaCha20-Poly1305 (AEAD) | 256bit | 192bit | Default |
+| `aes-256-gcm` | AES 256bit Galois Counter Mode (AEAD) | 256bit | 128bit | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
+| `aes-256-ctr` | AES 256bit Counter Mode | 256bit | 128bit | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
 
 Chunk extensions in stores are chosen based on compression or encryption settings as follows:
 
