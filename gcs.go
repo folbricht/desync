@@ -54,7 +54,7 @@ func normalizeGCPrefix(path string) string {
 // backed by Google Storage.
 func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
 	ctx := context.TODO()
-	converters, err := opt.converters()
+	converters, err := opt.StorageConverters()
 	if err != nil {
 		return GCStoreBase{}, err
 	}

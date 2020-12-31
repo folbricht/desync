@@ -6,38 +6,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAES256CTREncryptDecrypt(t *testing.T) {
-	plainIn := []byte{1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
+func TestEncryptDecrypt(t *testing.T) {
+	tests := map[string]struct {
+		alg func(string) (converter, error)
+	}{
+		"xchacha20-poly1305": {func(pw string) (converter, error) { return NewXChaCha20Poly1305(pw) }},
+		"aes-256-gcm":        {func(pw string) (converter, error) { return NewAES256GCM(pw) }},
+		"aes-256-ctr":        {func(pw string) (converter, error) { return NewAES256CTR(pw) }},
+	}
 
-	// Make two converters. One for encryption and one for decryption. Could use
-	// just one but this way we confirm the key generation is consistent
-	enc, err := NewAES256CTR("secret-password")
-	require.NoError(t, err)
-	dec, err := NewAES256CTR("secret-password")
-	require.NoError(t, err)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			plainIn := []byte{1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
 
-	// Encrypt the data
-	ciphertext, err := enc.toStorage(plainIn)
-	require.NoError(t, err)
+			// Make two converters. One for encryption and one for decryption. Could use
+			// just one but this way we confirm the key generation is consistent
+			enc, err := test.alg("secret-password")
+			require.NoError(t, err)
+			dec, err := test.alg("secret-password")
+			require.NoError(t, err)
 
-	// Confirm the ciphertext is actually different than what went in
-	require.NotEqual(t, plainIn, ciphertext)
+			// Encrypt the data
+			ciphertext, err := enc.toStorage(plainIn)
+			require.NoError(t, err)
 
-	// Decrypt it
-	plainOut, err := dec.fromStorage(ciphertext)
-	require.NoError(t, err)
+			// Confirm the ciphertext is actually different than what went in
+			require.NotEqual(t, plainIn, ciphertext)
 
-	// This should match the original data of course
-	require.Equal(t, plainIn, plainOut)
+			// Decrypt it
+			plainOut, err := dec.fromStorage(ciphertext)
+			require.NoError(t, err)
 
-	// Make another instance with a different password
-	diffPw, err := NewAES256CTR("something-else")
-	require.NoError(t, err)
+			// This should match the original data of course
+			require.Equal(t, plainIn, plainOut)
 
-	// Try to decrypt the data, should end up with garbage
-	diffOut, err := diffPw.fromStorage(ciphertext)
-	require.NoError(t, err)
-	require.NotEqual(t, plainIn, diffOut)
+			// Make another instance with a different password
+			diffPw, err := test.alg("something-else")
+			require.NoError(t, err)
+
+			// Try to decrypt the data, should end up with garbage or an
+			// error from AEAD algorithms
+			diffOut, err := diffPw.fromStorage(ciphertext)
+			if err == nil {
+				require.NotEqual(t, plainIn, diffOut)
+			}
+		})
+	}
 }
 
 func TestAES256CTRCompare(t *testing.T) {

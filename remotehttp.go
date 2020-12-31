@@ -89,7 +89,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	}
 	client := &http.Client{Transport: tr, Timeout: timeout}
 
-	converters, err := opt.converters()
+	converters, err := opt.StorageConverters()
 	if err != nil {
 		return nil, err
 	}

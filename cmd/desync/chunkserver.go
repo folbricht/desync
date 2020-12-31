@@ -71,7 +71,7 @@ needing to restart the server. This can be done under load as well.
 	flags.BoolVarP(&opt.uncompressed, "uncompressed", "u", false, "serve uncompressed chunks")
 	flags.StringVar(&opt.logFile, "log", "", "request log file or - for STDOUT")
 	flags.StringVar(&opt.encryptionPw, "encryption-password", "", "serve chunks encrypted with this password")
-	flags.StringVar(&opt.encryptionAlg, "encryption-algorithm", "aes-256-ctr", "encryption algorithm")
+	flags.StringVar(&opt.encryptionAlg, "encryption-algorithm", "xchacha20-poly1305", "encryption algorithm")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
@@ -132,22 +132,17 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	defer s.Close()
 
 	// Build the converters. In this case, the "storage" side is what is served
-	// up by the server towards the client.
-	var converters desync.Converters
-	if !opt.uncompressed {
-		converters = append(converters, desync.Compressor{})
-	}
-	if opt.encryptionPw != "" {
-		switch opt.encryptionAlg {
-		case "", "aes-256-ctr":
-			enc, err := desync.NewAES256CTR(opt.encryptionPw)
-			if err != nil {
-				return err
-			}
-			converters = append(converters, enc)
-		default:
-			return fmt.Errorf("unsupported encryption algorithm %q", opt.encryptionAlg)
-		}
+	// up by the server towards the client. The StoreOptions struct already has
+	// logic to build the converters from options so use that instead of repeating
+	// it here.
+	converters, err := desync.StoreOptions{
+		Uncompressed:        opt.uncompressed,
+		Encryption:          opt.encryptionPw != "",
+		EncryptionAlgorithm: opt.encryptionAlg,
+		EncryptionPassword:  opt.encryptionPw,
+	}.StorageConverters()
+	if err != nil {
+		return err
 	}
 
 	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, converters, opt.auth)

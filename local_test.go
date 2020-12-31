@@ -235,7 +235,7 @@ func TestLocalStoreCompressedEncrypted(t *testing.T) {
 	require.NoError(t, err)
 
 	// First decrypt it, using the correct password
-	dec, _ := NewAES256CTR("test-password")
+	dec, _ := NewXChaCha20Poly1305("test-password")
 	decrypted, err := dec.fromStorage(b)
 	require.NoError(t, err)
 

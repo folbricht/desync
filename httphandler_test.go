@@ -111,7 +111,7 @@ func TestHTTPHandlerEncryption(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a read-write capable server with Encryption, no Compression
-	enc, err := NewAES256CTR("testpassword")
+	enc, err := NewXChaCha20Poly1305("testpassword")
 	require.NoError(t, err)
 	server := httptest.NewServer(NewHTTPHandler(upstream, true, false, []converter{enc}, ""))
 	defer server.Close()

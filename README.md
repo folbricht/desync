@@ -237,15 +237,22 @@ Compressed and uncompressed chunks can live in the same store and don't interfer
 ### Chunk Encryption
 
 Chunks can be encrypted with a symmetric algorithm on a per-store basis. To use encryption, it has to be enabled in the [configuration](Configuration) file, and an algorithm needs to be specified. A single instance of desync can use multiple stores at the same time, each with a different (or the same) encryption mode and key. Encrypted chunks are stores with file extensions containing the algorithm and a key identifier. If the password for a store is changed, all existing chunks in it will become "invisible" since the extension would no longer match. To change the key, chunks have to be re-encrypted with the new key. That could happen into same, or better, a new store. Create a new store, then either re-chunk the data, or use `desync cache -c <new-store> -s <old-store> <index>` to decrypt the chunks from the old store and re-encrypt with the new key in the new store.
+For all available algorithms, the 256bit encryption key is derived from the configured password by hashing it with SHA256. Encryption nonces or IVs are generated randomly per chunk which can weaken encryption in some modes when used on very large chunk stores, see notes below.
 
-Chunk extensions are chosen based on compression or encryption settings as follows:
+| ID | Algorithm | Notes |
+|:---:|:---:|:---:|
+| `xchacha20-poly1305` | XChaCha20-Poly1305 (AEAD) | Default |
+| `aes-256-gcm` | AES 256bit Galois Counter Mode (AEAD) | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
+| `aes-256-ctr` | AES 256bit Counter Mode | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
+
+Chunk extensions in stores are chosen based on compression or encryption settings as follows:
 
 | Compressed | Encrypted | Extension | Example |
 |:---:|:---:|:---:|:---:|
 | no | no | n/a | `fbef/fbef1a00ced..9280ce78` |
 | yes | no | `.cacnk` | `ffbef/fbef1a00ced..9280ce78.cacnk` |
-| no | yes | `.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.aes-256-ctr-635af003` |
-| yes | yes | `.cacnk.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.cacnk.aes-256-ctr-635af003` |
+| no | yes | `.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.aes-256-gcm-635af003` |
+| yes | yes | `.cacnk.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.cacnk.aes-256-gcm-635af003` |
 
 ### Configuration
 
@@ -269,7 +276,7 @@ Available configuration values:
   - `http-auth` - Value of the Authorization header in HTTP requests. This could be a bearer token with `"Bearer <token>"` or a Base64-encoded username and password pair for basic authentication like `"Basic dXNlcjpwYXNzd29yZAo="`.
   - `encryption` - Must be set to `true` to encrypt chunks in the store.
   - `encryption-password` - Encryption password to use for all chunks in the store.
-  - `encryption-algorithm` - Optional, symmetric encryption algorithm. Default `aes-256-ctr`.
+  - `encryption-algorithm` - Optional, symmetric encryption algorithm. Default `xchacha20-poly1305`.
 
 #### Example config
 
@@ -307,7 +314,7 @@ Available configuration values:
     },
     "/path/to/encrypted/store": {
       "encryption": true,
-      "encryption-algorithm": "aes-256-ctr",
+      "encryption-algorithm": "xchacha20-poly1305",
       "encryption-password": "mystorepassword"
     }
   }

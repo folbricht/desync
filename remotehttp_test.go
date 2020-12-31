@@ -331,7 +331,7 @@ func TestRemoteHTTPPutEncrypted(t *testing.T) {
 
 	// If everything worked, the request body should be the chunk data, first
 	// compressed, then encrypted. Unwind it manually to check the layers are in order.
-	dec, err := NewAES256CTR("testpassword")
+	dec, err := NewXChaCha20Poly1305("testpassword")
 	require.NoError(t, err)
 	decrypted, err := dec.fromStorage(body.Bytes())
 	require.NoError(t, err)

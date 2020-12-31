@@ -42,7 +42,7 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if !info.IsDir() {
 		return LocalStore{}, fmt.Errorf("%s is not a directory", dir)
 	}
-	converters, err := opt.converters()
+	converters, err := opt.StorageConverters()
 	if err != nil {
 		return LocalStore{}, err
 	}

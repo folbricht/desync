@@ -88,19 +88,19 @@ type StoreOptions struct {
 	// Store and read chunks uncompressed, without chunk file extension
 	Uncompressed bool `json:"uncompressed"`
 
-	// Store encryption settings. The only algorithm currently supported is aes-256-ctr which
-	// is also the default.
+	// Store encryption settings. Currently supported algorithms are xchacha20-poly1305 (default)
+	// aes-256-gcm, and aes-256-ctr.
 	Encryption          bool   `json:"encryption,omitempty"`
 	EncryptionAlgorithm string `json:"encryption-algorithm,omitempty"`
 	EncryptionPassword  string `json:"encryption-password,omitempty"`
 }
 
-// Returns data converters that convert between plain and storage-format. Each layer
+// Returns data StorageConverters that convert between plain and storage-format. Each layer
 // represents a modification such as compression or encryption and is applied in order
 // depending the direction of data. If data is written to storage, the layer's toStorage
 // method is called in the order they are defined. If data is read, the fromStorage
 // method is called in reverse order.
-func (o StoreOptions) converters() ([]converter, error) {
+func (o StoreOptions) StorageConverters() ([]converter, error) {
 	var c []converter
 	if !o.Uncompressed {
 		c = append(c, Compressor{})
@@ -110,7 +110,19 @@ func (o StoreOptions) converters() ([]converter, error) {
 			return nil, errors.New("no encryption password configured")
 		}
 		switch o.EncryptionAlgorithm {
-		case "", "aes-256-ctr":
+		case "", "xchacha20-poly1305":
+			enc, err := NewXChaCha20Poly1305(o.EncryptionPassword)
+			if err != nil {
+				return nil, err
+			}
+			c = append(c, enc)
+		case "aes-256-gcm":
+			enc, err := NewAES256GCM(o.EncryptionPassword)
+			if err != nil {
+				return nil, err
+			}
+			c = append(c, enc)
+		case "aes-256-ctr":
 			enc, err := NewAES256CTR(o.EncryptionPassword)
 			if err != nil {
 				return nil, err

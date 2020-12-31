@@ -139,7 +139,7 @@ func (s *SFTPStoreBase) nameFromID(id ChunkID) string {
 
 // NewSFTPStore initializes a chunk store using SFTP over SSH.
 func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
-	converters, err := opt.converters()
+	converters, err := opt.StorageConverters()
 	if err != nil {
 		return nil, err
 	}

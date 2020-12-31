@@ -32,7 +32,7 @@ type S3Store struct {
 
 // NewS3StoreBase initializes a base object used for chunk or index stores backed by S3.
 func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions, lookupType minio.BucketLookupType) (S3StoreBase, error) {
-	converters, err := opt.converters()
+	converters, err := opt.StorageConverters()
 	if err != nil {
 		return S3StoreBase{}, err
 	}
