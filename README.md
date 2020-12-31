@@ -27,7 +27,7 @@ Among the distinguishing factors:
 - Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 - catar archives can be created from standard tar archives, and they can also be extracted to GNU tar format.
-- Optional chunk store encryption with XChaCha20-Poly1305, AES-265-GCM and AES-265-CTR.
+- Optional chunk store encryption with XChaCha20-Poly1305, AES-265-GCM or AES-265-CTR.
 
 ## Terminology
 
@@ -70,7 +70,7 @@ catar archives can also be extracted to GNU tar archive streams. All files in th
 
 ## Tool
 
-The tool is provided for convenience. It uses the desync library and makes most features of it available in a consistent fashion. It does not match upsteam casync's syntax exactly, but tries to be similar at least.
+The tool is provided for convenience. It uses the desync library and makes most features of it available in a consistent fashion. It does not match upstream casync's syntax exactly, but tries to be similar at least.
 
 ### Installation
 
