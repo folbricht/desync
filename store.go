@@ -89,7 +89,7 @@ type StoreOptions struct {
 	Uncompressed bool `json:"uncompressed"`
 
 	// Store encryption settings. Currently supported algorithms are xchacha20-poly1305 (default)
-	// aes-256-gcm, and aes-256-ctr.
+	// and aes-256-gcm.
 	Encryption          bool   `json:"encryption,omitempty"`
 	EncryptionAlgorithm string `json:"encryption-algorithm,omitempty"`
 	EncryptionPassword  string `json:"encryption-password,omitempty"`
@@ -118,12 +118,6 @@ func (o StoreOptions) StorageConverters() ([]converter, error) {
 			c = append(c, enc)
 		case "aes-256-gcm":
 			enc, err := NewAES256GCM(o.EncryptionPassword)
-			if err != nil {
-				return nil, err
-			}
-			c = append(c, enc)
-		case "aes-256-ctr":
-			enc, err := NewAES256CTR(o.EncryptionPassword)
 			if err != nil {
 				return nil, err
 			}

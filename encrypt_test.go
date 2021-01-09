@@ -12,7 +12,6 @@ func TestEncryptDecrypt(t *testing.T) {
 	}{
 		"xchacha20-poly1305": {func(pw string) (converter, error) { return NewXChaCha20Poly1305(pw) }},
 		"aes-256-gcm":        {func(pw string) (converter, error) { return NewAES256GCM(pw) }},
-		"aes-256-ctr":        {func(pw string) (converter, error) { return NewAES256CTR(pw) }},
 	}
 
 	for name, test := range tests {
@@ -44,23 +43,20 @@ func TestEncryptDecrypt(t *testing.T) {
 			diffPw, err := test.alg("something-else")
 			require.NoError(t, err)
 
-			// Try to decrypt the data, should end up with garbage or an
-			// error from AEAD algorithms
-			diffOut, err := diffPw.fromStorage(ciphertext)
-			if err == nil {
-				require.NotEqual(t, plainIn, diffOut)
-			}
+			// Try to decrypt the data, should get an error from AEAD algorithms
+			_, err = diffPw.fromStorage(ciphertext)
+			require.Error(t, err)
 		})
 	}
 }
 
-func TestAES256CTRCompare(t *testing.T) {
+func TestAES256GCMCompare(t *testing.T) {
 	// Make three converters. Two with the same, one with a diff password
-	enc1, err := NewAES256CTR("secret-password")
+	enc1, err := NewAES256GCM("secret-password")
 	require.NoError(t, err)
-	enc2, err := NewAES256CTR("secret-password")
+	enc2, err := NewAES256GCM("secret-password")
 	require.NoError(t, err)
-	diffPw, err := NewAES256CTR("something-else")
+	diffPw, err := NewAES256GCM("something-else")
 	require.NoError(t, err)
 
 	// Check equality method
@@ -70,16 +66,16 @@ func TestAES256CTRCompare(t *testing.T) {
 	require.False(t, enc1.equal(diffPw))
 }
 
-func TestAES256CTRExtension(t *testing.T) {
-	enc1, err := NewAES256CTR("secret-password")
+func TestAES256GCMExtension(t *testing.T) {
+	enc1, err := NewAES256GCM("secret-password")
 	require.NoError(t, err)
 
 	// Confirm that we have a key-handle in the file extension
-	require.Equal(t, ".aes-256-ctr-16db3403", enc1.extension)
+	require.Equal(t, ".aes-256-gcm-16db3403", enc1.extension)
 
 	// If algorithm and password are the same, the same key
 	// handle (extension) should be produced every time
-	enc2, err := NewAES256CTR("secret-password")
+	enc2, err := NewAES256GCM("secret-password")
 	require.NoError(t, err)
 	require.Equal(t, enc1.extension, enc2.extension)
 }

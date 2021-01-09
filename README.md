@@ -27,7 +27,7 @@ Among the distinguishing factors:
 - Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
 - catar archives can be created from standard tar archives, and they can also be extracted to GNU tar format.
-- Optional chunk store encryption with XChaCha20-Poly1305, AES-265-GCM or AES-265-CTR.
+- Optional chunk store encryption with XChaCha20-Poly1305 or AES-265-GCM.
 
 ## Terminology
 
@@ -243,7 +243,6 @@ For all available algorithms, the 256bit encryption key is derived from the conf
 |:---:|:---:|:---:|:---:|:---:|
 | `xchacha20-poly1305` | XChaCha20-Poly1305 (AEAD) | 256bit | 192bit | Default |
 | `aes-256-gcm` | AES 256bit Galois Counter Mode (AEAD) | 256bit | 128bit | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
-| `aes-256-ctr` | AES 256bit Counter Mode | 256bit | 128bit | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
 
 Chunk extensions in stores are chosen based on compression or encryption settings as follows:
 
