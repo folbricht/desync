@@ -32,11 +32,18 @@ func newTarCommand(ctx context.Context) *cobra.Command {
 with the archive chunked into a store. Use '-' to write the output,
 catar or index to STDOUT.
 
+If the desired output is an index file (caidx) rather than a catar,
+the -i option can be provided as well as a store. Using -i is equivalent
+to first using the tar command to create a catar, then the make
+command to chunk it into a store and produce an index file. With -i,
+less disk space is required as no intermediary catar is created. There
+can however be a difference in performance depending on file size.
+
 By default, input is read from local disk. Using --input-format=tar,
 the input can be a tar file or stream to STDIN with '-'.
 `,
 		Example: `  desync tar documents.catar $HOME/Documents
-  desync make -s /path/to/local pics.caibx $HOME/Pictures`,
+  desync tar -i -s /path/to/local pics.caibx $HOME/Pictures`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTar(ctx, opt, args)
