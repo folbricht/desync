@@ -24,7 +24,7 @@ type SwapWriteStore struct {
 	SwapStore
 }
 
-// NewSwapStore creates an instance of a swap store wrappert that allows replacing
+// NewSwapStore creates an instance of a swap store wrapper that allows replacing
 // the wrapped store at runtime.
 func NewSwapStore(s Store) *SwapStore {
 	return &SwapStore{s: s}
