@@ -14,7 +14,7 @@ type LocalIndexStore struct {
 	Path string
 }
 
-// NewLocalIndexStore creates an instance of a local castore, it only checks presence
+// NewLocalIndexStore creates an instance of a local index store, it only checks presence
 // of the store
 func NewLocalIndexStore(path string) (LocalIndexStore, error) {
 	info, err := os.Stat(path)
