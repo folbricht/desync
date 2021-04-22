@@ -3,7 +3,7 @@
 package desync
 
 import (
-	"github.com/datadog/zstd"
+	"github.com/DataDog/zstd"
 )
 
 // Compress a block using the only (currently) supported algorithm

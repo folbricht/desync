@@ -4,8 +4,8 @@ go 1.15
 
 require (
 	cloud.google.com/go/storage v1.12.0
+	github.com/DataDog/zstd v1.4.5
 	github.com/boljen/go-bitmap v0.0.0-20151001105940-23cd2fb0ce7d
-	github.com/datadog/zstd v1.4.5
 	github.com/dchest/siphash v1.2.2
 	github.com/fatih/color v1.10.0 // indirect
 	github.com/folbricht/tempfile v0.0.1
