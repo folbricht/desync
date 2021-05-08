@@ -63,7 +63,7 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 	// if access access-key is present, it takes precedence
 	if credsConfig.AccessKey != "" {
 		creds = NewStaticCredentials(credsConfig.AccessKey, credsConfig.SecretKey)
-	} else {
+	} else if credsConfig.AwsCredentialsFile != "" {
 		creds = NewRefreshableSharedCredentials(credsConfig.AwsCredentialsFile, credsConfig.AwsProfile, time.Now)
 	}
 	return creds, region
