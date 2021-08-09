@@ -26,7 +26,7 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 	if err != nil {
 		return err
 	}
-	if stat.Size() != int64(idx.Length()) {
+	if !isDevice(stat.Mode()) && stat.Size() != int64(idx.Length()) {
 		return fmt.Errorf("index size (%d) does not match file size (%d)", idx.Length(), stat.Size())
 	}
 
