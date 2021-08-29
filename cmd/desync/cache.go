@@ -25,7 +25,12 @@ func newCacheCommand(ctx context.Context) *cobra.Command {
 		Long: `Read chunk IDs from caibx or caidx files from one or more stores without
 writing to disk. Can be used (with -c) to populate a store with desired chunks
 either to be used as cache, or to populate a store with chunks referenced in an
-index file. Use '-' to read (a single) index from STDIN.`,
+index file. Use '-' to read (a single) index from STDIN.
+
+To exclude chunks that are known to exist in the target store already, use
+--ignore <index> which will skip any chunks from the given index. The same can
+be achieved by providing the chunks in their ASCII representation in a text
+file with --ignore-chunks <file>.`,
 		Example: `  desync cache -s http://192.168.1.1/ -c /path/to/local file.caibx`,
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
