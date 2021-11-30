@@ -23,7 +23,7 @@ type WriteStore interface {
 	StoreChunk(c *Chunk) error
 }
 
-// PruneStore is a store that supports pruning of chunks
+// PruneStore is a store that supports read, write and pruning of chunks
 type PruneStore interface {
 	WriteStore
 	Prune(ctx context.Context, ids map[ChunkID]struct{}) error
