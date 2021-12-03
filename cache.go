@@ -32,7 +32,7 @@ func (c Cache) GetChunk(id ChunkID) (*Chunk, error) {
 	default:
 		return chunk, err
 	}
-	// At this point we failed to find it in the local cache. Ask the remote
+	// At this point we failed to find chunk in the local cache. Ask the remote
 	chunk, err = c.s.GetChunk(id)
 	if err != nil {
 		return chunk, err
@@ -60,4 +60,41 @@ func (c Cache) String() string {
 func (c Cache) Close() error {
 	c.l.Close()
 	return c.s.Close()
+}
+
+// New cache which GetChunk() function will return ChunkMissing error instead of ChunkInvalid
+// so caller can redownload invalid chunk from store
+type RepairableCache struct {
+	l WriteStore
+}
+
+// Create new RepairableCache that wraps WriteStore and modify its GetChunk() so ChunkInvalid error
+// will be replaced by ChunkMissing error
+func NewRepairableCache(l WriteStore) RepairableCache {
+	return RepairableCache{l: l}
+}
+
+func (r RepairableCache) GetChunk(id ChunkID) (*Chunk, error) {
+	chunk, err := r.l.GetChunk(id)
+	var chunkInvalidErr ChunkInvalid
+	if err != nil && errors.As(err, &chunkInvalidErr) {
+		return chunk, ChunkMissing{ID: chunkInvalidErr.ID}
+	}
+	return chunk, err
+}
+
+func (r RepairableCache) HasChunk(id ChunkID) (bool, error) {
+	return r.l.HasChunk(id)
+}
+
+func (r RepairableCache) Close() error {
+	return r.l.Close()
+}
+
+func (r RepairableCache) String() string {
+	return r.l.String()
+}
+
+func (r RepairableCache) StoreChunk(c *Chunk) error {
+	return r.l.StoreChunk(c)
 }

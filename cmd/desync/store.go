@@ -37,6 +37,9 @@ func MultiStoreWithCache(cmdOpt cmdStoreOptions, cacheLocation string, storeLoca
 		if ls, ok := cache.(desync.LocalStore); ok {
 			ls.UpdateTimes = true
 		}
+		if cmdOpt.cacheRepair {
+			cache = desync.NewRepairableCache(cache)
+		}
 		store = desync.NewCache(store, cache)
 	}
 	return store, nil
