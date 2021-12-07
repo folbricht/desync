@@ -17,6 +17,7 @@ type cmdStoreOptions struct {
 	skipVerify    bool
 	trustInsecure bool
 	cacheRepair   bool
+	errorRetry    int
 }
 
 // MergeWith takes store options as read from the config, and applies command-line
@@ -38,6 +39,9 @@ func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions
 	if o.trustInsecure {
 		opt.TrustInsecure = true
 	}
+	if o.errorRetry > 0 {
+		opt.ErrorRetry = o.errorRetry
+	}
 	return opt
 }
 
@@ -57,6 +61,7 @@ func addStoreOptions(o *cmdStoreOptions, f *pflag.FlagSet) {
 	f.StringVar(&o.caCert, "ca-cert", "", "trust authorities in this file, instead of OS trust store")
 	f.BoolVarP(&o.trustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
 	f.BoolVarP(&o.cacheRepair, "cache-repair", "r", true, "replace invalid chunks in the cache from source")
+	f.IntVarP(&o.errorRetry, "error-retry", "e", 3, "number of times to retry in case of network error")
 }
 
 // cmdServerOptions hold command line options used in HTTP servers.

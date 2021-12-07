@@ -71,7 +71,7 @@ func (s S3StoreBase) String() string {
 	return s.Location
 }
 
-// Close the S3 base store. NOP opertation but needed to implement the store interface.
+// Close the S3 base store. NOP operation but needed to implement the store interface.
 func (s S3StoreBase) Close() error { return nil }
 
 // NewS3Store creates a chunk store with S3 backing. The URL
@@ -94,7 +94,7 @@ retry:
 	attempt++
 	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
-		if attempt < s.opt.ErrorRetry {
+		if attempt <= s.opt.ErrorRetry {
 			goto retry
 		}
 		return nil, errors.Wrap(err, s.String())
@@ -102,17 +102,20 @@ retry:
 	defer obj.Close()
 
 	b, err := ioutil.ReadAll(obj)
-	if e, ok := err.(minio.ErrorResponse); ok {
-		switch e.Code {
-		case "NoSuchBucket":
-			err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
-		case "NoSuchKey":
-			err = ChunkMissing{ID: id}
-		default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
-			err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
-		}
-	}
 	if err != nil {
+		if attempt <= s.opt.ErrorRetry {
+			goto retry
+		}
+		if e, ok := err.(minio.ErrorResponse); ok {
+			switch e.Code {
+			case "NoSuchBucket":
+				err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
+			case "NoSuchKey":
+				err = ChunkMissing{ID: id}
+			default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+				err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
+			}
+		}
 		return nil, err
 	}
 	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
