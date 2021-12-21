@@ -38,28 +38,43 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 		defer f.Close()
 		g.Go(func() error {
 			for c := range in {
-				// Update progress bar if any
-				if pb != nil {
-					pb.Increment()
-				}
-
 				// Reuse the fileSeedSegment structure, this is really just a seed segment after all
 				segment := newFileSeedSegment(name, c, false, false)
 				if err := segment.validate(f); err != nil {
 					return err
+				}
+
+				// Update progress bar, if any
+				if pb != nil {
+					pb.Add(len(c))
 				}
 			}
 			return nil
 		})
 	}
 
+	chunksNum := len(idx.Chunks)
+
+	// Number of chunks that will be evaluated in a single Goroutine.
+	// This helps to reduce the required number of context switch.
+	// In theory, we could just divide the total number of chunks by the number
+	// of workers, but instead we reduce that by 10 times to avoid the situation
+	// where we end up waiting a single worker that was slower to complete (e.g.
+	// if its chunks were not in cache while the others were).
+	batch := chunksNum / (n * 10)
+
 	// Feed the workers, stop if there are any errors
 loop:
-	for i, _ := range idx.Chunks {
+	for i := 0; i < chunksNum; i = i + batch + 1 {
+		last := i + batch
+		if last >= chunksNum {
+			// We reached the end of the array
+			last = chunksNum - 1
+		}
 		select {
 		case <-ctx.Done():
 			break loop
-		case in <- idx.Chunks[i : i+1]:
+		case in <- idx.Chunks[i : last+1]:
 		}
 	}
 	close(in)
