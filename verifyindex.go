@@ -3,7 +3,6 @@ package desync
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"golang.org/x/sync/errgroup"
@@ -12,7 +11,7 @@ import (
 // VerifyIndex re-calculates the checksums of a blob comparing it to a given index.
 // Fails if the index does not match the blob.
 func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb ProgressBar) error {
-	in := make(chan IndexChunk)
+	in := make(chan []IndexChunk)
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Setup and start the progressbar if any
@@ -44,23 +43,10 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 					pb.Increment()
 				}
 
-				// Position the filehandle to the place where the chunk is meant to come
-				// from within the file
-				if _, err := f.Seek(int64(c.Start), io.SeekStart); err != nil {
+				// Reuse the fileSeedSegment structure, this is really just a seed segment after all
+				segment := newFileSeedSegment(name, c, false, false)
+				if err := segment.validate(f); err != nil {
 					return err
-				}
-
-				// Read the whole (uncompressed) chunk into memory
-				b := make([]byte, c.Size)
-				if _, err := io.ReadFull(f, b); err != nil {
-					return err
-				}
-
-				// Calculate this chunks checksum and compare to what it's supposed to be
-				// according to the index
-				sum := Digest.Sum(b)
-				if sum != c.ID {
-					return fmt.Errorf("checksum does not match chunk %s", c.ID)
 				}
 			}
 			return nil
@@ -69,11 +55,11 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 
 	// Feed the workers, stop if there are any errors
 loop:
-	for _, c := range idx.Chunks {
+	for i, _ := range idx.Chunks {
 		select {
 		case <-ctx.Done():
 			break loop
-		case in <- c:
+		case in <- idx.Chunks[i : i+1]:
 		}
 	}
 	close(in)
