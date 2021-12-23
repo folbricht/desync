@@ -60,21 +60,21 @@ func IndexFromFile(ctx context.Context,
 	}
 	f.Close()
 
-	// Adjust n if it's a small file that doesn't have n*max bytes
-	info, err := os.Stat(name)
+	size, err := GetFileSize(name)
 	if err != nil {
 		return index, stats, err
 	}
-	nn := int(info.Size()/int64(max)) + 1
-	if nn < n {
-		n = nn
+
+	// Adjust n if it's a small file that doesn't have n*max bytes
+	nn := size/max + 1
+	if nn < uint64(n) {
+		n = int(nn)
 	}
-	size := uint64(info.Size())
 	span := size / uint64(n) // initial spacing between chunkers
 
 	// Setup and start the progressbar if any
 	if pb != nil {
-		pb.SetTotal(int(info.Size()))
+		pb.SetTotal(int(size))
 		pb.Start()
 		defer pb.Finish()
 	}

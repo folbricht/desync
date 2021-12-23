@@ -14,6 +14,9 @@ import (
 	"github.com/pkg/errors"
 )
 
+// BLKGETSIZE64 ioctl
+const blkGetSize64 = 0x80081272
+
 // FICLONERANGE ioctl
 const fiCloneRange = 0x4020940d
 
@@ -54,6 +57,31 @@ func CloneRange(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) error
 	binary.Write(arg, binary.LittleEndian, dstOffset)
 	err := ioctl(dst.Fd(), fiCloneRange, uintptr(unsafe.Pointer(&arg.Bytes()[0])))
 	return errors.Wrapf(err, "failure cloning blocks from %s to %s", src.Name(), dst.Name())
+}
+
+// GetFileSize determines the size, in Bytes, of the file located at the given
+// fileName.
+func GetFileSize(fileName string) (size uint64, err error) {
+	info, err := os.Stat(fileName)
+	if err != nil {
+		return 0, err
+	}
+	fm := info.Mode()
+	if isDevice(fm) {
+		// When we are working with block devices, we can't simply use `Size()`, because it
+		// will return zero instead of the expected device size.
+		f, err := os.Open(fileName)
+		if err != nil {
+			return 0, err
+		}
+		err = ioctl(f.Fd(), blkGetSize64, uintptr(unsafe.Pointer(&size)))
+		if err != nil {
+			return 0, err
+		}
+		return size, nil
+	} else {
+		return uint64(info.Size()), nil
+	}
 }
 
 func ioctl(fd, operation, argp uintptr) error {
