@@ -14,12 +14,13 @@ import (
 
 type extractOptions struct {
 	cmdStoreOptions
-	stores     []string
-	cache      string
-	seeds      []string
-	seedDirs   []string
-	inPlace    bool
-	printStats bool
+	stores           []string
+	cache            string
+	seeds            []string
+	seedDirs         []string
+	inPlace          bool
+	printStats       bool
+	skipInvalidSeeds bool
 }
 
 func newExtractCommand(ctx context.Context) *cobra.Command {
@@ -50,6 +51,7 @@ the index from STDIN.`,
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringSliceVar(&opt.seeds, "seed", nil, "seed indexes")
 	flags.StringSliceVar(&opt.seedDirs, "seed-dir", nil, "directory with seed index files")
+	flags.BoolVar(&opt.skipInvalidSeeds, "skip-invalid-seeds", false, "Skip seeds with invalid chunks")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")
 	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print statistics")
@@ -100,11 +102,18 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 	}
 	seeds = append(seeds, dSeeds...)
 
+	// By default, bail out if we encounter an invalid seed
+	invalidSeedAction := desync.InvalidSeedActionBailOut
+	if opt.skipInvalidSeeds {
+		invalidSeedAction = desync.InvalidSeedActionSkip
+	}
+	assembleOpt := desync.AssembleOptions{N: opt.n, InvalidSeedAction: invalidSeedAction}
+
 	var stats *desync.ExtractStats
 	if opt.inPlace {
-		stats, err = writeInplace(ctx, outFile, idx, s, seeds, opt.n)
+		stats, err = writeInplace(ctx, outFile, idx, s, seeds, assembleOpt)
 	} else {
-		stats, err = writeWithTmpFile(ctx, outFile, idx, s, seeds, opt.n)
+		stats, err = writeWithTmpFile(ctx, outFile, idx, s, seeds, assembleOpt)
 	}
 	if err != nil {
 		return err
@@ -115,7 +124,7 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 	return nil
 }
 
-func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) (*desync.ExtractStats, error) {
+func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, assembleOpt desync.AssembleOptions) (*desync.ExtractStats, error) {
 	// Prepare a tempfile that'll hold the output during processing. Close it, we
 	// just need the name here since it'll be opened multiple times during write.
 	// Also make sure it gets removed regardless of any errors below.
@@ -128,7 +137,7 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 	defer os.Remove(tmp.Name())
 
 	// Build the blob from the chunks, writing everything into the tempfile
-	if stats, err = writeInplace(ctx, tmp.Name(), idx, s, seeds, n); err != nil {
+	if stats, err = writeInplace(ctx, tmp.Name(), idx, s, seeds, assembleOpt); err != nil {
 		return stats, err
 	}
 
@@ -136,11 +145,11 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 	return stats, os.Rename(tmp.Name(), name)
 }
 
-func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, n int) (*desync.ExtractStats, error) {
+func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, assembleOpt desync.AssembleOptions) (*desync.ExtractStats, error) {
 	pb := NewProgressBar("")
 
 	// Build the blob from the chunks, writing everything into given filename
-	return desync.AssembleFile(ctx, name, idx, s, seeds, n, pb)
+	return desync.AssembleFile(ctx, name, idx, s, seeds, assembleOpt, pb)
 }
 
 func readSeeds(dstFile string, locations []string, opts cmdStoreOptions) ([]desync.Seed, error) {

@@ -65,56 +65,19 @@ func (s *selfSeed) add(segment IndexSegment) {
 	}
 }
 
-// LongestMatchWith returns the longest sequence of of chunks anywhere in Source
-// that match b starting at b[0]. If there is no match, it returns nil
-func (s *selfSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
-	if len(chunks) == 0 || len(s.index.Chunks) == 0 {
-		return 0, nil
-	}
+// getChunk returns a segment with the requested chunk ID. If selfSeed doesn't
+// have the requested chunk, nil will be returned.
+func (s *selfSeed) getChunk(id ChunkID) SeedSegment {
 	s.mu.RLock()
-	pos, ok := s.pos[chunks[0].ID]
+	pos, ok := s.pos[id]
 	s.mu.RUnlock()
 	if !ok {
-		return 0, nil
-	}
-	// From every position of b[0] in the source, find a slice of
-	// matching chunks. Then return the longest of those slices.
-	var (
-		match []IndexChunk
-		max   int
-	)
-	for _, p := range pos {
-		m := s.maxMatchFrom(chunks, p)
-		if len(m) > max {
-			match = m
-			max = len(m)
-		}
-	}
-	return max, newFileSeedSegment(s.file, match, s.canReflink, false)
-}
-
-// Returns a slice of chunks from the seed. Compares chunks from position 0
-// with seed chunks starting at p.
-func (s *selfSeed) maxMatchFrom(chunks []IndexChunk, p int) []IndexChunk {
-	if len(chunks) == 0 {
 		return nil
 	}
-	s.mu.RLock()
-	written := s.written
-	s.mu.RUnlock()
-	var (
-		sp int
-		dp = p
-	)
-	for {
-		if dp >= written || sp >= len(chunks) {
-			break
-		}
-		if chunks[sp].ID != s.index.Chunks[dp].ID {
-			break
-		}
-		dp++
-		sp++
-	}
-	return s.index.Chunks[p:dp]
+	first := pos[0]
+	return newFileSeedSegment(s.file, s.index.Chunks[first:first+1], s.canReflink)
+}
+
+func (s *selfSeed) SetInvalid(value bool) {
+	panic("A selfSeed is never expected to be invalid")
 }
