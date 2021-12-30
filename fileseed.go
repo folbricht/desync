@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
 // FileSeed is used to copy or clone blocks from an existing index+blob during
@@ -13,6 +14,8 @@ type FileSeed struct {
 	index      Index
 	pos        map[ChunkID][]int
 	canReflink bool
+	isInvalid  bool
+	mu         sync.RWMutex
 }
 
 // NewIndexSeed initializes a new seed that uses an existing index and its blob
@@ -22,6 +25,7 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 		pos:        make(map[ChunkID][]int),
 		index:      index,
 		canReflink: CanClone(dstFile, srcFile),
+		isInvalid:  false,
 	}
 	for i, c := range s.index.Chunks {
 		s.pos[c.ID] = append(s.pos[c.ID], i)
@@ -29,17 +33,21 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 	return &s, nil
 }
 
-// LongestMatchWith returns the longest sequence of of chunks anywhere in Source
-// that match b starting at b[0]. If there is no match, it returns nil
+// LongestMatchWith returns the longest sequence of chunks anywhere in Source
+// that match `chunks` starting at chunks[0]. If there is no match, it returns a
+// length of zero and a nil SeedSegment.
 func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
-	if len(chunks) == 0 || len(s.index.Chunks) == 0 {
+	s.mu.RLock()
+	// isInvalid can be concurrently read or wrote. Use a mutex to avoid a race
+	if len(chunks) == 0 || len(s.index.Chunks) == 0 || s.isInvalid {
 		return 0, nil
 	}
+	s.mu.RUnlock()
 	pos, ok := s.pos[chunks[0].ID]
 	if !ok {
 		return 0, nil
 	}
-	// From every position of b[0] in the source, find a slice of
+	// From every position of chunks[0] in the source, find a slice of
 	// matching chunks. Then return the longest of those slices.
 	var (
 		match []IndexChunk
@@ -52,7 +60,13 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 			max = len(m)
 		}
 	}
-	return max, newFileSeedSegment(s.srcFile, match, s.canReflink, true)
+	return max, newFileSeedSegment(s.srcFile, match, s.canReflink)
+}
+
+func (s *FileSeed) SetInvalid(value bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.isInvalid = value
 }
 
 // Returns a slice of chunks from the seed. Compares chunks from position 0
@@ -85,13 +99,16 @@ type fileSeedSegment struct {
 	needValidation bool
 }
 
-func newFileSeedSegment(file string, chunks []IndexChunk, canReflink, needValidation bool) *fileSeedSegment {
+func newFileSeedSegment(file string, chunks []IndexChunk, canReflink bool) *fileSeedSegment {
 	return &fileSeedSegment{
-		canReflink:     canReflink,
-		needValidation: needValidation,
-		file:           file,
-		chunks:         chunks,
+		canReflink: canReflink,
+		file:       file,
+		chunks:     chunks,
 	}
+}
+
+func (s *fileSeedSegment) FileName() string {
+	return s.file
 }
 
 func (s *fileSeedSegment) Size() uint64 {
@@ -112,13 +129,6 @@ func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint
 	}
 	defer src.Close()
 
-	// Make sure the data we're planning on pulling from the file matches what
-	// the index says it is if that's required.
-	if s.needValidation {
-		if err := s.validate(src); err != nil {
-			return 0, 0, err
-		}
-	}
 	// Do a straight copy if reflinks are not supported or blocks aren't aligned
 	if !s.canReflink || s.chunks[0].Start%blocksize != offset%blocksize {
 		return s.copy(dst, src, s.chunks[0].Start, length, offset)
@@ -126,12 +136,12 @@ func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint
 	return s.clone(dst, src, s.chunks[0].Start, length, offset, blocksize)
 }
 
-// Compares all chunks in this slice of the seed index to the underlying data
+// Validate compares all chunks in this slice of the seed index to the underlying data
 // and fails if they don't match.
-func (s *fileSeedSegment) validate(src *os.File) error {
+func (s *fileSeedSegment) Validate(file *os.File) error {
 	for _, c := range s.chunks {
 		b := make([]byte, c.Size)
-		if _, err := src.ReadAt(b, int64(c.Start)); err != nil {
+		if _, err := file.ReadAt(b, int64(c.Start)); err != nil {
 			return err
 		}
 		sum := Digest.Sum(b)

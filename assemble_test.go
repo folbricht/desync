@@ -127,7 +127,9 @@ func TestExtract(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			defer os.Remove(test.outfile)
-			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil, 10, nil); err != nil {
+			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
+				AssembleOptions{10, InvalidSeedActionBailOut}, nil,
+			); err != nil {
 				t.Fatal(err)
 			}
 			b, err := ioutil.ReadFile(test.outfile)
@@ -268,7 +270,9 @@ func TestSeed(t *testing.T) {
 				seeds = append(seeds, seed)
 			}
 
-			if _, err := AssembleFile(context.Background(), dst.Name(), dstIndex, s, seeds, 10, nil); err != nil {
+			if _, err := AssembleFile(context.Background(), dst.Name(), dstIndex, s, seeds,
+				AssembleOptions{10, InvalidSeedActionBailOut}, nil,
+			); err != nil {
 				t.Fatal(err)
 			}
 			b, err := ioutil.ReadFile(dst.Name())

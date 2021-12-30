@@ -39,8 +39,8 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 		g.Go(func() error {
 			for c := range in {
 				// Reuse the fileSeedSegment structure, this is really just a seed segment after all
-				segment := newFileSeedSegment(name, c, false, false)
-				if err := segment.validate(f); err != nil {
+				segment := newFileSeedSegment(name, c, false)
+				if err := segment.Validate(f); err != nil {
 					return err
 				}
 

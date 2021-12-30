@@ -12,13 +12,16 @@ const DefaultBlockSize = 4096
 // existing chunks or blocks into the target from.
 type Seed interface {
 	LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
+	SetInvalid(value bool)
 }
 
-// SeedSegment represents a matching range between a Seed and a a file being
+// SeedSegment represents a matching range between a Seed and a file being
 // assembled from an Index. It's used to copy or reflink data from seeds into
 // a target file during an extract operation.
 type SeedSegment interface {
+	FileName() string
 	Size() uint64
+	Validate(file *os.File) error
 	WriteInto(dst *os.File, offset, end, blocksize uint64, isBlank bool) (copied uint64, cloned uint64, err error)
 }
 

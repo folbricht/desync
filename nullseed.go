@@ -64,10 +64,23 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	}
 }
 
+func (s *nullChunkSeed) SetInvalid(value bool) {
+	panic("A nullseed is never expected to be invalid")
+}
+
 type nullChunkSection struct {
 	from, to   uint64
 	blockfile  *os.File
 	canReflink bool
+}
+
+func (s *nullChunkSection) Validate(file *os.File) error {
+	// We always assume a nullseed to be valid
+	return nil
+}
+
+func (s *nullChunkSection) FileName() string {
+	return ""
 }
 
 func (s *nullChunkSection) Size() uint64 { return s.to - s.from }

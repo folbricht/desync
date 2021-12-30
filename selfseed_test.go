@@ -110,7 +110,9 @@ func TestSelfSeed(t *testing.T) {
 			defer dst.Close()
 
 			// Extract the file
-			stats, err := AssembleFile(context.Background(), dst.Name(), idx, s, nil, 1, nil)
+			stats, err := AssembleFile(context.Background(), dst.Name(), idx, s, nil,
+				AssembleOptions{1, InvalidSeedActionBailOut}, nil,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}

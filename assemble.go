@@ -3,10 +3,24 @@ package desync
 import (
 	"context"
 	"fmt"
-	"os"
-
 	"golang.org/x/sync/errgroup"
+	"os"
 )
+
+// InvalidSeedAction represent the action that we will take if a seed
+// happens to be invalid. There are currently two options: either fail with
+// an error or skip the invalid seed and try to continue.
+type InvalidSeedAction int
+
+const (
+	InvalidSeedActionBailOut InvalidSeedAction = iota
+	InvalidSeedActionSkip
+)
+
+type AssembleOptions struct {
+	N                 int
+	InvalidSeedAction InvalidSeedAction
+}
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
 // goroutines, creating one filehandle for the file "name" per goroutine
@@ -16,7 +30,7 @@ import (
 // confirm if the data matches what is expected and only populate areas that
 // differ from the expected content. This can be used to complete partly
 // written files.
-func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, n int, pb ProgressBar) (*ExtractStats, error) {
+func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, options AssembleOptions, pb ProgressBar) (*ExtractStats, error) {
 	type Job struct {
 		segment IndexSegment
 		source  SeedSegment
@@ -78,21 +92,22 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		return stats, err
 	}
 	defer ns.close()
+	seeds = append([]Seed{ns}, seeds...)
 
 	// Start a self-seed which will become usable once chunks are written contigously
-	// beginning at position 0.
+	// beginning at position 0. There is no need to add this to the seeds list because
+	// when we create a plan it will be empty.
 	ss, err := newSelfSeed(name, idx)
 	if err != nil {
 		return stats, err
 	}
-	seeds = append([]Seed{ns, ss}, seeds...)
 
 	// Record the total number of seeds and blocksize in the stats
 	stats.Seeds = len(seeds)
 	stats.Blocksize = blocksize
 
 	// Start the workers, each having its own filehandle to write concurrently
-	for i := 0; i < n; i++ {
+	for i := 0; i < options.N; i++ {
 		f, err := os.OpenFile(name, os.O_RDWR, 0666)
 		if err != nil {
 			return stats, fmt.Errorf("unable to open file %s, %s", name, err)
@@ -104,6 +119,8 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					pb.Add(job.segment.lengthChunks())
 				}
 				if job.source != nil {
+					// If we have a seedSegment we expect 1 or more chunks between
+					// the start and the end of this segment.
 					stats.addChunksFromSeed(uint64(job.segment.lengthChunks()))
 					offset := job.segment.start()
 					length := job.segment.lengthBytes()
@@ -118,7 +135,30 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					ss.add(job.segment)
 					continue
 				}
+
+				// If we don't have a seedSegment we expect an IndexSegment with just
+				// a single chunk, that we can take from either the selfSeed, from the
+				// destination file, or from the store.
+				if len(job.segment.chunks()) != 1 {
+					panic("Received an unexpected segment that doesn't contain just a single chunk")
+				}
 				c := job.segment.chunks()[0]
+
+				// If we already took this chunk from the store we can reuse it by looking
+				// into the selfSeed.
+				if segment := ss.getChunk(c.ID); segment != nil {
+					copied, cloned, err := segment.WriteInto(f, c.Start, c.Size, blocksize, isBlank)
+					if err != nil {
+						return err
+					}
+					stats.addBytesCopied(copied)
+					stats.addBytesCloned(cloned)
+					// Even if we already confirmed that this chunk is present in the
+					// self-seed, we still need to record it as being written, otherwise
+					// the self-seed position pointer doesn't advance as we expect.
+					ss.add(job.segment)
+				}
+
 				// If we operate on an existing file there's a good chance we already
 				// have the data written for this chunk. Let's read it from disk and
 				// compare to what is expected.
@@ -162,19 +202,32 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		})
 	}
 
-	// Let the sequencer break up the index into segments, feed the workers, and
-	// stop if there are any errors
+	// Let the sequencer break up the index into segments, create and validate a plan,
+	// feed the workers, and stop if there are any errors
 	seq := NewSeedSequencer(idx, seeds...)
-loop:
+	plan := seq.Plan()
 	for {
-		chunks, from, done := seq.Next()
+		if err := plan.Validate(ctx, options.N); err != nil {
+			// This plan has at least one invalid seed
+			if options.InvalidSeedAction == InvalidSeedActionBailOut {
+				return stats, err
+			}
+			// Skip the invalid seed and try again
+			Log.WithError(err).Info("Unable to use one of the chosen seeds, skipping it")
+			seq.Rewind()
+			plan = seq.Plan()
+			continue
+		}
+		// Found a valid plan
+		break
+	}
+
+loop:
+	for _, segment := range plan {
 		select {
 		case <-ctx.Done():
 			break loop
-		case in <- Job{chunks, from}:
-		}
-		if done {
-			break
+		case in <- Job{segment.indexSegment, segment.source}:
 		}
 	}
 	close(in)
