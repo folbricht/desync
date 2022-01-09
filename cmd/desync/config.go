@@ -78,7 +78,7 @@ func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions
 	for k, v := range c.StoreOptions {
 		if locationMatch(k, location) {
 			if found {
-				return options, fmt.Errorf("multiple configuration entries match the location '%s'", location)
+				return options, fmt.Errorf("multiple configuration entries match the location %q", location)
 			}
 			found = true
 			options = v
