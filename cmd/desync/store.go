@@ -104,7 +104,11 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 
 	// Get any store options from the config if present and overwrite with settings from
 	// the command line
-	opt := cmdOpt.MergedWith(cfg.GetStoreOptionsFor(location))
+	configOptions, err := cfg.GetStoreOptionsFor(location)
+	if err != nil {
+		return nil, err
+	}
+	opt := cmdOpt.MergedWith(configOptions)
 
 	var s desync.Store
 	switch loc.Scheme {
@@ -231,7 +235,12 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	case strings.Contains(location, "\\"):
 		base = location[:strings.LastIndex(location, "\\")]
 	}
-	opt := cmdOpt.MergedWith(cfg.GetStoreOptionsFor(base))
+
+	configOptions, err := cfg.GetStoreOptionsFor(base)
+	if err != nil {
+		return nil, "", err
+	}
+	opt := cmdOpt.MergedWith(configOptions)
 
 	var s desync.IndexStore
 	switch loc.Scheme {

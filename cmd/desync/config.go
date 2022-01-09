@@ -70,14 +70,21 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 }
 
 // GetStoreOptionsFor returns optional config options for a specific store. Note that
-// the location string in the config file needs to match exactly (watch for trailing /).
-func (c Config) GetStoreOptionsFor(location string) desync.StoreOptions {
+// an error will be returned if the location string matches multiple entries in the
+// config file.
+func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions, err error) {
+	found := false
+	options = desync.StoreOptions{}
 	for k, v := range c.StoreOptions {
 		if locationMatch(k, location) {
-			return v
+			if found {
+				return options, fmt.Errorf("multiple configuration entries match the location %q", location)
+			}
+			found = true
+			options = v
 		}
 	}
-	return desync.StoreOptions{}
+	return options, nil
 }
 
 func newConfigCommand(ctx context.Context) *cobra.Command {

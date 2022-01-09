@@ -41,7 +41,11 @@ func runVerify(ctx context.Context, opt verifyOptions, args []string) error {
 	if opt.store == "" {
 		return errors.New("no store provided")
 	}
-	s, err := desync.NewLocalStore(opt.store, cfg.GetStoreOptionsFor(opt.store))
+	options, err := cfg.GetStoreOptionsFor(opt.store)
+	if err != nil {
+		return err
+	}
+	s, err := desync.NewLocalStore(opt.store, options)
 	if err != nil {
 		return err
 	}

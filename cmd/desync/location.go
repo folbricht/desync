@@ -2,36 +2,42 @@ package main
 
 import (
 	"net/url"
-	"path"
 	"path/filepath"
+	"strings"
 )
 
 // Returns true if the two locations are equal. Locations can be URLs or local file paths.
 // It can handle Unix as well as Windows paths. Example
 // http://host/path/ is equal http://host/path (no trailing /) and /tmp/path is
 // equal \tmp\path on Windows.
-func locationMatch(loc1, loc2 string) bool {
-	u1, _ := url.Parse(loc1)
-	u2, _ := url.Parse(loc2)
-	// See if we have at least one URL, Windows drive letters come out as single-letter
-	// scheme so we need more here.
-	if len(u1.Scheme) > 1 || len(u2.Scheme) > 1 {
-		if u1.Scheme != u2.Scheme || u1.Host != u2.Host {
-			return false
-		}
-		// URL paths should only use /, use path (not filepath) package to clean them
-		// before comparing
-		return path.Clean(u1.Path) == path.Clean(u2.Path)
+func locationMatch(pattern, loc string) bool {
+	l, err := url.Parse(loc)
+	if err != nil {
+		return false
 	}
 
-	// We're dealing with two paths.
-	p1, err := filepath.Abs(loc1)
+	// See if we have a URL, Windows drive letters come out as single-letter
+	// scheme, so we need more here.
+	if len(l.Scheme) > 1 {
+		// URL paths should only use / as separator, remove the trailing one, if any
+		trimmedLoc := strings.TrimSuffix(loc, "/")
+		trimmedPattern := strings.TrimSuffix(pattern, "/")
+		m, _ := filepath.Match(trimmedPattern, trimmedLoc)
+		return m
+	}
+
+	// We're dealing with a path.
+	p1, err := filepath.Abs(pattern)
 	if err != nil {
 		return false
 	}
-	p2, err := filepath.Abs(loc2)
+	p2, err := filepath.Abs(loc)
 	if err != nil {
 		return false
 	}
-	return p1 == p2
+	m, err := filepath.Match(p1, p2)
+	if err != nil {
+		return false
+	}
+	return m
 }
