@@ -128,6 +128,7 @@ cd desync/cmd/desync && go install
 - `CASYNC_REMOTE_PATH` defines the command to run on the chunk store when using SSH, default "casync"
 - `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION` can be used to define S3 store credentials if only one store is used. Caution, these values take precedence over any S3 credentials set in the config file.
 - `DESYNC_PROGRESSBAR_ENABLED` enables the progress bar if set to anything other than an empty string. By default, the progressbar is only turned on if STDERR is found to be a terminal.
+- `DESYNC_ENABLE_PARSABLE_PROGRESS` prints in STDERR the current operation name, the completed percentage and the estimated remaining time if it is set to anything other than an empty string. This is similar to the default progress bar but without the actual bar.
 - `DESYNC_HTTP_AUTH` sets the expected value in the HTTP Authorization header from clients when using `chunk-server` or `index-server`. It needs to be the full string, with type and encoding like `"Basic dXNlcjpwYXNzd29yZAo="`. Any authorization value provided in the command line takes precedence over the environment variable.
 
 ### Caching
