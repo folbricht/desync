@@ -71,9 +71,9 @@ type StoreOptions struct {
 	// with unreliable connections. Default: 0
 	ErrorRetry int `json:"error-retry,omitempty"`
 
-	// Number of seconds to wait before first retry attempt.
+	// Number of nanoseconds to wait before first retry attempt.
 	// Retry attempt number N for the same request will wait N times this interval.
-	// Default: 1 second
+	// Default: 0 nanoseconds
 	ErrorRetryBaseInterval time.Duration `json:"error-retry-base-interval,omitempty"`
 
 	// If SkipVerify is true, this store will not verify the data it reads and serves up. This is
