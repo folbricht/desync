@@ -128,6 +128,22 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					if err != nil {
 						return err
 					}
+
+					// Validate that the written chunks are exactly what we were expecting.
+					// Because the seed might point to a RW location, if the data changed
+					// while we were extracting an index, we might end up writing to the
+					// destination some unexpected values.
+					for _, c := range job.segment.chunks() {
+						b := make([]byte, c.Size)
+						if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
+							return err
+						}
+						sum := Digest.Sum(b)
+						if sum != c.ID {
+							return fmt.Errorf("written data in %s doesn't match its expected hash value, seed may have changed during processing", name)
+						}
+					}
+
 					stats.addBytesCopied(copied)
 					stats.addBytesCloned(cloned)
 					// Record this segment's been written in the self-seed to make it
