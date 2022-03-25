@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"context"
 	"os"
 )
 
@@ -12,7 +13,9 @@ const DefaultBlockSize = 4096
 // existing chunks or blocks into the target from.
 type Seed interface {
 	LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
+	RegenerateIndex(ctx context.Context, n int) error
 	SetInvalid(value bool)
+	IsInvalid() bool
 }
 
 // SeedSegment represents a matching range between a Seed and a file being

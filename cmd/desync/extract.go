@@ -14,13 +14,14 @@ import (
 
 type extractOptions struct {
 	cmdStoreOptions
-	stores           []string
-	cache            string
-	seeds            []string
-	seedDirs         []string
-	inPlace          bool
-	printStats       bool
-	skipInvalidSeeds bool
+	stores                 []string
+	cache                  string
+	seeds                  []string
+	seedDirs               []string
+	inPlace                bool
+	printStats             bool
+	skipInvalidSeeds       bool
+	regenerateInvalidSeeds bool
 }
 
 func newExtractCommand(ctx context.Context) *cobra.Command {
@@ -33,11 +34,15 @@ func newExtractCommand(ctx context.Context) *cobra.Command {
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
-Muptiple optional seed indexes can be given with -seed. The matching blob needs
+Multiple optional seed indexes can be given with -seed. The matching blob needs
 to have the same name as the indexfile without the .caibx extension. If several
 seed files and indexes are available, the -seed-dir option can be used to
 automatically select call .caibx files in a directory as seeds. Use '-' to read
-the index from STDIN.`,
+the index from STDIN. If a seed is invalid, by default the extract operation will be
+aborted. With the -skip-invalid-seeds, the invalid seeds will be discarded and the
+extraction will continue without them. Otherwise with the -regenerate-invalid-seeds,
+the eventual invalid seed indexes will be regenerated, in memory, by using the
+available data, and neither data nor indexes will be changed on disk.`,
 		Example: `  desync extract -s http://192.168.1.1/ -c /path/to/local file.caibx largefile.bin
   desync extract -s /mnt/store -s /tmp/other/store file.tar.caibx file.tar
   desync extract -s /mnt/store --seed /mnt/v1.caibx v2.caibx v2.vmdk`,
@@ -52,6 +57,7 @@ the index from STDIN.`,
 	flags.StringSliceVar(&opt.seeds, "seed", nil, "seed indexes")
 	flags.StringSliceVar(&opt.seedDirs, "seed-dir", nil, "directory with seed index files")
 	flags.BoolVar(&opt.skipInvalidSeeds, "skip-invalid-seeds", false, "Skip seeds with invalid chunks")
+	flags.BoolVar(&opt.regenerateInvalidSeeds, "regenerate-invalid-seeds", false, "Regenerate seed indexes with invalid chunks")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")
 	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print statistics")
@@ -73,6 +79,10 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 	// Checkout the store
 	if len(opt.stores) == 0 {
 		return errors.New("no store provided")
+	}
+
+	if opt.skipInvalidSeeds && opt.regenerateInvalidSeeds {
+		return errors.New("is not possible to use at the same time --skip-invalid-seeds and --regenerate-invalid-seeds")
 	}
 
 	// Parse the store locations, open the stores and add a cache is requested
@@ -106,6 +116,8 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 	invalidSeedAction := desync.InvalidSeedActionBailOut
 	if opt.skipInvalidSeeds {
 		invalidSeedAction = desync.InvalidSeedActionSkip
+	} else if opt.regenerateInvalidSeeds {
+		invalidSeedAction = desync.InvalidSeedActionRegenerate
 	}
 	assembleOpt := desync.AssembleOptions{N: opt.n, InvalidSeedAction: invalidSeedAction}
 

@@ -68,6 +68,15 @@ func TestExtractCommand(t *testing.T) {
 			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
 		{"extract with single seed that has all the expected chunks",
 			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
+		// blob2_corrupted is a corrupted blob that doesn't match its seed index. We regenerate the seed index to match
+		// this corrupted blob
+		{"extract while regenerating the corrupted seed",
+			[]string{"--store", "testdata/blob1.store", "--seed", "testdata/blob2_corrupted.caibx", "--regenerate-invalid-seeds", "testdata/blob1.caibx"}, out1},
+		// blob1_corrupted_index.caibx is a corrupted seed index that points to a valid blob1 file. By regenerating the
+		// invalid seed we expect to have an index that is equal to blob1.caibx. That should be enough to do the
+		// extraction without taking chunks from the store
+		{"extract with corrupted seed and empty store",
+			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob1_corrupted_index.caibx", "--regenerate-invalid-seeds", "testdata/blob1.caibx"}, out1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := newExtractCommand(context.Background())
@@ -125,6 +134,12 @@ func TestExtractWithInvalidSeeds(t *testing.T) {
 			[]string{"--store", "testdata/blob1.store", "--seed", "testdata/blob2_corrupted.caibx", "testdata/blob1.caibx"}, out},
 		{"extract with multiple corrupted seeds",
 			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "testdata/blob2.caibx"}, out},
+		{"extract with corrupted blob1 seed and a valid seed",
+			[]string{"--store", "testdata/blob2.store", "--seed", "testdata/blob1_corrupted_index.caibx", "--seed", "testdata/blob1.caibx", "testdata/blob2.caibx"}, out},
+		{"extract with corrupted blob1 seed",
+			[]string{"--store", "testdata/blob2.store", "--seed", "testdata/blob1_corrupted_index.caibx", "testdata/blob2.caibx"}, out},
+		{"extract with both --regenerate-invalid-seed and --skip-invalid-seeds",
+			[]string{"--store", "testdata/blob1.store", "--seed", "testdata/blob1_corrupted_index.caibx", "--regenerate-invalid-seeds", "--skip-invalid-seeds", "testdata/blob1.caibx"}, out},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := newExtractCommand(context.Background())

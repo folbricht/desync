@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"context"
 	"sync"
 )
 
@@ -78,6 +79,15 @@ func (s *selfSeed) getChunk(id ChunkID) SeedSegment {
 	return newFileSeedSegment(s.file, s.index.Chunks[first:first+1], s.canReflink)
 }
 
+func (s *selfSeed) RegenerateIndex(ctx context.Context, n int) error {
+	panic("A selfSeed can't be regenerated")
+}
+
 func (s *selfSeed) SetInvalid(value bool) {
 	panic("A selfSeed is never expected to be invalid")
+}
+
+func (s *selfSeed) IsInvalid() bool {
+	// A selfSeed is never expected to be invalid
+	return false
 }

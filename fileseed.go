@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -63,10 +64,33 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 	return max, newFileSeedSegment(s.srcFile, match, s.canReflink)
 }
 
+func (s *FileSeed) RegenerateIndex(ctx context.Context, n int) error {
+	index, _, err := IndexFromFile(ctx, s.srcFile, n, s.index.Index.ChunkSizeMin, s.index.Index.ChunkSizeAvg,
+		s.index.Index.ChunkSizeMax, nil)
+	if err != nil {
+		return err
+	}
+
+	s.index = index
+	s.SetInvalid(false)
+	s.pos = make(map[ChunkID][]int, len(s.index.Chunks))
+	for i, c := range s.index.Chunks {
+		s.pos[c.ID] = append(s.pos[c.ID], i)
+	}
+
+	return nil
+}
+
 func (s *FileSeed) SetInvalid(value bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.isInvalid = value
+}
+
+func (s *FileSeed) IsInvalid() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.isInvalid
 }
 
 // Returns a slice of chunks from the seed. Compares chunks from position 0
