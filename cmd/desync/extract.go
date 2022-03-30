@@ -158,7 +158,7 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 }
 
 func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.Store, seeds []desync.Seed, assembleOpt desync.AssembleOptions) (*desync.ExtractStats, error) {
-	pb := NewProgressBar("")
+	pb := desync.NewProgressBar("")
 
 	// Build the blob from the chunks, writing everything into given filename
 	return desync.AssembleFile(ctx, name, idx, s, seeds, assembleOpt, pb)

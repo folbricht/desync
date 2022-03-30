@@ -67,7 +67,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 	}
 
 	// Split up the file and create and index from it
-	pb := NewProgressBar("Chunking ")
+	pb := desync.NewProgressBar("Chunking ")
 	index, stats, err := desync.IndexFromFile(ctx, dataFile, opt.n, min, avg, max, pb)
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 
 	// Chop up the file into chunks and store them in the target store if a store was given
 	if s != nil {
-		pb := NewProgressBar("Storing ")
+		pb := desync.NewProgressBar("Storing ")
 		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, opt.n, pb); err != nil {
 			return err
 		}
