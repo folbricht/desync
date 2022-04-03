@@ -61,8 +61,9 @@ func TestExtractCommand(t *testing.T) {
 			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "--skip-invalid-seeds", "testdata/blob1.caibx"}, out1},
 		// Here we don't need the `--skip-invalid-seeds` because we expect the blob1 seed to always be the chosen one, being
 		// a 1:1 match with the index that we want to write. So we never reach the point where we validate the corrupted seed.
+		// Explicitly set blob1 seed because seed-dir skips a seed if it's the same index file we gave in input.
 		{"extract with seed directory without skipping invalid seeds",
-			[]string{"-s", "testdata/blob1.store", "--seed-dir", "testdata", "testdata/blob1.caibx"}, out1},
+			[]string{"-s", "testdata/blob1.store", "--seed-dir", "testdata", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
 		// Same as above, no need for `--skip-invalid-seeds`
 		{"extract with multiple corrupted seeds",
 			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
