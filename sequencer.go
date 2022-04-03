@@ -76,6 +76,18 @@ func (r *SeedSequencer) Rewind() {
 	r.current = 0
 }
 
+// RegenerateInvalidSeeds regenerates the index to match the unexpected seed content
+func (r *SeedSequencer) RegenerateInvalidSeeds(ctx context.Context, n int) error {
+	for _, s := range r.seeds {
+		if s.IsInvalid() {
+			if err := s.RegenerateIndex(ctx, n); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Validate validates a proposed plan by checking if all the chosen chunks
 // are correctly provided from the seeds. In case a seed has invalid chunks, the
 // entire seed is marked as invalid and an error is returned.

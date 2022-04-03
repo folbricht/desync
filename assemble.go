@@ -8,13 +8,16 @@ import (
 )
 
 // InvalidSeedAction represent the action that we will take if a seed
-// happens to be invalid. There are currently two options: either fail with
-// an error or skip the invalid seed and try to continue.
+// happens to be invalid. There are currently three options:
+// - fail with an error
+// - skip the invalid seed and try to continue
+// - regenerate the invalid seed index
 type InvalidSeedAction int
 
 const (
 	InvalidSeedActionBailOut InvalidSeedAction = iota
 	InvalidSeedActionSkip
+	InvalidSeedActionRegenerate
 )
 
 type AssembleOptions struct {
@@ -225,11 +228,21 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	for {
 		if err := plan.Validate(ctx, options.N); err != nil {
 			// This plan has at least one invalid seed
-			if options.InvalidSeedAction == InvalidSeedActionBailOut {
+			switch options.InvalidSeedAction {
+			case InvalidSeedActionBailOut:
 				return stats, err
+			case InvalidSeedActionRegenerate:
+				Log.WithError(err).Info("Unable to use one of the chosen seeds, regenerating it")
+				if err := seq.RegenerateInvalidSeeds(ctx, options.N); err != nil {
+					return stats, err
+				}
+			case InvalidSeedActionSkip:
+				// Recreate the plan. This time the seed marked as invalid will be skipped
+				Log.WithError(err).Info("Unable to use one of the chosen seeds, skipping it")
+			default:
+				panic("Unhandled InvalidSeedAction")
 			}
-			// Skip the invalid seed and try again
-			Log.WithError(err).Info("Unable to use one of the chosen seeds, skipping it")
+
 			seq.Rewind()
 			plan = seq.Plan()
 			continue

@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -64,8 +65,17 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	}
 }
 
+func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int) error {
+	panic("A nullseed can't be regenerated")
+}
+
 func (s *nullChunkSeed) SetInvalid(value bool) {
 	panic("A nullseed is never expected to be invalid")
+}
+
+func (s *nullChunkSeed) IsInvalid() bool {
+	// A nullseed is never expected to be invalid
+	return false
 }
 
 type nullChunkSection struct {
