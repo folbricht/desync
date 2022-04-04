@@ -15,7 +15,7 @@ func NewProgressBar(prefix string) ProgressBar {
 	if !terminal.IsTerminal(int(os.Stderr.Fd())) &&
 		os.Getenv("DESYNC_PROGRESSBAR_ENABLED") == "" &&
 		os.Getenv("DESYNC_ENABLE_PARSABLE_PROGRESS") == "" {
-		return nil
+		return NullProgressBar{}
 	}
 	bar := pb.New(0).Prefix(prefix)
 	bar.ShowCounters = false

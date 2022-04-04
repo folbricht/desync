@@ -16,11 +16,9 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Setup and start the progressbar if any
-	if pb != nil {
-		pb.SetTotal(len(chunks))
-		pb.Start()
-		defer pb.Finish()
-	}
+	pb.SetTotal(len(chunks))
+	pb.Start()
+	defer pb.Finish()
 
 	s := NewChunkStorage(ws)
 
@@ -35,9 +33,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 		g.Go(func() error {
 			for c := range in {
 				// Update progress bar if any
-				if pb != nil {
-					pb.Add(1)
-				}
+				pb.Increment()
 
 				chunk, err := readChunkFromFile(f, c)
 				if err != nil {

@@ -66,7 +66,7 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 
 func (s *FileSeed) RegenerateIndex(ctx context.Context, n int) error {
 	index, _, err := IndexFromFile(ctx, s.srcFile, n, s.index.Index.ChunkSizeMin, s.index.Index.ChunkSizeAvg,
-		s.index.Index.ChunkSizeMax, nil)
+		s.index.Index.ChunkSizeMax, NewProgressBar("Chunking "))
 	if err != nil {
 		return err
 	}

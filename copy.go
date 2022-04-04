@@ -15,19 +15,15 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Setup and start the progressbar if any
-	if pb != nil {
-		pb.SetTotal(len(ids))
-		pb.Start()
-		defer pb.Finish()
-	}
+	pb.SetTotal(len(ids))
+	pb.Start()
+	defer pb.Finish()
 
 	// Start the workers
 	for i := 0; i < n; i++ {
 		g.Go(func() error {
 			for id := range in {
-				if pb != nil {
-					pb.Increment()
-				}
+				pb.Increment()
 				hasChunk, err := dst.HasChunk(id)
 				if err != nil {
 					return err

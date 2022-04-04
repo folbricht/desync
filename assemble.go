@@ -46,11 +46,9 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Setup and start the progressbar if any
-	if pb != nil {
-		pb.SetTotal(len(idx.Chunks))
-		pb.Start()
-		defer pb.Finish()
-	}
+	pb.SetTotal(len(idx.Chunks))
+	pb.Start()
+	defer pb.Finish()
 
 	// Initialize stats to be gathered during extraction
 	stats := &ExtractStats{
@@ -118,9 +116,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		defer f.Close()
 		g.Go(func() error {
 			for job := range in {
-				if pb != nil {
-					pb.Add(job.segment.lengthChunks())
-				}
+				pb.Add(job.segment.lengthChunks())
 				if job.source != nil {
 					// If we have a seedSegment we expect 1 or more chunks between
 					// the start and the end of this segment.

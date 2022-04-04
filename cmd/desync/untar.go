@@ -99,17 +99,15 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		defer f.Close()
 		var r io.Reader = f
 		pb := desync.NewProgressBar("Unpacking ")
-		if pb != nil {
-			// Get the file size to initialize the progress bar
-			info, err := f.Stat()
-			if err != nil {
-				return err
-			}
-			pb.Start()
-			defer pb.Finish()
-			pb.SetTotal(int(info.Size()))
-			r = io.TeeReader(f, pb)
+		// Get the file size to initialize the progress bar
+		info, err := f.Stat()
+		if err != nil {
+			return err
 		}
+		pb.Start()
+		defer pb.Finish()
+		pb.SetTotal(int(info.Size()))
+		r = io.TeeReader(f, pb)
 		return desync.UnTar(ctx, r, fs)
 	}
 

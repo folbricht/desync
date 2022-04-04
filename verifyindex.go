@@ -15,11 +15,9 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Setup and start the progressbar if any
-	if pb != nil {
-		pb.SetTotal(len(idx.Chunks))
-		pb.Start()
-		defer pb.Finish()
-	}
+	pb.SetTotal(len(idx.Chunks))
+	pb.Start()
+	defer pb.Finish()
 
 	stat, err := os.Stat(name)
 	if err != nil {
@@ -45,9 +43,7 @@ func VerifyIndex(ctx context.Context, name string, idx Index, n int, pb Progress
 				}
 
 				// Update progress bar, if any
-				if pb != nil {
-					pb.Add(len(c))
-				}
+				pb.Add(len(c))
 			}
 			return nil
 		})
