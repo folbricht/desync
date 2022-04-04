@@ -128,7 +128,7 @@ func TestExtract(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			defer os.Remove(test.outfile)
 			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
-				AssembleOptions{10, InvalidSeedActionBailOut}, NewProgressBar(""),
+				AssembleOptions{10, InvalidSeedActionBailOut},
 			); err != nil {
 				t.Fatal(err)
 			}
@@ -271,7 +271,7 @@ func TestSeed(t *testing.T) {
 			}
 
 			if _, err := AssembleFile(context.Background(), dst.Name(), dstIndex, s, seeds,
-				AssembleOptions{10, InvalidSeedActionBailOut}, NewProgressBar(""),
+				AssembleOptions{10, InvalidSeedActionBailOut},
 			); err != nil {
 				t.Fatal(err)
 			}

@@ -33,7 +33,7 @@ type AssembleOptions struct {
 // confirm if the data matches what is expected and only populate areas that
 // differ from the expected content. This can be used to complete partly
 // written files.
-func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, options AssembleOptions, pb ProgressBar) (*ExtractStats, error) {
+func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, options AssembleOptions) (*ExtractStats, error) {
 	type Job struct {
 		segment IndexSegment
 		source  SeedSegment
@@ -42,13 +42,11 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		in          = make(chan Job)
 		isBlank     bool
 		isBlkDevice bool
+		pb          ProgressBar
 	)
 	g, ctx := errgroup.WithContext(ctx)
 
-	// Setup and start the progressbar if any
-	pb.SetTotal(len(idx.Chunks))
-	pb.Start()
-	defer pb.Finish()
+	pb = NewProgressBar("Assembling ")
 
 	// Initialize stats to be gathered during extraction
 	stats := &ExtractStats{
@@ -221,8 +219,9 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	// feed the workers, and stop if there are any errors
 	seq := NewSeedSequencer(idx, seeds...)
 	plan := seq.Plan()
-	for {
-		if err := plan.Validate(ctx, options.N); err != nil {
+	for i := 1; ; i++ {
+		validatingPrefix := fmt.Sprintf("ValidatingPlan%d ", i)
+		if err := plan.Validate(ctx, options.N, NewProgressBar(validatingPrefix)); err != nil {
 			// This plan has at least one invalid seed
 			switch options.InvalidSeedAction {
 			case InvalidSeedActionBailOut:
@@ -246,6 +245,10 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		// Found a valid plan
 		break
 	}
+
+	pb.SetTotal(len(idx.Chunks))
+	pb.Start()
+	defer pb.Finish()
 
 loop:
 	for _, segment := range plan {

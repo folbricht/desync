@@ -76,6 +76,12 @@ func (r *SeedSequencer) Rewind() {
 	r.current = 0
 }
 
+//isFileSeed returns true if this segment is pointing to a fileSeed
+func (s SeedSegmentCandidate) isFileSeed() bool {
+	// We expect an empty filename when using nullSeeds
+	return s.source != nil && s.source.FileName() != ""
+}
+
 // RegenerateInvalidSeeds regenerates the index to match the unexpected seed content
 func (r *SeedSequencer) RegenerateInvalidSeeds(ctx context.Context, n int) error {
 	for _, s := range r.seeds {
@@ -91,7 +97,7 @@ func (r *SeedSequencer) RegenerateInvalidSeeds(ctx context.Context, n int) error
 // Validate validates a proposed plan by checking if all the chosen chunks
 // are correctly provided from the seeds. In case a seed has invalid chunks, the
 // entire seed is marked as invalid and an error is returned.
-func (p Plan) Validate(ctx context.Context, n int) (err error) {
+func (p Plan) Validate(ctx context.Context, n int, pb ProgressBar) (err error) {
 	type Job struct {
 		candidate SeedSegmentCandidate
 		file      *os.File
@@ -100,10 +106,19 @@ func (p Plan) Validate(ctx context.Context, n int) (err error) {
 		in      = make(chan Job)
 		fileMap = make(map[string]*os.File)
 	)
+	length := 0
+	for _, s := range p {
+		if !s.isFileSeed() {
+			continue
+		}
+		length += s.indexSegment.lengthChunks()
+	}
+	pb.SetTotal(length)
+	pb.Start()
+	defer pb.Finish()
 	// Share a single file descriptor per seed for all the goroutines
 	for _, s := range p {
-		// We expect an empty filename when using nullSeeds
-		if s.source == nil || s.source.FileName() == "" {
+		if !s.isFileSeed() {
 			continue
 		}
 		name := s.source.FileName()
@@ -129,6 +144,7 @@ func (p Plan) Validate(ctx context.Context, n int) (err error) {
 					job.candidate.seed.SetInvalid(true)
 					return err
 				}
+				pb.Add(job.candidate.indexSegment.lengthChunks())
 			}
 			return nil
 		})
@@ -136,7 +152,7 @@ func (p Plan) Validate(ctx context.Context, n int) (err error) {
 
 loop:
 	for _, s := range p {
-		if s.source == nil || s.source.FileName() == "" {
+		if !s.isFileSeed() {
 			// This is not a fileSeed, we have nothing to validate
 			continue
 		}
