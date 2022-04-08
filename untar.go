@@ -62,11 +62,9 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Initialize and start progress bar if one was provided
-	if pb != nil {
-		pb.SetTotal(len(index.Chunks))
-		pb.Start()
-		defer pb.Finish()
-	}
+	pb.SetTotal(len(index.Chunks))
+	pb.Start()
+	defer pb.Finish()
 
 	// Use a pipe as input to untar and write the chunks into that (in the right
 	// order of course)
@@ -131,9 +129,7 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 				if data == nil {
 					break loop
 				}
-				if pb != nil {
-					pb.Increment()
-				}
+				pb.Increment()
 				b := <-data
 				if _, err := io.Copy(w, bytes.NewReader(b)); err != nil {
 					return err

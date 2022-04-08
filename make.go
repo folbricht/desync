@@ -73,11 +73,9 @@ func IndexFromFile(ctx context.Context,
 	span := size / uint64(n) // initial spacing between chunkers
 
 	// Setup and start the progressbar if any
-	if pb != nil {
-		pb.SetTotal(int(size))
-		pb.Start()
-		defer pb.Finish()
-	}
+	pb.SetTotal(int(size))
+	pb.Start()
+	defer pb.Finish()
 
 	// Null chunks is produced when a large section of null bytes is chunked. There are no
 	// split points in those sections so it's always of max chunk size. Used for optimizations
@@ -135,9 +133,7 @@ func IndexFromFile(ctx context.Context,
 		for chunk := range w.results {
 			// Assemble the list of chunks in the index
 			index.Chunks = append(index.Chunks, chunk)
-			if pb != nil {
-				pb.Set(int(chunk.Start + chunk.Size))
-			}
+			pb.Set(int(chunk.Start + chunk.Size))
 			stats.incAccepted()
 		}
 		// Done reading all chunks from this worker, check for any errors

@@ -98,18 +98,16 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		}
 		defer f.Close()
 		var r io.Reader = f
-		pb := NewProgressBar("Unpacking ")
-		if pb != nil {
-			// Get the file size to initialize the progress bar
-			info, err := f.Stat()
-			if err != nil {
-				return err
-			}
-			pb.Start()
-			defer pb.Finish()
-			pb.SetTotal(int(info.Size()))
-			r = io.TeeReader(f, pb)
+		pb := desync.NewProgressBar("Unpacking ")
+		// Get the file size to initialize the progress bar
+		info, err := f.Stat()
+		if err != nil {
+			return err
 		}
+		pb.Start()
+		defer pb.Finish()
+		pb.SetTotal(int(info.Size()))
+		r = io.TeeReader(f, pb)
 		return desync.UnTar(ctx, r, fs)
 	}
 
@@ -125,5 +123,5 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, fs, index, s, opt.n, NewProgressBar("Unpacking "))
+	return desync.UnTarIndex(ctx, fs, index, s, opt.n, desync.NewProgressBar("Unpacking "))
 }

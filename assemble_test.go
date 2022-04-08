@@ -40,7 +40,7 @@ func TestExtract(t *testing.T) {
 		in.Name(),
 		10,
 		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
-		nil,
+		NewProgressBar(""),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestExtract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ChopFile(context.Background(), in.Name(), index.Chunks, s, 10, nil); err != nil {
+	if err := ChopFile(context.Background(), in.Name(), index.Chunks, s, 10, NewProgressBar("")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -128,7 +128,7 @@ func TestExtract(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			defer os.Remove(test.outfile)
 			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
-				AssembleOptions{10, InvalidSeedActionBailOut}, nil,
+				AssembleOptions{10, InvalidSeedActionBailOut},
 			); err != nil {
 				t.Fatal(err)
 			}
@@ -230,14 +230,14 @@ func TestSeed(t *testing.T) {
 				dst.Name(),
 				10,
 				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
-				nil,
+				NewProgressBar(""),
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			// Chop up the input file into the store
-			if err := ChopFile(context.Background(), dst.Name(), dstIndex.Chunks, s, 10, nil); err != nil {
+			if err := ChopFile(context.Background(), dst.Name(), dstIndex.Chunks, s, 10, NewProgressBar("")); err != nil {
 				t.Fatal(err)
 			}
 
@@ -258,7 +258,7 @@ func TestSeed(t *testing.T) {
 					seedFile.Name(),
 					10,
 					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
-					nil,
+					NewProgressBar(""),
 				)
 				if err != nil {
 					t.Fatal(err)
@@ -271,7 +271,7 @@ func TestSeed(t *testing.T) {
 			}
 
 			if _, err := AssembleFile(context.Background(), dst.Name(), dstIndex, s, seeds,
-				AssembleOptions{10, InvalidSeedActionBailOut}, nil,
+				AssembleOptions{10, InvalidSeedActionBailOut},
 			); err != nil {
 				t.Fatal(err)
 			}
