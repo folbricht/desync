@@ -64,9 +64,10 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 	return max, newFileSeedSegment(s.srcFile, match, s.canReflink)
 }
 
-func (s *FileSeed) RegenerateIndex(ctx context.Context, n int) error {
+func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
+	chunkingPrefix := fmt.Sprintf("Attempt %d: Chunking Seed %d ", attempt, seedNumber)
 	index, _, err := IndexFromFile(ctx, s.srcFile, n, s.index.Index.ChunkSizeMin, s.index.Index.ChunkSizeAvg,
-		s.index.Index.ChunkSizeMax, NewProgressBar("Chunking "))
+		s.index.Index.ChunkSizeMax, NewProgressBar(chunkingPrefix))
 	if err != nil {
 		return err
 	}

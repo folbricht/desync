@@ -39,14 +39,13 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		source  SeedSegment
 	}
 	var (
+		attempt     = 1
 		in          = make(chan Job)
 		isBlank     bool
 		isBlkDevice bool
 		pb          ProgressBar
 	)
 	g, ctx := errgroup.WithContext(ctx)
-
-	pb = NewProgressBar("Assembling ")
 
 	// Initialize stats to be gathered during extraction
 	stats := &ExtractStats{
@@ -219,8 +218,8 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	// feed the workers, and stop if there are any errors
 	seq := NewSeedSequencer(idx, seeds...)
 	plan := seq.Plan()
-	for i := 1; ; i++ {
-		validatingPrefix := fmt.Sprintf("ValidatingPlan%d ", i)
+	for {
+		validatingPrefix := fmt.Sprintf("Attempt %d: Validating ", attempt)
 		if err := plan.Validate(ctx, options.N, NewProgressBar(validatingPrefix)); err != nil {
 			// This plan has at least one invalid seed
 			switch options.InvalidSeedAction {
@@ -228,7 +227,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				return stats, err
 			case InvalidSeedActionRegenerate:
 				Log.WithError(err).Info("Unable to use one of the chosen seeds, regenerating it")
-				if err := seq.RegenerateInvalidSeeds(ctx, options.N); err != nil {
+				if err := seq.RegenerateInvalidSeeds(ctx, options.N, attempt); err != nil {
 					return stats, err
 				}
 			case InvalidSeedActionSkip:
@@ -238,6 +237,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				panic("Unhandled InvalidSeedAction")
 			}
 
+			attempt += 1
 			seq.Rewind()
 			plan = seq.Plan()
 			continue
@@ -246,6 +246,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		break
 	}
 
+	pb = NewProgressBar(fmt.Sprintf("Attempt %d: Assembling ", attempt))
 	pb.SetTotal(len(idx.Chunks))
 	pb.Start()
 	defer pb.Finish()
