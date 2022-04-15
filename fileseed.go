@@ -35,8 +35,9 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 }
 
 // LongestMatchWith returns the longest sequence of chunks anywhere in Source
-// that match `chunks` starting at chunks[0]. If there is no match, it returns a
-// length of zero and a nil SeedSegment.
+// that match `chunks` starting at chunks[0], limiting the maximum number of chunks
+// if reflinks are not supported. If there is no match, it returns a length of zero
+// and a nil SeedSegment.
 func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 	s.mu.RLock()
 	// isInvalid can be concurrently read or wrote. Use a mutex to avoid a race
@@ -53,12 +54,23 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 	var (
 		match []IndexChunk
 		max   int
+		limit int
 	)
+	if !s.canReflink {
+		// Limit the maximum number of chunks, in a single sequence, to avoid
+		// having jobs that are too unbalanced.
+		// However, if reflinks are supported, we don't limit it to make it faster and
+		// take less space.
+		limit = 100
+	}
 	for _, p := range pos {
-		m := s.maxMatchFrom(chunks, p)
+		m := s.maxMatchFrom(chunks, p, limit)
 		if len(m) > max {
 			match = m
 			max = len(m)
+		}
+		if limit != 0 && limit == max {
+			break
 		}
 	}
 	return max, newFileSeedSegment(s.srcFile, match, s.canReflink)
@@ -95,8 +107,8 @@ func (s *FileSeed) IsInvalid() bool {
 }
 
 // Returns a slice of chunks from the seed. Compares chunks from position 0
-// with seed chunks starting at p.
-func (s *FileSeed) maxMatchFrom(chunks []IndexChunk, p int) []IndexChunk {
+// with seed chunks starting at p. A "limit" value of zero means that there is no limit.
+func (s *FileSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) []IndexChunk {
 	if len(chunks) == 0 {
 		return nil
 	}
@@ -105,6 +117,9 @@ func (s *FileSeed) maxMatchFrom(chunks []IndexChunk, p int) []IndexChunk {
 		dp = p
 	)
 	for {
+		if limit != 0 && sp == limit {
+			break
+		}
 		if dp >= len(s.index.Chunks) || sp >= len(chunks) {
 			break
 		}
