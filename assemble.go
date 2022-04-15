@@ -187,7 +187,15 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 						}
 						sum := Digest.Sum(b)
 						if sum != c.ID {
-							return fmt.Errorf("written data in %s doesn't match its expected hash value, seed may have changed during processing", name)
+							if options.InvalidSeedAction == InvalidSeedActionRegenerate {
+								// Try harder before giving up and aborting
+								Log.WithField("ID", c.ID).Info("The seed may have changed during processing, trying to take the chunk from the self seed or the store")
+								if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
+									return err
+								}
+							} else {
+								return fmt.Errorf("written data in %s doesn't match its expected hash value, seed may have changed during processing", name)
+							}
 						}
 					}
 
