@@ -37,6 +37,7 @@ func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Stor
 		}
 		stats.addBytesCopied(copied)
 		stats.addBytesCloned(cloned)
+		return nil
 	}
 
 	// If we operate on an existing file there's a good chance we already
