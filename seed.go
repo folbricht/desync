@@ -13,7 +13,7 @@ const DefaultBlockSize = 4096
 // existing chunks or blocks into the target from.
 type Seed interface {
 	LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
-	RegenerateIndex(ctx context.Context, n int) error
+	RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error
 	SetInvalid(value bool)
 	IsInvalid() bool
 }

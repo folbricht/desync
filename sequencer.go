@@ -83,12 +83,14 @@ func (s SeedSegmentCandidate) isFileSeed() bool {
 }
 
 // RegenerateInvalidSeeds regenerates the index to match the unexpected seed content
-func (r *SeedSequencer) RegenerateInvalidSeeds(ctx context.Context, n int) error {
+func (r *SeedSequencer) RegenerateInvalidSeeds(ctx context.Context, n int, attempt int) error {
+	seedNumber := 1
 	for _, s := range r.seeds {
 		if s.IsInvalid() {
-			if err := s.RegenerateIndex(ctx, n); err != nil {
+			if err := s.RegenerateIndex(ctx, n, attempt, seedNumber); err != nil {
 				return err
 			}
+			seedNumber += 1
 		}
 	}
 	return nil

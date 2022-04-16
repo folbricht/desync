@@ -65,7 +65,7 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	}
 }
 
-func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int) error {
+func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
 	panic("A nullseed can't be regenerated")
 }
 
