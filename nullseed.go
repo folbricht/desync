@@ -47,8 +47,17 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	if len(chunks) == 0 {
 		return 0, nil
 	}
-	var n int
+	var (
+		n     int
+		limit int
+	)
+	if !s.canReflink {
+		limit = 100
+	}
 	for _, c := range chunks {
+		if limit != 0 && limit == n {
+			break
+		}
 		if c.ID != s.id {
 			break
 		}

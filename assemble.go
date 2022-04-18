@@ -25,6 +25,58 @@ type AssembleOptions struct {
 	InvalidSeedAction InvalidSeedAction
 }
 
+// writeChunk tries to write a chunk by looking at the self seed, if it is already existing in the
+// destination file or by taking it from the store
+func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Store, stats *ExtractStats, isBlank bool) error {
+	// If we already took this chunk from the store we can reuse it by looking
+	// into the selfSeed.
+	if segment := ss.getChunk(c.ID); segment != nil {
+		copied, cloned, err := segment.WriteInto(f, c.Start, c.Size, blocksize, isBlank)
+		if err != nil {
+			return err
+		}
+		stats.addBytesCopied(copied)
+		stats.addBytesCloned(cloned)
+		return nil
+	}
+
+	// If we operate on an existing file there's a good chance we already
+	// have the data written for this chunk. Let's read it from disk and
+	// compare to what is expected.
+	if !isBlank {
+		b := make([]byte, c.Size)
+		if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
+			return err
+		}
+		sum := Digest.Sum(b)
+		if sum == c.ID {
+			// Record we kept this chunk in the file (when using in-place extract)
+			stats.incChunksInPlace()
+			return nil
+		}
+	}
+	// Record this chunk having been pulled from the store
+	stats.incChunksFromStore()
+	// Pull the (compressed) chunk from the store
+	chunk, err := s.GetChunk(c.ID)
+	if err != nil {
+		return err
+	}
+	b, err := chunk.Data()
+	if err != nil {
+		return err
+	}
+	// Might as well verify the chunk size while we're at it
+	if c.Size != uint64(len(b)) {
+		return fmt.Errorf("unexpected size for chunk %s", c.ID)
+	}
+	// Write the decompressed chunk into the file at the right position
+	if _, err = f.WriteAt(b, int64(c.Start)); err != nil {
+		return err
+	}
+	return nil
+}
+
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
 // goroutines, creating one filehandle for the file "name" per goroutine
 // and writes to the file simultaneously. If progress is provided, it'll be
@@ -136,7 +188,15 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 						}
 						sum := Digest.Sum(b)
 						if sum != c.ID {
-							return fmt.Errorf("written data in %s doesn't match its expected hash value, seed may have changed during processing", name)
+							if options.InvalidSeedAction == InvalidSeedActionRegenerate {
+								// Try harder before giving up and aborting
+								Log.WithField("ID", c.ID).Info("The seed may have changed during processing, trying to take the chunk from the self seed or the store")
+								if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
+									return err
+								}
+							} else {
+								return fmt.Errorf("written data in %s doesn't match its expected hash value, seed may have changed during processing", name)
+							}
 						}
 					}
 
@@ -156,58 +216,14 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				}
 				c := job.segment.chunks()[0]
 
-				// If we already took this chunk from the store we can reuse it by looking
-				// into the selfSeed.
-				if segment := ss.getChunk(c.ID); segment != nil {
-					copied, cloned, err := segment.WriteInto(f, c.Start, c.Size, blocksize, isBlank)
-					if err != nil {
-						return err
-					}
-					stats.addBytesCopied(copied)
-					stats.addBytesCloned(cloned)
-					// Even if we already confirmed that this chunk is present in the
-					// self-seed, we still need to record it as being written, otherwise
-					// the self-seed position pointer doesn't advance as we expect.
-					ss.add(job.segment)
+				if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
+					return err
 				}
 
-				// If we operate on an existing file there's a good chance we already
-				// have the data written for this chunk. Let's read it from disk and
-				// compare to what is expected.
-				if !isBlank {
-					b := make([]byte, c.Size)
-					if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
-						return err
-					}
-					sum := Digest.Sum(b)
-					if sum == c.ID {
-						// Record this chunk's been written in the self-seed
-						ss.add(job.segment)
-						// Record we kept this chunk in the file (when using in-place extract)
-						stats.incChunksInPlace()
-						continue
-					}
-				}
-				// Record this chunk having been pulled from the store
-				stats.incChunksFromStore()
-				// Pull the (compressed) chunk from the store
-				chunk, err := s.GetChunk(c.ID)
-				if err != nil {
-					return err
-				}
-				b, err := chunk.Data()
-				if err != nil {
-					return err
-				}
-				// Might as well verify the chunk size while we're at it
-				if c.Size != uint64(len(b)) {
-					return fmt.Errorf("unexpected size for chunk %s", c.ID)
-				}
-				// Write the decompressed chunk into the file at the right position
-				if _, err = f.WriteAt(b, int64(c.Start)); err != nil {
-					return err
-				}
-				// Record this chunk's been written in the self-seed
+				// Record this chunk's been written in the self-seed.
+				// Even if we already confirmed that this chunk is present in the
+				// self-seed, we still need to record it as being written, otherwise
+				// the self-seed position pointer doesn't advance as we expect.
 				ss.add(job.segment)
 			}
 			return nil

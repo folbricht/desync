@@ -42,7 +42,9 @@ the index from STDIN. If a seed is invalid, by default the extract operation wil
 aborted. With the -skip-invalid-seeds, the invalid seeds will be discarded and the
 extraction will continue without them. Otherwise with the -regenerate-invalid-seeds,
 the eventual invalid seed indexes will be regenerated, in memory, by using the
-available data, and neither data nor indexes will be changed on disk.`,
+available data, and neither data nor indexes will be changed on disk. Also, if the seed changes
+while processing, its invalid chunks will be taken from the self seed, or the store, instead
+of aborting.`,
 		Example: `  desync extract -s http://192.168.1.1/ -c /path/to/local file.caibx largefile.bin
   desync extract -s /mnt/store -s /tmp/other/store file.tar.caibx file.tar
   desync extract -s /mnt/store --seed /mnt/v1.caibx v2.caibx v2.vmdk`,
