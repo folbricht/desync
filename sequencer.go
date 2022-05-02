@@ -26,6 +26,8 @@ type SeedSegmentCandidate struct {
 
 type Plan []SeedSegmentCandidate
 
+var MockValidate = false
+
 // NewSeedSequencer initializes a new sequencer from a number of seeds.
 func NewSeedSequencer(idx Index, src ...Seed) *SeedSequencer {
 	return &SeedSequencer{
@@ -108,6 +110,10 @@ func (p Plan) Validate(ctx context.Context, n int, pb ProgressBar) (err error) {
 		in      = make(chan Job)
 		fileMap = make(map[string]*os.File)
 	)
+	if MockValidate {
+		// This is used in the automated tests to mock a plan that is valid
+		return nil
+	}
 	length := 0
 	for _, s := range p {
 		if !s.isFileSeed() {

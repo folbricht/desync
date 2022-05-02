@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/rand"
+	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -294,4 +296,49 @@ func join(slices ...[]byte) []byte {
 		out = append(out, b...)
 	}
 	return out
+}
+
+func readCaibxFile(t *testing.T, indexLocation string) (idx Index) {
+	is, err := NewLocalIndexStore(filepath.Dir(indexLocation))
+	require.NoError(t, err)
+	defer is.Close()
+	indexName := filepath.Base(indexLocation)
+	idx, err = is.GetIndex(indexName)
+	require.NoError(t, err)
+	return idx
+}
+
+func TestExtractWithNonStaticSeeds(t *testing.T) {
+	n := 10
+	outDir := t.TempDir()
+	out := filepath.Join(outDir, "out")
+
+	// Test a seed that is initially valid, but becomes corrupted halfway through
+	// the extraction operation
+	MockValidate = true
+
+	store, err := NewLocalStore("testdata/blob2.store", StoreOptions{})
+	require.NoError(t, err)
+	defer store.Close()
+
+	index := readCaibxFile(t, "testdata/blob2.caibx")
+
+	var seeds []Seed
+	srcIndex := readCaibxFile(t, "testdata/blob2_corrupted.caibx")
+	seed, err := NewIndexSeed(out, "testdata/blob2_corrupted", srcIndex)
+	seeds = append(seeds, seed)
+
+	// Test that the MockValidate works as expected
+	seq := NewSeedSequencer(index, seeds...)
+	plan := seq.Plan()
+	err = plan.Validate(context.Background(), n, NullProgressBar{})
+	require.NoError(t, err)
+
+	options := AssembleOptions{n, InvalidSeedActionRegenerate}
+	_, err = AssembleFile(context.Background(), out, index, store, seeds, options)
+	require.NoError(t, err)
+
+	//Test the output
+	err = VerifyIndex(context.Background(), out, index, n, NullProgressBar{})
+	require.NoError(t, err)
 }
