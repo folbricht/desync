@@ -64,6 +64,9 @@ type StoreOptions struct {
 	// Authorization header value for HTTP stores
 	HTTPAuth string `json:"http-auth,omitempty"`
 
+	// Cookie header value for HTTP stores
+	HTTPCookie string `json:"http-cookie,omitempty"`
+
 	// Timeout for waiting for objects to be retrieved. Infinite if negative. Default: 1 minute
 	Timeout time.Duration `json:"timeout,omitempty"`
 

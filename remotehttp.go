@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -118,6 +119,14 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 	}
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
+	}
+	if r.opt.HTTPCookie != "" {
+		req.Header.Set("Cookie", r.opt.HTTPCookie)
+	}
+	// Set from env var if appropriate
+	httpCookie := os.Getenv("DESYNC_HTTP_COOKIE")
+	if len(httpCookie) != 0 {
+		req.Header.Set("Cookie", httpCookie)
 	}
 
 	log.Debug("sending request")
