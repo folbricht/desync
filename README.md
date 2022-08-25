@@ -254,6 +254,7 @@ Available configuration values:
   - `skip-verify` - Disables data integrity verification when reading chunks to improve performance. Only recommended when chaining chunk stores with the `chunk-server` command using compressed stores.
   - `uncompressed` - Reads and writes uncompressed chunks from/to this store. This can improve performance, especially for local stores or caches. Compressed and uncompressed chunks can coexist in the same store, but only one kind is read or written by one client.
   - `http-auth` - Value of the Authorization header in HTTP requests. This could be a bearer token with `"Bearer <token>"` or a Base64-encoded username and password pair for basic authentication like `"Basic dXNlcjpwYXNzd29yZAo="`.
+  - `http-cookie` - Value of the Cookie header in HTTP requests. This should be in the form of a list of name-value pairs separated by a semicolon and a space (`'; '`) like `"name=value; name2=value2; name3=value3"`.
 
 #### Example config
 
@@ -288,6 +289,9 @@ Available configuration values:
     },
     "https://example.com/*/*/": {
       "http-auth": "Bearer dXNlcjpwYXNzd29yZA=="
+    },
+    "https://cdn.example.com/": {
+      "http-cookie": "PHPSESSID=298zf09hf012fh2; csrftoken=u32t4o3tb3gg43"
     },
     "/path/to/local/cache": {
       "uncompressed": true
