@@ -119,6 +119,9 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 	if r.opt.HTTPAuth != "" {
 		req.Header.Set("Authorization", r.opt.HTTPAuth)
 	}
+	if r.opt.HTTPCookie != "" {
+		req.Header.Set("Cookie", r.opt.HTTPCookie)
+	}
 
 	log.Debug("sending request")
 	resp, err = r.client.Do(req)
