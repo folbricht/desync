@@ -48,6 +48,11 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 	region := os.Getenv("S3_REGION")
 	secretKey := os.Getenv("S3_SECRET_KEY")
 	sessionToken := os.Getenv("S3_SESSION_TOKEN")
+	if accessKey == "" && secretKey == "" {
+		accessKey = os.Getenv("AWS_ACCESS_KEY_ID")
+		secretKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+		sessionToken = os.Getenv("AWS_SESSION_TOKEN")
+	}
 	if accessKey != "" || secretKey != "" {
 		return NewStaticCredentials(accessKey, secretKey, sessionToken), region
 	}
