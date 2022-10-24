@@ -47,8 +47,9 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 	accessKey := os.Getenv("S3_ACCESS_KEY")
 	region := os.Getenv("S3_REGION")
 	secretKey := os.Getenv("S3_SECRET_KEY")
+	sessionToken := os.Getenv("S3_SESSION_TOKEN")
 	if accessKey != "" || secretKey != "" {
-		return NewStaticCredentials(accessKey, secretKey), region
+		return NewStaticCredentials(accessKey, secretKey, sessionToken), region
 	}
 
 	// Look in the config to find a match for scheme+host
@@ -57,12 +58,12 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 		Host:   u.Host,
 	}
 	credsConfig := c.S3Credentials[key.String()]
-	creds := NewStaticCredentials("", "")
+	creds := NewStaticCredentials("", "", "")
 	region = credsConfig.AwsRegion
 
 	// if access access-key is present, it takes precedence
 	if credsConfig.AccessKey != "" {
-		creds = NewStaticCredentials(credsConfig.AccessKey, credsConfig.SecretKey)
+		creds = NewStaticCredentials(credsConfig.AccessKey, credsConfig.SecretKey, "")
 	} else if credsConfig.AwsCredentialsFile != "" {
 		creds = NewRefreshableSharedCredentials(credsConfig.AwsCredentialsFile, credsConfig.AwsProfile, time.Now)
 	}
