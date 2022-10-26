@@ -42,11 +42,12 @@ func (cp *StaticCredentialsProvider) Retrieve() (credentials.Value, error) {
 }
 
 // NewStaticCredentials initializes a new set of S3 credentials
-func NewStaticCredentials(accessKey, secretKey string) *credentials.Credentials {
+func NewStaticCredentials(accessKey, secretKey, sessionToken string) *credentials.Credentials {
 	p := &StaticCredentialsProvider{
 		credentials.Value{
 			AccessKeyID:     accessKey,
 			SecretAccessKey: secretKey,
+			SessionToken:    sessionToken,
 		},
 	}
 	return credentials.New(p)
