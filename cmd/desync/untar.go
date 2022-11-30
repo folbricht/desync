@@ -104,9 +104,9 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 		if err != nil {
 			return err
 		}
+		pb.SetTotal(int(info.Size()))
 		pb.Start()
 		defer pb.Finish()
-		pb.SetTotal(int(info.Size()))
 		r = io.TeeReader(f, pb)
 		return desync.UnTar(ctx, r, fs)
 	}
