@@ -174,6 +174,7 @@ retry:
 // GetObject reads and returns an object in the form of []byte from the store
 func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 	u, _ := r.location.Parse(name)
+	u.RawQuery = r.location.Query().Encode()
 	statusCode, responseBody, err := r.IssueRetryableHttpRequest("GET", u, func() io.Reader { return nil })
 	if err != nil {
 		return nil, err
