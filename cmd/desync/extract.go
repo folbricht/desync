@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,10 +35,12 @@ func newExtractCommand(ctx context.Context) *cobra.Command {
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
-Multiple optional seed indexes can be given with -seed. The matching blob needs
-to have the same name as the indexfile without the .caibx extension. If several
-seed files and indexes are available, the -seed-dir option can be used to
-automatically select call .caibx files in a directory as seeds. Use '-' to read
+Multiple optional seed indexes can be given with -seed. The matching blob should
+have the same name as the index file without the .caibx extension. Instead, if the
+matching blob data is in another location, or with a different name, you can explicitly
+set the path by writing the index file path, followed by a colon and the data path.
+If several seed files and indexes are available, the -seed-dir option can be used
+to automatically select all .caibx files in a directory as seeds. Use '-' to read
 the index from STDIN. If a seed is invalid, by default the extract operation will be
 aborted. With the -skip-invalid-seeds, the invalid seeds will be discarded and the
 extraction will continue without them. Otherwise with the -regenerate-invalid-seeds,
@@ -47,7 +50,8 @@ while processing, its invalid chunks will be taken from the self seed, or the st
 of aborting.`,
 		Example: `  desync extract -s http://192.168.1.1/ -c /path/to/local file.caibx largefile.bin
   desync extract -s /mnt/store -s /tmp/other/store file.tar.caibx file.tar
-  desync extract -s /mnt/store --seed /mnt/v1.caibx v2.caibx v2.vmdk`,
+  desync extract -s /mnt/store --seed /mnt/v1.caibx v2.caibx v2.vmdk
+  desync extract -s /mnt/store --seed /tmp/v1.caibx:/mnt/v1 v2.caibx v2.vmdk`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtract(ctx, opt, args)
@@ -164,14 +168,33 @@ func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.S
 	return desync.AssembleFile(ctx, name, idx, s, seeds, assembleOpt)
 }
 
-func readSeeds(dstFile string, locations []string, opts cmdStoreOptions) ([]desync.Seed, error) {
+func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
-	for _, srcIndexFile := range locations {
+	for _, seedInfo := range seedsInfo {
+		var (
+			srcIndexFile string
+			srcFile      string
+		)
+
+		if strings.HasSuffix(seedInfo, ".caibx") {
+			srcIndexFile = seedInfo
+			srcFile = strings.TrimSuffix(srcIndexFile, ".caibx")
+		} else {
+			seedArray := strings.Split(seedInfo, ":")
+			if len(seedArray) < 2 {
+				return nil, fmt.Errorf("the provided seed argument %q seems to be malformed", seedInfo)
+			} else if len(seedArray) > 2 {
+				// In the future we might add the ability to specify some additional options for the seeds.
+				desync.Log.WithField("seed", seedsInfo).Warning("Seed options are reserved for future use")
+			}
+			srcIndexFile = seedArray[0]
+			srcFile = seedArray[1]
+		}
+
 		srcIndex, err := readCaibxFile(srcIndexFile, opts)
 		if err != nil {
 			return nil, err
 		}
-		srcFile := strings.TrimSuffix(srcIndexFile, ".caibx")
 
 		seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
 		if err != nil {
