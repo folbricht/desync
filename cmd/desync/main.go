@@ -62,6 +62,7 @@ func main() {
 		newVerifyCommand(ctx),
 		newVerifyIndexCommand(ctx),
 		newMtreeCommand(ctx),
+		newManpageCommand(ctx, rootCmd),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
