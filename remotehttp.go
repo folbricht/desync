@@ -216,6 +216,10 @@ func (r *RemoteHTTP) GetChunk(id ChunkID) (*Chunk, error) {
 	p := r.nameFromID(id)
 	b, err := r.GetObject(p)
 	if err != nil {
+		// The base returns NoSuchObject, but it has to be ChunkMissing for routers to work
+		if _, ok := err.(NoSuchObject); ok {
+			return nil, ChunkMissing{id}
+		}
 		return nil, err
 	}
 	return NewChunkFromStorage(id, b, r.converters, r.opt.SkipVerify)
