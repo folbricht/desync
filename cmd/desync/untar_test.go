@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package main
@@ -39,23 +40,21 @@ func TestUntarCommandIndex(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Check that we repair broken chunks in chache
+// Check that we repair broken chunks in cache
 func TestUntarCommandRepair(t *testing.T) {
 	// Create an output dir to extract into
-	out, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(out)
+	out := t.TempDir()
 
-	// Create cache with invalid chunk
-	cache, err := ioutil.TempDir("", "brokencache")
-	require.NoError(t, err)
-	defer os.RemoveAll(cache)
+	// Create cache with invalid chunk by reading a chunk from another store, and writing it to the cache with the wrong id
+	cache := t.TempDir()
 
 	chunkId := "0589328ff916d08f5fe59a9aa0731571448e91341f37ca5484a85b9f0af14de3"
-	badChunkHash := "c672b8d1ef56ed28ab87c3622c5114069bdd3ad7b8f9737498d0c01ecef0967a"
-	err = os.Mkdir(path.Join(cache, chunkId[:4]), os.ModePerm)
+	badChunkHash := "0b2a199263ffb2600b6f8be2e03b7439ffb0ad05a00b867f427a716e3e386c2d"
+	err := os.Mkdir(path.Join(cache, chunkId[:4]), os.ModePerm)
 	require.NoError(t, err)
-	err = ioutil.WriteFile(path.Join(cache, chunkId[:4], chunkId+".cacnk"), []byte("42"), os.ModePerm)
+	b, err := os.ReadFile(path.Join("testdata/blob1.store", badChunkHash[:4], badChunkHash+".cacnk"))
+	require.NoError(t, err)
+	err = os.WriteFile(path.Join(cache, chunkId[:4], chunkId+".cacnk"), b, os.ModePerm)
 	require.NoError(t, err)
 
 	// Run "untar" with "--repair=false" -> get error
