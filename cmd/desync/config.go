@@ -32,10 +32,8 @@ type S3Creds struct {
 // Config is used to hold the global tool configuration. It's used to customize
 // store features and provide credentials where needed.
 type Config struct {
-	HTTPTimeout    time.Duration                  `json:"http-timeout,omitempty"`
-	HTTPErrorRetry int                            `json:"http-error-retry,omitempty"`
-	S3Credentials  map[string]S3Creds             `json:"s3-credentials"`
-	StoreOptions   map[string]desync.StoreOptions `json:"store-options"`
+	S3Credentials map[string]S3Creds             `json:"s3-credentials"`
+	StoreOptions  map[string]desync.StoreOptions `json:"store-options"`
 }
 
 // GetS3CredentialsFor attempts to find creds and region for an S3 location in the
