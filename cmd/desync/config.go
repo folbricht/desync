@@ -78,7 +78,7 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 // config file.
 func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions, err error) {
 	found := false
-	options = desync.StoreOptions{}
+	options = desync.NewStoreOptionsWithDefaults()
 	for k, v := range c.StoreOptions {
 		if locationMatch(k, location) {
 			if found {
