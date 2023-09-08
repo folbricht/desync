@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"time"
 
 	"github.com/folbricht/desync"
 	"github.com/spf13/pflag"
@@ -10,14 +11,15 @@ import (
 // cmdStoreOptions are used to pass additional options to store initialization from the
 // commandline. These generally override settings from the config file.
 type cmdStoreOptions struct {
-	n             int
-	clientCert    string
-	clientKey     string
-	caCert        string
-	skipVerify    bool
-	trustInsecure bool
-	cacheRepair   bool
-	errorRetry    int
+	n                      int
+	clientCert             string
+	clientKey              string
+	caCert                 string
+	skipVerify             bool
+	trustInsecure          bool
+	cacheRepair            bool
+	errorRetry             int
+	errorRetryBaseInterval time.Duration
 	pflag.FlagSet
 }
 
@@ -44,6 +46,9 @@ func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions
 	if o.FlagSet.Lookup("error-retry").Changed {
 		opt.ErrorRetry = o.errorRetry
 	}
+	if o.FlagSet.Lookup("error-retry-base-interval").Changed {
+		opt.ErrorRetryBaseInterval = o.errorRetryBaseInterval
+	}
 	return opt
 }
 
@@ -64,6 +69,7 @@ func addStoreOptions(o *cmdStoreOptions, f *pflag.FlagSet) {
 	f.BoolVarP(&o.trustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
 	f.BoolVarP(&o.cacheRepair, "cache-repair", "r", true, "replace invalid chunks in the cache from source")
 	f.IntVarP(&o.errorRetry, "error-retry", "e", desync.DefaultErrorRetry, "number of times to retry in case of network error")
+	f.DurationVarP(&o.errorRetryBaseInterval, "error-retry-base-interval", "b", 0, "initial retry delay, increases linearly with each subsequent attempt")
 
 	o.FlagSet = *f
 }
