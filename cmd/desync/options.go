@@ -69,7 +69,7 @@ func addStoreOptions(o *cmdStoreOptions, f *pflag.FlagSet) {
 	f.BoolVarP(&o.trustInsecure, "trust-insecure", "t", false, "trust invalid certificates")
 	f.BoolVarP(&o.cacheRepair, "cache-repair", "r", true, "replace invalid chunks in the cache from source")
 	f.IntVarP(&o.errorRetry, "error-retry", "e", desync.DefaultErrorRetry, "number of times to retry in case of network error")
-	f.DurationVarP(&o.errorRetryBaseInterval, "error-retry-base-interval", "b", 0, "initial retry delay, increases linearly with each subsequent attempt")
+	f.DurationVarP(&o.errorRetryBaseInterval, "error-retry-base-interval", "b", desync.DefaultErrorRetryBaseInterval, "initial retry delay, increases linearly with each subsequent attempt")
 
 	o.FlagSet = *f
 }

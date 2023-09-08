@@ -5,9 +5,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"os"
 	"testing"
+	"time"
 )
 
 const defaultErrorRetry = 3
+const DefaultErrorRetryBaseInterval = 500 * time.Millisecond
 
 func newTestOptionsCommand(opt *cmdStoreOptions) *cobra.Command {
 	cmd := &cobra.Command{}
@@ -18,46 +20,48 @@ func newTestOptionsCommand(opt *cmdStoreOptions) *cobra.Command {
 
 func TestErrorRetryOptions(t *testing.T) {
 	for _, test := range []struct {
-		name                string
-		args                []string
-		cfgFileContent      []byte
-		errorRetryStoreHit  int
-		errorRetryStoreMiss int
+		name                  string
+		args                  []string
+		cfgFileContent        []byte
+		errorRetryStoreHit    int
+		errorRetryStoreMiss   int
+		baseIntervalStoreHit  time.Duration
+		baseIntervalStoreMiss time.Duration
 	}{
-		{"Config with error-retry set",
+		{"Config with the error retry and base interval set",
 			[]string{""},
-			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20}}}`),
-			20, defaultErrorRetry,
+			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20, "error-retry-base-interval": 250000000}}}`),
+			20, defaultErrorRetry, 250000000, DefaultErrorRetryBaseInterval,
 		},
-		{"Error retry via command line args",
-			[]string{"--error-retry", "10"},
-			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20}}}`),
-			10, 10,
+		{"Error retry and base interval via command line args",
+			[]string{"--error-retry", "10", "--error-retry-base-interval", "1s"},
+			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20, "error-retry-base-interval": 250000000}}}`),
+			10, 10, 1000000000, 1000000000,
 		},
-		{"Config without error-retry",
+		{"Config without error retry nor base interval",
 			[]string{""},
 			[]byte(`{"store-options": {"/store/*/":{"uncompressed": true}}}`),
-			defaultErrorRetry, defaultErrorRetry,
+			defaultErrorRetry, defaultErrorRetry, DefaultErrorRetryBaseInterval, DefaultErrorRetryBaseInterval,
 		},
-		{"Config with default error-retry",
+		{"Config with default error retry and base interval",
 			[]string{""},
-			[]byte(`{"store-options": {"/store/*/":{"error-retry": 3}}}`),
-			defaultErrorRetry, defaultErrorRetry,
+			[]byte(`{"store-options": {"/store/*/":{"error-retry": 3, "error-retry-base-interval": 500000000}}}`),
+			defaultErrorRetry, defaultErrorRetry, DefaultErrorRetryBaseInterval, DefaultErrorRetryBaseInterval,
 		},
-		{"Config that disables error-retry",
+		{"Config that disables error retry and base interval",
 			[]string{""},
-			[]byte(`{"store-options": {"/store/*/":{"error-retry": 0}}}`),
-			0, defaultErrorRetry,
+			[]byte(`{"store-options": {"/store/*/":{"error-retry": 0, "error-retry-base-interval": 0}}}`),
+			0, defaultErrorRetry, 0, DefaultErrorRetryBaseInterval,
 		},
-		{"Disables error-retry via command line args",
-			[]string{"--error-retry", "0"},
-			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20}}}`),
-			0, 0,
+		{"Disables error retry and base interval via command line args",
+			[]string{"--error-retry", "0", "--error-retry-base-interval", "0"},
+			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20, "error-retry-base-interval": 250000000}}}`),
+			0, 0, 0, 0,
 		},
 		{"Force the default values via command line args",
-			[]string{"--error-retry", "3"},
-			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20}}}`),
-			defaultErrorRetry, defaultErrorRetry,
+			[]string{"--error-retry", "3", "--error-retry-base-interval", "500ms"},
+			[]byte(`{"store-options": {"/store/*/":{"error-retry": 20, "error-retry-base-interval": 750000000}}}`),
+			defaultErrorRetry, defaultErrorRetry, DefaultErrorRetryBaseInterval, DefaultErrorRetryBaseInterval,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -84,11 +88,13 @@ func TestErrorRetryOptions(t *testing.T) {
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
 			opt := cmdOpt.MergedWith(configOptions)
 			require.Equal(t, test.errorRetryStoreHit, opt.ErrorRetry)
+			require.Equal(t, test.baseIntervalStoreHit, opt.ErrorRetryBaseInterval)
 
 			configOptions, err = cfg.GetStoreOptionsFor("/missingStore")
 			opt = cmdOpt.MergedWith(configOptions)
 			require.NoError(t, err)
 			require.Equal(t, test.errorRetryStoreMiss, opt.ErrorRetry)
+			require.Equal(t, test.baseIntervalStoreMiss, opt.ErrorRetryBaseInterval)
 		})
 	}
 }
