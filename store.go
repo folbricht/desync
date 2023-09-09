@@ -2,10 +2,14 @@ package desync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
 )
+
+const DefaultErrorRetry = 3
+const DefaultErrorRetryBaseInterval = 500 * time.Millisecond
 
 // Store is a generic interface implemented by read-only stores, like SSH or
 // HTTP remote stores currently.
@@ -71,12 +75,11 @@ type StoreOptions struct {
 	Timeout time.Duration `json:"timeout,omitempty"`
 
 	// Number of times object retrieval should be attempted on error. Useful when dealing
-	// with unreliable connections. Default: 0
+	// with unreliable connections.
 	ErrorRetry int `json:"error-retry,omitempty"`
 
 	// Number of nanoseconds to wait before first retry attempt.
 	// Retry attempt number N for the same request will wait N times this interval.
-	// Default: 0 nanoseconds
 	ErrorRetryBaseInterval time.Duration `json:"error-retry-base-interval,omitempty"`
 
 	// If SkipVerify is true, this store will not verify the data it reads and serves up. This is
@@ -91,12 +94,27 @@ type StoreOptions struct {
 	Uncompressed bool `json:"uncompressed"`
 }
 
+// NewStoreOptionsWithDefaults creates a new StoreOptions struct with the default values set
+func NewStoreOptionsWithDefaults() (o StoreOptions) {
+	o.ErrorRetry = DefaultErrorRetry
+	o.ErrorRetryBaseInterval = DefaultErrorRetryBaseInterval
+	return o
+}
+
+func (o *StoreOptions) UnmarshalJSON(data []byte) error {
+	// Set all the default values before loading the JSON store options
+	o.ErrorRetry = DefaultErrorRetry
+	o.ErrorRetryBaseInterval = DefaultErrorRetryBaseInterval
+	type Alias StoreOptions
+	return json.Unmarshal(data, (*Alias)(o))
+}
+
 // Returns data converters that convert between plain and storage-format. Each layer
 // represents a modification such as compression or encryption and is applied in order
 // depending the direction of data. If data is written to storage, the layer's toStorage
 // method is called in the order they are returned. If data is read, the fromStorage
 // method is called in reverse order.
-func (o StoreOptions) converters() []converter {
+func (o *StoreOptions) converters() []converter {
 	var m []converter
 	if !o.Uncompressed {
 		m = append(m, Compressor{})

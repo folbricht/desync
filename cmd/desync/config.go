@@ -32,10 +32,8 @@ type S3Creds struct {
 // Config is used to hold the global tool configuration. It's used to customize
 // store features and provide credentials where needed.
 type Config struct {
-	HTTPTimeout    time.Duration                  `json:"http-timeout,omitempty"`
-	HTTPErrorRetry int                            `json:"http-error-retry,omitempty"`
-	S3Credentials  map[string]S3Creds             `json:"s3-credentials"`
-	StoreOptions   map[string]desync.StoreOptions `json:"store-options"`
+	S3Credentials map[string]S3Creds             `json:"s3-credentials"`
+	StoreOptions  map[string]desync.StoreOptions `json:"store-options"`
 }
 
 // GetS3CredentialsFor attempts to find creds and region for an S3 location in the
@@ -80,7 +78,7 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 // config file.
 func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions, err error) {
 	found := false
-	options = desync.StoreOptions{}
+	options = desync.NewStoreOptionsWithDefaults()
 	for k, v := range c.StoreOptions {
 		if locationMatch(k, location) {
 			if found {

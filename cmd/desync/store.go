@@ -123,16 +123,6 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 			return nil, err
 		}
 	case "http", "https":
-		// This is for backwards compatibility only, to support http-timeout and
-		// http-error-retry in the config file for a bit longer. If those are
-		// set, and the options for the store aren't, then use the old values.
-		// TODO: Remove this code and drop these config options in the future.
-		if opt.Timeout == 0 && cfg.HTTPTimeout > 0 {
-			opt.Timeout = cfg.HTTPTimeout
-		}
-		if opt.ErrorRetry == 0 && cfg.HTTPErrorRetry > 0 {
-			opt.ErrorRetry = cfg.HTTPErrorRetry
-		}
 		s, err = desync.NewRemoteHTTPStore(loc, opt)
 		if err != nil {
 			return nil, err
@@ -252,16 +242,6 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 			return nil, "", err
 		}
 	case "http", "https":
-		// This is for backwards compatibility only, to support http-timeout and
-		// http-error-retry in the config file for a bit longer. If those are
-		// set, and the options for the store aren't, then use the old values.
-		// TODO: Remove this code and drop these config options in the future.
-		if opt.Timeout == 0 && cfg.HTTPTimeout > 0 {
-			opt.Timeout = cfg.HTTPTimeout
-		}
-		if opt.ErrorRetry == 0 && cfg.HTTPErrorRetry > 0 {
-			opt.ErrorRetry = cfg.HTTPErrorRetry
-		}
 		s, err = desync.NewRemoteHTTPIndexStore(&p, opt)
 		if err != nil {
 			return nil, "", err
