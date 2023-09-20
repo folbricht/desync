@@ -64,6 +64,22 @@ func TestInfoCommand(t *testing.T) {
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768
 			}`)},
+		{"info command with cache",
+			[]string{"-s", "testdata/blob2.store", "--cache", "testdata/blob2.cache", "testdata/blob2.caibx"},
+			[]byte(`{
+				"total": 161,
+				"unique": 131,
+				"in-store": 131,
+				"in-seed": 0,
+				"in-cache": 18,
+				"not-in-seed-nor-cache": 113,
+				"size": 2097152,
+				"dedup-size-not-in-seed": 1114112,
+				"dedup-size-not-in-seed-nor-cache": 950410,
+				"chunk-size-min": 2048,
+				"chunk-size-avg": 8192,
+				"chunk-size-max": 32768
+			}`)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			exp := make(map[string]interface{})
