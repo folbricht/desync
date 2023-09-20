@@ -14,6 +14,7 @@ type infoOptions struct {
 	cmdStoreOptions
 	stores      []string
 	seeds       []string
+	cache       string
 	printFormat string
 }
 
@@ -38,6 +39,7 @@ in the seeds are also shown. Use '-' to read the index from STDIN.`,
 	flags := cmd.Flags()
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringSliceVar(&opt.seeds, "seed", nil, "seed indexes")
+	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.StringVarP(&opt.printFormat, "format", "f", "json", "output format, plain or json")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
@@ -55,15 +57,18 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 	}
 
 	var results struct {
-		Total         int    `json:"total"`
-		Unique        int    `json:"unique"`
-		InStore       uint64 `json:"in-store"`
-		InSeed        uint64 `json:"in-seed"`
-		Size          uint64 `json:"size"`
-		SizeNotInSeed uint64 `json:"dedup-size-not-in-seed"`
-		ChunkSizeMin  uint64 `json:"chunk-size-min"`
-		ChunkSizeAvg  uint64 `json:"chunk-size-avg"`
-		ChunkSizeMax  uint64 `json:"chunk-size-max"`
+		Total                 int    `json:"total"`
+		Unique                int    `json:"unique"`
+		InStore               uint64 `json:"in-store"`
+		InSeed                uint64 `json:"in-seed"`
+		InCache               uint64 `json:"in-cache"`
+		NotInSeedNorCache     uint64 `json:"not-in-seed-nor-cache"`
+		Size                  uint64 `json:"size"`
+		SizeNotInSeed         uint64 `json:"dedup-size-not-in-seed"`
+		SizeNotInSeedNorCache uint64 `json:"dedup-size-not-in-seed-nor-cache"`
+		ChunkSizeMin          uint64 `json:"chunk-size-min"`
+		ChunkSizeAvg          uint64 `json:"chunk-size-avg"`
+		ChunkSizeMax          uint64 `json:"chunk-size-max"`
 	}
 
 	dedupedSeeds := make(map[desync.ChunkID]struct{})
@@ -93,6 +98,14 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 	results.ChunkSizeAvg = c.Index.ChunkSizeAvg
 	results.ChunkSizeMax = c.Index.ChunkSizeMax
 
+	var cache desync.WriteStore
+	if opt.cache != "" {
+		cache, err = WritableStore(opt.cache, opt.cmdStoreOptions)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Go through each chunk from the index to count them, de-dup each chunks
 	// with a map and calculate the size of the chunks that are not available
 	// in seed
@@ -110,13 +123,28 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 			continue
 		}
 
+		inSeed := false
+		inCache := false
 		deduped[chunk.ID] = struct{}{}
 		if _, isAvailable := dedupedSeeds[chunk.ID]; isAvailable {
 			// This chunk is available in the seed
 			results.InSeed++
-		} else {
+			inSeed = true
+		}
+		if cache != nil {
+			if hasChunk, _ := cache.HasChunk(chunk.ID); hasChunk {
+				results.InCache++
+				inCache = true
+			}
+		}
+
+		if !inSeed {
 			// The seed doesn't have this chunk, sum its size
 			results.SizeNotInSeed += chunk.Size
+		}
+		if !inSeed && !inCache {
+			results.NotInSeedNorCache++
+			results.SizeNotInSeedNorCache += chunk.Size
 		}
 	}
 	results.Unique = len(deduped)
@@ -156,10 +184,13 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 	case "plain":
 		fmt.Println("Blob size:", results.Size)
 		fmt.Println("Size of deduplicated chunks not in seed:", results.SizeNotInSeed)
+		fmt.Println("Size of deduplicated chunks not in seed nor cache:", results.SizeNotInSeedNorCache)
 		fmt.Println("Total chunks:", results.Total)
 		fmt.Println("Unique chunks:", results.Unique)
 		fmt.Println("Chunks in store:", results.InStore)
 		fmt.Println("Chunks in seed:", results.InSeed)
+		fmt.Println("Chunks in cache:", results.InCache)
+		fmt.Println("Chunks not in seed nor cache:", results.NotInSeedNorCache)
 		fmt.Println("Chunk size min:", results.ChunkSizeMin)
 		fmt.Println("Chunk size avg:", results.ChunkSizeAvg)
 		fmt.Println("Chunk size max:", results.ChunkSizeMax)
