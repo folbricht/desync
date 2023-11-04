@@ -112,5 +112,5 @@ func runMtree(ctx context.Context, opt mtreeOptions, args []string) error {
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, mtreeFS, index, s, opt.n, nil)
+	return desync.UnTarIndex(ctx, mtreeFS, index, s, opt.n, desync.NullProgressBar{})
 }
