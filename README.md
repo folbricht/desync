@@ -385,6 +385,18 @@ Cache the chunks used in a couple of index files in a local store without actual
 desync cache -s ssh://192.168.1.1/path/to/casync.store/ -c /local/cache somefile.tar.caibx other.file.caibx
 ```
 
+Copy all chunks referenced in an index file from a remote HTTP store to a remote SFTP store.
+
+```text
+desync cache -s ssh://192.168.1.2/store -c sftp://192.168.1.3/path/to/store /path/to/index.caibx
+```
+
+Cache chunks from remote locally with non-standard port. Ignore existing files that are available locally from seed(s). This will only download chunks from the remote if they do not exist in the seed. Works with multiple seeds.
+```
+desync cache -s http://cdn:9876 -c /tmp/chunkstore --ignore /tmp/indices/existing-image.raw.caibx /tmp/images/existing-image.raw
+
+```
+
 List the chunks referenced in a caibx.
 
 ```text
@@ -488,12 +500,6 @@ server# desync index-server -s /mnt/indexes --writable -l :8080
 client# desync make -s /some/store http://192.168.1.1:8080/file.vmdk.caibx file.vmdk
 ```
 
-Copy all chunks referenced in an index file from a remote HTTP store to a remote SFTP store.
-
-```text
-desync cache -s ssh://192.168.1.2/store -c sftp://192.168.1.3/path/to/store /path/to/index.caibx
-```
-
 Start a TLS chunk server on port 443 acting as proxy for a remote chunk store in AWS with local cache. The credentials for AWS are expected to be in the config file under key `https://s3-eu-west-3.amazonaws.com`.
 
 ```text
@@ -510,6 +516,18 @@ Split a blob, create an index file and store the chunks in an S3 bucket named `s
 
 ```text
 S3_ACCESS_KEY=mykey S3_SECRET_KEY=mysecret desync make -s s3+http://127.0.0.1:9000/store index.caibx /some/blob
+```
+
+Index an existing local file. Does not create chunks
+
+```
+desync make image.raw.caibx /tmp/image.raw
+```
+
+Verify the index you just created
+
+```
+desync verify-index image.raw.caibx /tmp/image.raw
 ```
 
 FUSE mount an index file. This will make the indexed blob available as file underneath the mount point. The filename in the mount matches the name of the index with the extension removed. In this example `/some/mnt/` will contain one file `index`.
