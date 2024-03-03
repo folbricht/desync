@@ -66,6 +66,9 @@ func TestTimeThrottle(t *testing.T) {
 	wait = time.Duration(time.Second * 60)
 	throttle = TimeThrottle{time.Now(), wait}
 	present := throttle.lastExecutionTime
+	// Without the sleep this can fail. At least on windows
+	// https://github.com/folbricht/desync/actions/runs/8131384060/job/22220648517?pr=258
+	time.Sleep(time.Duration(time.Millisecond*100))
 	throttle.reset()
 	future := throttle.lastExecutionTime
 	require.True(t, present.Before(future))
