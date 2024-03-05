@@ -2,44 +2,15 @@ package desync
 
 import (
 	"context"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 )
-
-type TimeThrottle struct {
-	lastExecutionTime               time.Time
-	minimumTimeBetweenEachExecution time.Duration
-}
-
-func (timeThrottle *TimeThrottle) reset() {
-	timeThrottle.lastExecutionTime = time.Now()
-}
-
-func (timeThrottle *TimeThrottle) calculateThrottle() (bool, time.Duration) {
-	r := -(time.Since(timeThrottle.lastExecutionTime) - timeThrottle.minimumTimeBetweenEachExecution)
-	return r > 0, r
-}
-
-func (timeThrottle *TimeThrottle) waitIfRequired() {
-
-	wait, duration := timeThrottle.calculateThrottle()
-	if wait {
-		time.Sleep(duration)
-	}
-}
-
-func buildThrottle(waitPeriodMillis int) TimeThrottle {
-
-	d := time.Millisecond * time.Duration(waitPeriodMillis)
-	return TimeThrottle{time.Now().Add(-d), time.Duration(d)}
-}
 
 // Copy reads a list of chunks from the provided src store, and copies the ones
 // not already present in the dst store. The goal is to load chunks from remote
 // store to populate a cache. If progress is provided, it'll be called when a
 // chunk has been processed. Used to draw a progress bar, can be nil.
-func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, pb ProgressBar, shouldThrottle bool, waitPeriodMillis int) error {
+func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, pb ProgressBar) error {
 
 	in := make(chan ChunkID)
 	g, ctx := errgroup.WithContext(ctx)
@@ -53,8 +24,8 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 	// Start the workers
 	for i := 0; i < n; i++ {
 		g.Go(func() error {
-			waitPeriodMillis := 200
-			throttle := buildThrottle(waitPeriodMillis)
+			
+			
 
 			for id := range in {
 				pb.Increment()
@@ -65,12 +36,10 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 				if hasChunk {
 					continue
 				}
-				if shouldThrottle {
-					throttle.waitIfRequired()
-				}
+			
 
 				chunk, err := src.GetChunk(id)
-				throttle.reset()
+			
 				if err != nil {
 					return err
 				}
