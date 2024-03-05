@@ -43,8 +43,7 @@ func (s RateLimitedLocalStore) HasChunk(id ChunkID) (bool, error) {
 
 
 func (s RateLimitedLocalStore) StoreChunk(chunk *Chunk) error {
-	ctx, cancel := context.WithTimeout(context.Background(), s.options.timeout)
-	defer cancel()
+	
 	// This isn't ideal because what I'm really interested is in size over the wire.
 	_, err := chunk.Data()
 	if err != nil {
@@ -52,10 +51,14 @@ func (s RateLimitedLocalStore) StoreChunk(chunk *Chunk) error {
 	}
 	
 	//size := len(b)
+	ctx := context.Background()
+	//defer cancel()
+	
 	err = s.limiter.WaitN(ctx,1)
 	if err != nil {
 
 		fmt.Println("Rate limit context error:", err)
+		return err
 	}
 
 	return s.wrappedStore.StoreChunk(chunk)
