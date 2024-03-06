@@ -11,6 +11,19 @@ import (
 	"golang.org/x/time/rate"
 )
 
+
+func NewTestRateLimitedLocalStore(t *testing.T, eventRate float64, burstRate int, timeout time.Duration) *RateLimitedLocalStore{
+
+	src_store_dir := t.TempDir()
+	src_store, err := NewLocalStore(src_store_dir, StoreOptions{})
+	require.NoError(t, err)
+	
+	throttleOptions := ThrottleOptions{eventRate,burstRate,timeout}
+	return NewRateLimitedLocalStore(src_store, throttleOptions)
+
+
+}
+
 func random_data() ([]byte,error){
 
     b := make([]byte, 16)
@@ -21,6 +34,32 @@ func random_data() ([]byte,error){
     }
 
     return b,nil
+}
+
+
+func storeLoop(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedLocalStore){
+	
+	for i := 0; i < max; i++ {
+		
+		data,err := random_data()
+		require.NoError(t,err)
+		chunk := NewChunk(data)
+		chunk_ids[i] = chunk.ID()
+		err  = store.StoreChunk(chunk)
+		require.Nil(t,err)
+	}
+	
+
+}
+
+func chunkCheck(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedLocalStore) {
+	for i := 0; i < max; i++ {
+
+		has,err :=	store.HasChunk(chunk_ids[i])
+		require.Nil(t,err)
+		require.True(t,has)
+
+	}
 }
 
 func TestLimiter(t *testing.T){
@@ -53,38 +92,18 @@ func TestLimiter(t *testing.T){
 
 func TestCopyWithNoLimit(t *testing.T) {
 
-	src_store_dir := t.TempDir()
-
-	// assert our store is working
-	src_store, err := NewLocalStore(src_store_dir, StoreOptions{})
-	require.NoError(t, err)
 	
-	chunk_data := []byte("some data")
+	throttledStore := NewTestRateLimitedLocalStore(t,1,1,time.Second*60)
+	chunk_data := []byte("different data")
 	chunk := NewChunk(chunk_data)
 
-	err = src_store.StoreChunk(chunk)
-	require.Nil(t,err)
-
-	throttleOptions := ThrottleOptions{1,1,time.Second*60}
-	throttledStore  := NewRateLimitedLocalStore(src_store, throttleOptions)
-
 	
-	chunk_data = []byte("different data")
-	chunk = NewChunk(chunk_data)
-	chunk_id := chunk.ID()
-	
-	err  = throttledStore.StoreChunk(chunk)
-	require.Nil(t,err)
-	hasChunk, err := throttledStore.HasChunk(chunk_id)
-	require.Nil(t,err)
-	require.True(t,hasChunk)
-
 	start := time.Now()
 	// We start with 1 token in the bucket and replenish at 1 token per second
 	// This should take ~10 seconds.
 	// We test it takes 8s to guard against flakiness
 	for i := 0; i < 10; i++ {
-		err  = throttledStore.StoreChunk(chunk)
+		err  := throttledStore.StoreChunk(chunk)
 		// This test will eventually fail when I get deadlines enabled
 		require.Nil(t,err)
 	}
@@ -93,37 +112,37 @@ func TestCopyWithNoLimit(t *testing.T) {
 	require.True(t, finish.Sub(start).Seconds() > 8)
 }
 
+
 func TestForAFullBucketNoWait(t *testing.T) {
 
-	src_store_dir := t.TempDir()
+	chunk_count := 10
+	// Bucket has initial size chunk_count
+	throttledStore := NewTestRateLimitedLocalStore(t,1,chunk_count + 1,time.Second*60)
 
-	// assert our store is working
-	src_store, err := NewLocalStore(src_store_dir, StoreOptions{})
-	require.NoError(t, err)
-	throttleOptions := ThrottleOptions{1,100,time.Second*60}
-	throttledStore  := NewRateLimitedLocalStore(src_store, throttleOptions)
+	chunk_ids := make([]ChunkID, chunk_count)
+	start := time.Now()
+	// The bucket is full, we shouldn't have to wait
+	storeLoop(t,chunk_count,chunk_ids,*throttledStore)
+	finish := time.Now()
+	require.True(t, finish.Sub(start).Seconds() < 2)
+	chunkCheck(t,chunk_count,chunk_ids,*throttledStore)
+}
 
+func TestForAFastReplenishmentRateLittleWait(t *testing.T) {
+
+	chunk_count := 10
+	// Bucket only has one, but we replenish chunk_count tokens every second
+	throttledStore := NewTestRateLimitedLocalStore(t,float64( chunk_count + 1),1,time.Second*60)
+	
 	start := time.Now()
 
 	
-	chunk_ids := make([]ChunkID, 10)
-	// The bucket is full, we shouldn't wait
-	for i := 0; i < 10; i++ {
-		
-		data,err := random_data()
-		require.NoError(t,err)
-		chunk := NewChunk(data)
-		chunk_ids[i] = chunk.ID()
-		err  = throttledStore.StoreChunk(chunk)
-		require.Nil(t,err)
-	}
+	chunk_ids := make([]ChunkID, chunk_count)
+	storeLoop(t,chunk_count,chunk_ids,*throttledStore)
+	
 	finish := time.Now()
 	require.True(t, finish.Sub(start).Seconds() < 2)
-	for i := 0; i < 10; i++ {
+	chunkCheck(t,chunk_count,chunk_ids,*throttledStore)
 
-		has,err :=	throttledStore.HasChunk(chunk_ids[i])
-		require.Nil(t,err)
-		require.True(t,has)
-
-	}
+	
 }
