@@ -44,7 +44,6 @@ file with --ignore-chunks <file>.`,
 	flags.StringVarP(&opt.cache, "cache", "c", "", "target store")
 	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "index(s) to ignore chunks from")
 	flags.StringSliceVarP(&opt.ignoreChunks, "ignore-chunks", "", nil, "ignore chunks from text file")
-	flags.IntVarP(&opt.throttleRateMillis, "throttle-rate-millis","",0,"throttle copy in millis")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -118,5 +117,5 @@ func runCache(ctx context.Context, opt cacheOptions, args []string) error {
 	pb := desync.NewProgressBar("")
 
 	// Pull all the chunks, and load them into the cache in the process
-	return desync.Copy(ctx, ids, s, dst, opt.n, pb, opt.throttleRateMillis > 0, opt.throttleRateMillis)
+	return desync.Copy(ctx, ids, s, dst, opt.n, pb)
 }
