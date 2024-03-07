@@ -3,6 +3,7 @@ package desync
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -12,15 +13,16 @@ import (
 )
 
 
-func NewTestRateLimitedLocalStore(t *testing.T, eventRate float64, burstRate int, timeout time.Duration) *RateLimitedLocalStore{
+func NewTestRateLimitedLocalStore(t *testing.T, eventRate float64, burstRate int, timeout time.Duration, immediateOrFail bool) *RateLimitedLocalStore{
 
 	src_store_dir := t.TempDir()
 	src_store, err := NewLocalStore(src_store_dir, StoreOptions{})
 	require.NoError(t, err)
 	
-	throttleOptions := ThrottleOptions{eventRate,burstRate,timeout}
-	return NewRateLimitedLocalStore(src_store, throttleOptions)
-
+	throttleOptions := ThrottleOptions{eventRate,burstRate,timeout,immediateOrFail}
+	store :=NewRateLimitedLocalStore(src_store, throttleOptions)
+	require.Equal(t,store.options.burstRate,burstRate )
+	return store
 
 }
 
@@ -93,8 +95,8 @@ func TestLimiter(t *testing.T){
 func TestCopyWithNoLimit(t *testing.T) {
 
 	
-	throttledStore := NewTestRateLimitedLocalStore(t,1,1,time.Second*60)
-	chunk_data := []byte("different data")
+	throttledStore := NewTestRateLimitedLocalStore(t,1,1,time.Second*60, false)
+	chunk_data := []byte("different datas")
 	chunk := NewChunk(chunk_data)
 
 	
@@ -117,7 +119,7 @@ func TestForAFullBucketNoWait(t *testing.T) {
 
 	chunk_count := 10
 	// Bucket has initial size chunk_count
-	throttledStore := NewTestRateLimitedLocalStore(t,1,chunk_count + 1,time.Second*60)
+	throttledStore := NewTestRateLimitedLocalStore(t,1,chunk_count + 1,time.Second*60, false)
 
 	chunk_ids := make([]ChunkID, chunk_count)
 	start := time.Now()
@@ -131,8 +133,8 @@ func TestForAFullBucketNoWait(t *testing.T) {
 func TestForAFastReplenishmentRateLittleWait(t *testing.T) {
 
 	chunk_count := 10
-	// Bucket only has one, but we replenish chunk_count tokens every second
-	throttledStore := NewTestRateLimitedLocalStore(t,float64( chunk_count + 1),1,time.Second*60)
+	// Bucket only has one token, but we replenish chunk_count tokens every second
+	throttledStore := NewTestRateLimitedLocalStore(t,float64( chunk_count + 1),1,time.Second*60,false)
 	
 	start := time.Now()
 
@@ -144,5 +146,51 @@ func TestForAFastReplenishmentRateLittleWait(t *testing.T) {
 	require.True(t, finish.Sub(start).Seconds() < 2)
 	chunkCheck(t,chunk_count,chunk_ids,*throttledStore)
 
+	
+}
+
+func TestTimeout(t *testing.T) {
+
+	// Bucket only has one token, and we replenish very slowly. We timeout, so second invocation will fail
+	throttledStore := NewTestRateLimitedLocalStore(t,float64(1) /100,1,time.Millisecond*1000, false)
+	
+
+
+	data,err := random_data()
+	require.NoError(t,err)
+	chunk := NewChunk(data)
+	err  = throttledStore.StoreChunk(chunk)
+	require.Nil(t,err)
+	err  = throttledStore.StoreChunk(chunk)
+	require.NotNil(t,err)
+	require.True(t, errors.Is(err,RateLimitedExceeded))
+}
+
+func TestNoTimeout(t *testing.T) {
+	chunk_count := 10
+	// Bucket only has one token, replenish 1 per second. Timeout is 11 seconds.
+	throttledStore := NewTestRateLimitedLocalStore(t,1,1,time.Second*11, false)
+	
+
+	chunk_ids := make([]ChunkID, chunk_count)
+	storeLoop(t,chunk_count,chunk_ids,*throttledStore)
+}
+
+func TestImmediateOrFail(t *testing.T) {
+
+	// Bucket only has one token, and we replenish very slowly. Second invocation will fail
+	throttledStore := NewTestRateLimitedLocalStore(t,float64(1) /100,1,time.Second*60, true)
+	
+
+
+	data,err := random_data()
+	require.NoError(t,err)
+	chunk := NewChunk(data)
+
+	err  = throttledStore.StoreChunk(chunk)
+	require.Nil(t,err)
+
+	err  = throttledStore.StoreChunk(chunk)
+	require.NotNil(t,err)
 	
 }
