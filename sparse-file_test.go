@@ -79,18 +79,19 @@ func TestSparseFileRead(t *testing.T) {
 	require.NoError(t, err)
 	defer h.Close()
 
-	// Read a few randome ranges and compare to the expected blob content
-	for i := 0; i < 10; i++ {
-		start := rand.Intn(int(index.Length()))
+	// Read a few random ranges and compare to the expected blob content
+	for i := 0; i < 1000; i++ {
 		length := rand.Intn(int(index.Index.ChunkSizeMax))
+		offset := rand.Intn(int(index.Length()) - length)
+		
 
 		fromSparse := make([]byte, length)
 		fromBlob := make([]byte, length)
 
-		_, err := h.ReadAt(fromSparse, int64(start))
+		_, err := h.ReadAt(fromSparse, int64(offset))
 		require.NoError(t, err)
 
-		_, err = bytes.NewReader(b).ReadAt(fromBlob, int64(start))
+		_, err = bytes.NewReader(b).ReadAt(fromBlob, int64(offset))
 		require.NoError(t, err)
 
 		require.Equal(t, fromBlob, fromSparse)
