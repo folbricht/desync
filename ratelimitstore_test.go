@@ -13,14 +13,14 @@ import (
 )
 
 
-func NewTestRateLimitedLocalStore(t *testing.T, eventRate float64, burstRate int, timeout time.Duration, immediateOrFail bool) *RateLimitedLocalStore{
+func NewTestRateLimitedLocalStore(t *testing.T, eventRate float64, burstRate int, timeout time.Duration, immediateOrFail bool) *RateLimitedStore{
 
 	src_store_dir := t.TempDir()
 	src_store, err := NewLocalStore(src_store_dir, StoreOptions{})
 	require.NoError(t, err)
 	
 	throttleOptions := ThrottleOptions{eventRate,burstRate,timeout,immediateOrFail}
-	store :=NewRateLimitedLocalStore(src_store, throttleOptions)
+	store :=NewRateLimitedStore(src_store, throttleOptions)
 	require.Equal(t,store.options.burstRate,burstRate )
 	return store
 
@@ -38,23 +38,28 @@ func random_data() ([]byte,error){
     return b,nil
 }
 
+func makeChunk(t *testing.T,) *Chunk{
+	data,err := random_data()
+	require.NoError(t,err)
+	chunk := NewChunk(data)
+	return chunk
+}
 
-func storeLoop(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedLocalStore){
+func storeLoop(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedStore){
 	
 	for i := 0; i < max; i++ {
 		
-		data,err := random_data()
-		require.NoError(t,err)
-		chunk := NewChunk(data)
+		
+		chunk := makeChunk(t)
 		chunk_ids[i] = chunk.ID()
-		err  = store.StoreChunk(chunk)
+		err  := store.StoreChunk(chunk)
 		require.Nil(t,err)
 	}
 	
 
 }
 
-func chunkCheck(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedLocalStore) {
+func chunkCheck(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedStore) {
 	for i := 0; i < max; i++ {
 
 		has,err :=	store.HasChunk(chunk_ids[i])
@@ -192,5 +197,49 @@ func TestImmediateOrFail(t *testing.T) {
 
 	err  = throttledStore.StoreChunk(chunk)
 	require.NotNil(t,err)
+	
+}
+
+func TestHasNoChunk(t *testing.T) {
+	
+	throttledStore := NewTestRateLimitedLocalStore(t,2,2,time.Second*11, false)
+	chunk := makeChunk(t)
+	has, err := throttledStore.HasChunk(chunk.ID())
+	require.Nil(t,err)
+	require.False(t, has)
+	
+}
+
+func TestStoresAndHasChunk(t *testing.T) {
+	
+	throttledStore := NewTestRateLimitedLocalStore(t,2,2,time.Second*1, false)
+	chunk := makeChunk(t)
+	err := throttledStore.StoreChunk(chunk)
+	require.Nil(t,err)
+	has, err := throttledStore.HasChunk(chunk.ID())
+	require.Nil(t,err)
+	require.True(t, has)
+	
+}
+
+
+func TestStoresAndHasChunkWithWaits(t *testing.T) {
+	
+	// Start with 1 token, replenish at 1 token per second. Consume 1 token per HasToken, should take ~5s
+	throttledStore := NewTestRateLimitedLocalStore(t,float64(1),1,time.Second*10, false)
+	chunk := makeChunk(t)
+	start := time.Now()
+	err := throttledStore.StoreChunk(chunk)
+	require.Nil(t,err)
+	count:= 0
+	for count < 5{
+		count++
+		has, err := throttledStore.HasChunk(chunk.ID())
+		require.Nil(t,err)
+		require.True(t, has)
+	}
+	finish := time.Now()
+	require.True(t, finish.Sub(start).Seconds() < 7)
+	require.True(t, finish.Sub(start).Seconds() > 3)
 	
 }

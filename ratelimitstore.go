@@ -16,7 +16,8 @@ type ThrottleOptions struct {
 	immediateOrFail bool
 }
 
-type RateLimitedLocalStore struct {
+
+type RateLimitedStore struct {
 
 	wrappedStore WriteStore
 
@@ -28,25 +29,42 @@ type RateLimitedLocalStore struct {
 
 var RateLimitedExceeded = errors.New("Rate Limit Exceeded")
 
-func NewRateLimitedLocalStore(s WriteStore, options ThrottleOptions) *RateLimitedLocalStore {
+
+func NewRateLimitedStore(s WriteStore, options ThrottleOptions) *RateLimitedStore {
 	
 	limiter := rate.NewLimiter(rate.Limit(options.eventRate), options.burstRate)
-	return &RateLimitedLocalStore{wrappedStore: s,limiter: limiter, options: options }
+	return &RateLimitedStore{wrappedStore: s,limiter: limiter, options: options }
 }
 
-func (s RateLimitedLocalStore) GetChunk(id ChunkID) (*Chunk, error) {
+func (s RateLimitedStore) GetChunk(id ChunkID) (*Chunk, error) {
 
-	return s.wrappedStore.GetChunk(id)
+	chunk,err := s.wrappedStore.GetChunk(id)
+	if err != nil{
+		return chunk, err
+	}
+	ctx, cancel:= context.WithTimeout(context.Background(), s.options.timeout)
+	defer cancel()
+	err  = s.limiter.WaitN(ctx,1)
+	return chunk, err
 }
 
-func (s RateLimitedLocalStore) HasChunk(id ChunkID) (bool, error) {
+func (s RateLimitedStore) HasChunk(id ChunkID) (bool, error) {
 
+	
 
-	return s.wrappedStore.HasChunk(id)
+	has,err := s.wrappedStore.HasChunk(id)
+	if err != nil{
+		return has, err
+	}
+	ctx, cancel:= context.WithTimeout(context.Background(), s.options.timeout)
+	defer cancel()
+	err  = s.limiter.WaitN(ctx,1)
+	return has, err
+	
 }
 
 
-func (s RateLimitedLocalStore) StoreChunk(chunk *Chunk) error {
+func (s RateLimitedStore) StoreChunk(chunk *Chunk) error {
 	
 	// This isn't ideal because what I'm really interested is in size over the wire.
 	_, err := chunk.Data()
