@@ -3,8 +3,10 @@ package desync
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
+	"net/http/httptest"
+	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,13 +15,13 @@ import (
 )
 
 
-func NewTestRateLimitedLocalStore(t *testing.T, eventRate float64, burstRate int, timeout time.Duration, immediateOrFail bool) *RateLimitedStore{
+func NewTestRateLimitedLocalStore(t *testing.T, eventRate float64, burstRate int) *RateLimitedStore{
 
 	src_store_dir := t.TempDir()
 	src_store, err := NewLocalStore(src_store_dir, StoreOptions{})
 	require.NoError(t, err)
 	
-	throttleOptions := ThrottleOptions{eventRate,burstRate,timeout,immediateOrFail}
+	throttleOptions := ThrottleOptions{eventRate,burstRate}
 	store :=NewRateLimitedStore(src_store, throttleOptions)
 	require.Equal(t,store.options.burstRate,burstRate )
 	return store
@@ -100,7 +102,7 @@ func TestLimiter(t *testing.T){
 func TestCopyWithNoLimit(t *testing.T) {
 
 	
-	throttledStore := NewTestRateLimitedLocalStore(t,1,1,time.Second*60, false)
+	throttledStore := NewTestRateLimitedLocalStore(t,1,1)
 	chunk_data := []byte("different datas")
 	chunk := NewChunk(chunk_data)
 
@@ -124,7 +126,7 @@ func TestForAFullBucketNoWait(t *testing.T) {
 
 	chunk_count := 10
 	// Bucket has initial size chunk_count
-	throttledStore := NewTestRateLimitedLocalStore(t,1,chunk_count + 1,time.Second*60, false)
+	throttledStore := NewTestRateLimitedLocalStore(t,1,chunk_count + 1)
 
 	chunk_ids := make([]ChunkID, chunk_count)
 	start := time.Now()
@@ -139,7 +141,7 @@ func TestForAFastReplenishmentRateLittleWait(t *testing.T) {
 
 	chunk_count := 10
 	// Bucket only has one token, but we replenish chunk_count tokens every second
-	throttledStore := NewTestRateLimitedLocalStore(t,float64( chunk_count + 1),1,time.Second*60,false)
+	throttledStore := NewTestRateLimitedLocalStore(t,float64( chunk_count + 1),1)
 	
 	start := time.Now()
 
@@ -154,55 +156,21 @@ func TestForAFastReplenishmentRateLittleWait(t *testing.T) {
 	
 }
 
-func TestTimeout(t *testing.T) {
-
-	// Bucket only has one token, and we replenish very slowly. We timeout, so second invocation will fail
-	throttledStore := NewTestRateLimitedLocalStore(t,float64(1) /100,1,time.Millisecond*1000, false)
-	
-
-
-	data,err := random_data()
-	require.NoError(t,err)
-	chunk := NewChunk(data)
-	err  = throttledStore.StoreChunk(chunk)
-	require.Nil(t,err)
-	err  = throttledStore.StoreChunk(chunk)
-	require.NotNil(t,err)
-	require.True(t, errors.Is(err,RateLimitedExceeded))
-}
 
 func TestNoTimeout(t *testing.T) {
 	chunk_count := 10
 	// Bucket only has one token, replenish 1 per second. Timeout is 11 seconds.
-	throttledStore := NewTestRateLimitedLocalStore(t,1,1,time.Second*11, false)
+	throttledStore := NewTestRateLimitedLocalStore(t,1,1)
 	
 
 	chunk_ids := make([]ChunkID, chunk_count)
 	storeLoop(t,chunk_count,chunk_ids,*throttledStore)
 }
 
-func TestImmediateOrFail(t *testing.T) {
-
-	// Bucket only has one token, and we replenish very slowly. Second invocation will fail
-	throttledStore := NewTestRateLimitedLocalStore(t,float64(1) /100,1,time.Second*60, true)
-	
-
-
-	data,err := random_data()
-	require.NoError(t,err)
-	chunk := NewChunk(data)
-
-	err  = throttledStore.StoreChunk(chunk)
-	require.Nil(t,err)
-
-	err  = throttledStore.StoreChunk(chunk)
-	require.NotNil(t,err)
-	
-}
 
 func TestHasNoChunk(t *testing.T) {
 	
-	throttledStore := NewTestRateLimitedLocalStore(t,2,2,time.Second*11, false)
+	throttledStore := NewTestRateLimitedLocalStore(t,2,2)
 	chunk := makeChunk(t)
 	has, err := throttledStore.HasChunk(chunk.ID())
 	require.Nil(t,err)
@@ -212,7 +180,7 @@ func TestHasNoChunk(t *testing.T) {
 
 func TestStoresAndHasChunk(t *testing.T) {
 	
-	throttledStore := NewTestRateLimitedLocalStore(t,2,2,time.Second*1, false)
+	throttledStore := NewTestRateLimitedLocalStore(t,2,2)
 	chunk := makeChunk(t)
 	err := throttledStore.StoreChunk(chunk)
 	require.Nil(t,err)
@@ -225,8 +193,8 @@ func TestStoresAndHasChunk(t *testing.T) {
 
 func TestStoresAndHasChunkWithWaits(t *testing.T) {
 	
-	// Start with 1 token, replenish at 1 token per second. Consume 1 token per HasToken, should take ~5s
-	throttledStore := NewTestRateLimitedLocalStore(t,float64(1),1,time.Second*10, false)
+	// Start with 1 token, replenish at 1 token per second. Consume 1 token per HasChunk, should take ~5s
+	throttledStore := NewTestRateLimitedLocalStore(t,float64(1),1)
 	chunk := makeChunk(t)
 	start := time.Now()
 	err := throttledStore.StoreChunk(chunk)
@@ -241,5 +209,78 @@ func TestStoresAndHasChunkWithWaits(t *testing.T) {
 	finish := time.Now()
 	require.True(t, finish.Sub(start).Seconds() < 7)
 	require.True(t, finish.Sub(start).Seconds() > 3)
+	
+}
+
+func TestHTTPHandlerReadWriteWithThrottle(t *testing.T) {
+
+
+	tests:= map[string]struct {
+		eventRate float64
+		burstRate int 
+		minTime float64
+		maxTime float64
+		ops int 
+		readers int 
+	} {
+		
+		"full bucket" : {10,220,0,5,100,100},
+		"bucket with 50 tokens and a 10 t/s replenishment rate" : {10,50,13,17,100,100},
+		"bucket with 1 tokens and a 0.2 t/s replenishment rate" : {0.2,1,45,55,5,5},
+		
+	}
+
+	for name, test := range tests {
+		t.Run(name,func(t *testing.T) {
+
+	
+	
+	upstream:= NewTestRateLimitedLocalStore(t,test.eventRate,test.burstRate)
+	rw := httptest.NewServer(NewHTTPHandler(upstream, true, false, []converter{Compressor{}}, ""))
+	defer rw.Close()
+
+	chunkIdChan := make(chan ChunkID,test.ops)
+	defer close(chunkIdChan)
+
+	var wg sync.WaitGroup
+	rwStoreURL, _ := url.Parse(rw.URL)
+	start := time.Now()
+	for i:=0; i < test.readers; i++{
+
+		
+		go func ()  {
+			defer wg.Done()
+			
+			rwStore, err := NewRemoteHTTPStore(rwStoreURL, StoreOptions{})
+			require.NoError(t, err)
+			dataIn := []byte("some data")
+			chunkIn := NewChunk(dataIn)
+			err = rwStore.StoreChunk(chunkIn)
+			require.NoError(t, err)
+			chunkIdChan <- chunkIn.ID()
+		
+		}()
+		wg.Add(1) 
+		go func ()  {
+			defer wg.Done()
+			rwStore, err := NewRemoteHTTPStore(rwStoreURL, StoreOptions{})
+			require.NoError(t, err)
+			id  := <- chunkIdChan
+			hasChunk, err := rwStore.HasChunk(id)
+			require.NoError(t, err)
+			require.True(t, hasChunk)
+		
+		}()
+		wg.Add(1)
+	}
+	
+	wg.Wait()
+
+	finish := time.Now()
+	diff := finish.Sub(start).Seconds()
+	require.True(t, diff < test.maxTime)
+	require.True(t, diff > test.minTime)
+	})
+}
 	
 }

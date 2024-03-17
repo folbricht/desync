@@ -3,7 +3,6 @@ package desync
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
@@ -12,8 +11,8 @@ import (
 type ThrottleOptions struct {
 	eventRate                float64
 	burstRate int
-	timeout time.Duration
-	immediateOrFail bool
+
+
 }
 
 
@@ -42,8 +41,8 @@ func (s RateLimitedStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if err != nil{
 		return chunk, err
 	}
-	ctx, cancel:= context.WithTimeout(context.Background(), s.options.timeout)
-	defer cancel()
+	ctx := context.Background()
+
 	err  = s.limiter.WaitN(ctx,1)
 	return chunk, err
 }
@@ -56,8 +55,7 @@ func (s RateLimitedStore) HasChunk(id ChunkID) (bool, error) {
 	if err != nil{
 		return has, err
 	}
-	ctx, cancel:= context.WithTimeout(context.Background(), s.options.timeout)
-	defer cancel()
+	ctx  :=context.Background()
 	err  = s.limiter.WaitN(ctx,1)
 	return has, err
 	
@@ -72,18 +70,12 @@ func (s RateLimitedStore) StoreChunk(chunk *Chunk) error {
 		return err
 	}
 	
-	//size := len(b)
-	ctx, cancel:= context.WithTimeout(context.Background(), s.options.timeout)
-	defer cancel()
 	
-	if s.options.immediateOrFail{
-	   if !s.limiter.AllowN(time.Now(),1){
-			err = errors.New("Unable to immediately store")
-	   }
-	} else{
-		err = s.limiter.WaitN(ctx,1)
-	}
+	ctx := context.Background()
 	
+	
+	
+	err = s.limiter.WaitN(ctx,1)
 	if err != nil {
 
 		fmt.Println("Rate limit context error:", err)
@@ -93,3 +85,10 @@ func (s RateLimitedStore) StoreChunk(chunk *Chunk) error {
 	return s.wrappedStore.StoreChunk(chunk)
 	
 }
+
+func (s RateLimitedStore) String() string {
+	return s.wrappedStore.String()
+}
+
+
+func (s RateLimitedStore) Close() error { return nil }
