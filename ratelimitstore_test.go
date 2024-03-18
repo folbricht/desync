@@ -61,8 +61,8 @@ func storeLoop(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedStor
 
 }
 
-func chunkCheck(t *testing.T, max int, chunk_ids []ChunkID, store RateLimitedStore) {
-	for i := 0; i < max; i++ {
+func chunkCheck(t *testing.T,  chunk_ids []ChunkID, store RateLimitedStore) {
+	for i := 0; i < len(chunk_ids); i++ {
 
 		has,err :=	store.HasChunk(chunk_ids[i])
 		require.Nil(t,err)
@@ -134,7 +134,7 @@ func TestForAFullBucketNoWait(t *testing.T) {
 	storeLoop(t,chunk_count,chunk_ids,*throttledStore)
 	finish := time.Now()
 	require.True(t, finish.Sub(start).Seconds() < 2)
-	chunkCheck(t,chunk_count,chunk_ids,*throttledStore)
+	chunkCheck(t,chunk_ids,*throttledStore)
 }
 
 func TestForAFastReplenishmentRateLittleWait(t *testing.T) {
@@ -151,7 +151,7 @@ func TestForAFastReplenishmentRateLittleWait(t *testing.T) {
 	
 	finish := time.Now()
 	require.True(t, finish.Sub(start).Seconds() < 2)
-	chunkCheck(t,chunk_count,chunk_ids,*throttledStore)
+	chunkCheck(t,chunk_ids,*throttledStore)
 
 	
 }
@@ -283,4 +283,50 @@ func TestHTTPHandlerReadWriteWithThrottle(t *testing.T) {
 	})
 }
 	
+}
+
+func TestWithCopy(t *testing.T){
+
+	tests := map[string]struct{
+		
+		chunkCount int
+		eventRate float64
+		burstRate int
+		minTime float64
+		maxTime float64
+	}{
+		"empty-ish buckets 10 token per second" : {10,10,1,0,5},
+		"full buckets one token per second" : {100,1,1000,0,5},
+		"100 token buckets 500-hundred token per second" : {1000,500,100,6,9},
+
+
+	}
+
+	for name, test := range tests{
+			t.Run(name,func(t *testing.T) {
+		
+
+
+		chunkCount := test.chunkCount
+		chunkIds := make([]ChunkID, chunkCount)
+		remote := NewTestRateLimitedLocalStore(t,test.eventRate,int(test.burstRate))
+		local := NewTestRateLimitedLocalStore(t,test.eventRate,int(test.burstRate))
+		ctxt := context.Background()
+		pb := NewProgressBar("")
+		start := time.Now()
+		// This will consume chunkCount ops
+		storeLoop(t,chunkCount,chunkIds,*remote)
+		
+		// This will consume chunkCount*4 tokens
+		err := Copy(ctxt,chunkIds,remote,local,10, pb)
+		chunkCheck(t,chunkIds,*local)
+		require.Nil(t,err)
+		finish := time.Now()
+		diff := finish.Sub(start).Seconds()
+		require.True(t, diff < test.maxTime)
+		require.True(t, diff > test.minTime)
+
+		})
+	}
+
 }
