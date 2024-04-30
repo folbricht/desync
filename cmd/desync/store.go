@@ -138,7 +138,7 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 			lookup = minio.BucketLookupPath
 		case "", "auto":
 		default:
-			return nil, fmt.Errorf("unknown S3 bucket lookup type: %q", s)
+			return nil, fmt.Errorf("unknown S3 bucket lookup type: %q", ls)
 		}
 		s, err = desync.NewS3Store(loc, s3Creds, region, opt, lookup)
 		if err != nil {
