@@ -245,7 +245,7 @@ Available configuration values:
   - `timeout` - Time limit for chunk read or write operation in nanoseconds. Default: 1 minute. If set to a negative value, timeout is infinite.
   - `error-retry` - Number of times to retry failed chunk requests. Default: 0.
   - `error-retry-base-interval` - Number of nanoseconds to wait before first retry attempt. Retry attempt number N for the same request will wait N times this interval. Default: 0.
-  - `client-cert` - Cerificate file to be used for stores where the server requires mutual SSL.
+  - `client-cert` - Certificate file to be used for stores where the server requires mutual SSL.
   - `client-key` - Key file to be used for stores where the server requires mutual SSL.
   - `ca-cert` - Certificate file containing trusted certs or CAs.
   - `trust-insecure` - Trust any certificate presented by the server.
