@@ -52,7 +52,7 @@ func (fs MtreeFS) CreateFile(n NodeFile) error {
 		if _, err := io.Copy(h, n.Data); err != nil {
 			return err
 		}
-		attr = append(attr, fmt.Sprintf("sha56digest=%x", h.Sum(nil)))
+		attr = append(attr, fmt.Sprintf("sha256digest=%x", h.Sum(nil)))
 	default:
 		return fmt.Errorf("unsupported mtree hash algorithm %d", Digest.Algorithm())
 	}
