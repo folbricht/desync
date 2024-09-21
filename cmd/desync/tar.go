@@ -43,7 +43,7 @@ By default, input is read from local disk. Using --input-format=tar,
 the input can be a tar file or stream to STDIN with '-'.
 `,
 		Example: `  desync tar documents.catar $HOME/Documents
-  desync tar -i -s /path/to/local pics.caibx $HOME/Pictures`,
+  desync tar -i -s /path/to/local pics.caidx $HOME/Pictures`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTar(ctx, opt, args)
