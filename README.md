@@ -76,7 +76,7 @@ The tool is provided for convenience. It uses the desync library and makes most 
 The following builds the binary and installs it into $HOME/go/bin by default.
 
 ```text
-GO111MODULE=on go get -v github.com/folbricht/desync/cmd/desync
+go install -v github.com/folbricht/desync/cmd/desync@latest
 ```
 
 Alternative method using a clone, building from the tip of the master branch.
