@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func TestInfoCommand(t *testing.T) {
 	for _, test := range []struct {
 		name           string
@@ -29,6 +28,7 @@ func TestInfoCommand(t *testing.T) {
 				"size": 2097152,
 				"dedup-size-not-in-seed": 1114112,
 				"dedup-size-not-in-seed-nor-cache": 1114112,
+				"dedup-size-not-in-seed-nor-cache-compressed": 0,
 				"chunk-size-min": 2048,
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768
@@ -45,12 +45,13 @@ func TestInfoCommand(t *testing.T) {
 				"size": 2097152,
 				"dedup-size-not-in-seed": 80029,
 				"dedup-size-not-in-seed-nor-cache": 80029,
+				"dedup-size-not-in-seed-nor-cache-compressed": 0,
 				"chunk-size-min": 2048,
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768
 			}`)},
 		{"info command with seed and cache",
-			[]string{"-s", "testdata/blob2.store", "--seed", "testdata/blob1.caibx", "--cache", "testdata/blob2.cache", "testdata/blob2.caibx"},
+			[]string{"-s", "testdata/blob2.store", "--seed", "testdata/blob1.caibx", "--cache", "testdata/blob2.cache", "--chunks-info", "testdata/blob2_chunks_info.json", "testdata/blob2.caibx"},
 			[]byte(`{
 				"total": 161,
 				"unique": 131,
@@ -61,12 +62,13 @@ func TestInfoCommand(t *testing.T) {
 				"size": 2097152,
 				"dedup-size-not-in-seed": 80029,
 				"dedup-size-not-in-seed-nor-cache": 80029,
+				"dedup-size-not-in-seed-nor-cache-compressed": 76000,
 				"chunk-size-min": 2048,
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768
 			}`)},
 		{"info command with cache",
-			[]string{"-s", "testdata/blob2.store", "--cache", "testdata/blob2.cache", "testdata/blob2.caibx"},
+			[]string{"-s", "testdata/blob2.store", "--cache", "testdata/blob2.cache", "--chunks-info", "testdata/blob2_chunks_info.json", "testdata/blob2.caibx"},
 			[]byte(`{
 				"total": 161,
 				"unique": 131,
@@ -77,6 +79,24 @@ func TestInfoCommand(t *testing.T) {
 				"size": 2097152,
 				"dedup-size-not-in-seed": 1114112,
 				"dedup-size-not-in-seed-nor-cache": 853943,
+				"dedup-size-not-in-seed-nor-cache-compressed": 818145,
+				"chunk-size-min": 2048,
+				"chunk-size-avg": 8192,
+				"chunk-size-max": 32768
+			}`)},
+		{"info command with chunks info that doesn't have the compressed size for all chunk",
+			[]string{"-s", "testdata/blob2.store", "--chunks-info", "testdata/blob2_chunks_info_missing.json", "testdata/blob2.caibx"},
+			[]byte(`{
+				"total": 161,
+				"unique": 131,
+				"in-store": 131,
+				"in-seed": 0,
+				"in-cache": 0,
+				"not-in-seed-nor-cache": 131,
+				"size": 2097152,
+				"dedup-size-not-in-seed": 1114112,
+				"dedup-size-not-in-seed-nor-cache": 1114112,
+				"dedup-size-not-in-seed-nor-cache-compressed": 0,
 				"chunk-size-min": 2048,
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768

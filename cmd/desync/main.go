@@ -51,6 +51,7 @@ func main() {
 		newChopCommand(ctx),
 		newChunkCommand(ctx),
 		newInfoCommand(ctx),
+		newinspectChunksCommand(ctx),
 		newListCommand(ctx),
 		newMountIndexCommand(ctx),
 		newPruneCommand(ctx),

@@ -2,6 +2,7 @@ package desync
 
 import (
 	"encoding/hex"
+	"encoding/json"
 
 	"github.com/pkg/errors"
 )
@@ -29,6 +30,22 @@ func ChunkIDFromString(id string) (ChunkID, error) {
 	return ChunkIDFromSlice(b)
 }
 
-func (c ChunkID) String() string {
+func (c *ChunkID) String() string {
 	return hex.EncodeToString(c[:])
+}
+
+func (c *ChunkID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
+}
+
+func (c *ChunkID) UnmarshalJSON(data []byte) error {
+	var (
+		str string
+		err error
+	)
+	if err = json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	*c, err = ChunkIDFromString(str)
+	return err
 }
