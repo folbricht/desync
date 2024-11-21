@@ -14,6 +14,7 @@ type cacheOptions struct {
 	cache         string
 	ignoreIndexes []string
 	ignoreChunks  []string
+	throttleRateMillis int
 }
 
 func newCacheCommand(ctx context.Context) *cobra.Command {

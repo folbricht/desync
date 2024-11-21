@@ -11,8 +11,10 @@ import (
 // store to populate a cache. If progress is provided, it'll be called when a
 // chunk has been processed. Used to draw a progress bar, can be nil.
 func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, pb ProgressBar) error {
+
 	in := make(chan ChunkID)
 	g, ctx := errgroup.WithContext(ctx)
+
 
 	// Setup and start the progressbar if any
 	pb.SetTotal(len(ids))
@@ -22,6 +24,9 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 	// Start the workers
 	for i := 0; i < n; i++ {
 		g.Go(func() error {
+			
+			
+
 			for id := range in {
 				pb.Increment()
 				hasChunk, err := dst.HasChunk(id)
@@ -31,7 +36,10 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 				if hasChunk {
 					continue
 				}
+			
+
 				chunk, err := src.GetChunk(id)
+			
 				if err != nil {
 					return err
 				}
