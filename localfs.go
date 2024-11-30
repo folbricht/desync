@@ -81,14 +81,14 @@ func (fs *LocalFS) CreateFile(n NodeFile) error {
 	if _, err = io.Copy(f, n.Data); err != nil {
 		return err
 	}
-	if n.MTime == time.Unix(0, 0) {
-		return nil
-	}
 
 	if err := fs.SetFilePermissions(n); err != nil {
 		return err
 	}
 
+	if n.MTime == time.Unix(0, 0) {
+		return nil
+	}
 	return os.Chtimes(dst, n.MTime, n.MTime)
 }
 
