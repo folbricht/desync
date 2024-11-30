@@ -57,7 +57,8 @@ func TestChunkerLargeFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		hash := ChunkID(sha512.Sum512_256(buf)).String()
+		chunkID := ChunkID(sha512.Sum512_256(buf))
+		hash := (&chunkID).String()
 		if hash != e.ID {
 			t.Fatalf("chunk #%d, unexpected hash %s, expected %s", i+1, hash, e.ID)
 		}

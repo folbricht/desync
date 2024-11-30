@@ -27,7 +27,7 @@ type LocalStore struct {
 	// a cache. Old chunks can be identified and removed from the store that way
 	UpdateTimes bool
 
-	opt StoreOptions
+	Opt StoreOptions
 
 	converters Converters
 }
@@ -42,7 +42,7 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if !info.IsDir() {
 		return LocalStore{}, fmt.Errorf("%s is not a directory", dir)
 	}
-	return LocalStore{Base: dir, opt: opt, converters: opt.converters()}, nil
+	return LocalStore{Base: dir, Opt: opt, converters: opt.converters()}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -52,7 +52,7 @@ func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if os.IsNotExist(err) {
 		return nil, ChunkMissing{id}
 	}
-	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
+	return NewChunkFromStorage(id, b, s.converters, s.Opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
@@ -142,7 +142,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 		}
 		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
 		var sID string
-		if s.opt.Uncompressed {
+		if s.Opt.Uncompressed {
 			if !strings.HasSuffix(path, UncompressedChunkExt) {
 				return nil
 			}
@@ -194,7 +194,7 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
 		var sID string
-		if s.opt.Uncompressed {
+		if s.Opt.Uncompressed {
 			if !strings.HasSuffix(path, UncompressedChunkExt) {
 				return nil
 			}
@@ -240,14 +240,24 @@ func (s LocalStore) String() string {
 	return s.Base
 }
 
-// Close the store. NOP opertation, needed to implement Store interface.
+// Close the store. NOP operation, needed to implement Store interface.
 func (s LocalStore) Close() error { return nil }
+
+// GetChunkSize returns the bytes size of the raw, possibly compressed chunk in this store.
+func (s LocalStore) GetChunkSize(id ChunkID) (int64, error) {
+	_, p := s.nameFromID(id)
+	i, err := os.Stat(p)
+	if err != nil {
+		return 0, err
+	}
+	return i.Size(), nil
+}
 
 func (s LocalStore) nameFromID(id ChunkID) (dir, name string) {
 	sID := id.String()
 	dir = filepath.Join(s.Base, sID[0:4])
 	name = filepath.Join(dir, sID)
-	if s.opt.Uncompressed {
+	if s.Opt.Uncompressed {
 		name += UncompressedChunkExt
 	} else {
 		name += CompressedChunkExt
