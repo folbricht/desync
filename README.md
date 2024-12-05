@@ -103,6 +103,7 @@ cd desync/cmd/desync && go install
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
 - `info`         - Show information about an index file, such as number of chunks and optionally chunks from an index that a re present in a store
+- `inspect-chunks` - Show detailed information about chunks stored in an index file
 - `mtree`        - Print the content of an archive or index in mtree-compatible format.
 
 ### Options (not all apply to all commands)
@@ -626,6 +627,39 @@ desync chunk-server -s /path/to/store --key server.key --cert server.crt --mutua
 
 # Client
 desync extract --client-key client.key --client-cert client.crt --ca-cert ca.crt -s https://hostname:8443/ image.iso.caibx image.iso
+```
+
+Get the size of the chunks that are required for an update, when using *compressed* chunks (default).
+I.e. how much data a client needs to download.
+
+```text
+# Server
+## Create the update index file
+desync make --store /some/local/store update.caibx /some/blob
+
+## Create a detailed JSON info file for the chunks
+desync inspect-chunks --store /some/local/store update.caibx update_chunks_details.json
+
+# Client
+## Download the update_chunks_details.json file
+## Get the update info
+desync info --seed local_index.caibx --chunks-info update_chunks_details.json --format=json update.caibx
+
+## The value in 'dedup-size-not-in-seed-nor-cache-compressed' will hold the size in bytes that needs to be downloaded
+```
+
+Get the size of the chunks that are required for an update, when using *uncompressed* chunks.
+
+```text
+# Server
+## Create the update index file
+desync make --store /some/local/store update.caibx /some/blob
+
+# Client
+## Get the update info
+desync info --seed local_index.caibx --format=json update.caibx
+
+## The value 'dedup-size-not-in-seed-nor-cache' will hold the size in bytes that needs to be downloaded
 ```
 
 ## Links
