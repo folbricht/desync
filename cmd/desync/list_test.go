@@ -25,7 +25,6 @@ func TestListCommand(t *testing.T) {
 	// Make sure we have some data, and that it's all valid chunk IDs
 	require.NotZero(t, b.Len())
 	scanner := bufio.NewScanner(b)
-
 	for scanner.Scan() {
 		_, err := desync.ChunkIDFromString(scanner.Text())
 		require.NoError(t, err)
