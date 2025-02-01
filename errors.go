@@ -13,7 +13,7 @@ type NoSuchObject struct {
 }
 
 func (e ChunkMissing) Error() string {
-	return fmt.Sprintf("chunk %s missing from store", e.ID)
+	return fmt.Sprintf("chunk %s missing from store", e.ID.String())
 }
 
 func (e NoSuchObject) Error() string {

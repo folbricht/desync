@@ -68,7 +68,7 @@ func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Stor
 	}
 	// Might as well verify the chunk size while we're at it
 	if c.Size != uint64(len(b)) {
-		return fmt.Errorf("unexpected size for chunk %s", c.ID)
+		return fmt.Errorf("unexpected size for chunk %s", c.ID.String())
 	}
 	// Write the decompressed chunk into the file at the right position
 	if _, err = f.WriteAt(b, int64(c.Start)); err != nil {
@@ -190,7 +190,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 						if sum != c.ID {
 							if options.InvalidSeedAction == InvalidSeedActionRegenerate {
 								// Try harder before giving up and aborting
-								Log.WithField("ID", c.ID).Info("The seed may have changed during processing, trying to take the chunk from the self seed or the store")
+								Log.WithField("ID", c.ID.String()).Info("The seed may have changed during processing, trying to take the chunk from the self seed or the store")
 								if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
 									return err
 								}

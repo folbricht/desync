@@ -88,7 +88,7 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 				// Might as well verify the chunk size while we're at it
 				if r.chunk.Size != uint64(len(b)) {
 					close(r.data)
-					return fmt.Errorf("unexpected size for chunk %s", r.chunk.ID)
+					return fmt.Errorf("unexpected size for chunk %s", r.chunk.ID.String())
 				}
 				r.data <- b
 				close(r.data)
