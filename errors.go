@@ -27,7 +27,7 @@ type ChunkInvalid struct {
 }
 
 func (e ChunkInvalid) Error() string {
-	return fmt.Sprintf("chunk id %s does not match its hash %s", e.ID, e.Sum)
+	return fmt.Sprintf("chunk id %s does not match its hash %s", e.ID.String(), e.Sum.String())
 }
 
 // InvalidFormat is returned when an error occurred when parsing an archive file
