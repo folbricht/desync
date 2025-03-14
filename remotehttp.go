@@ -195,7 +195,7 @@ func (r *RemoteHTTPBase) StoreObject(name string, getReader GetReaderForRequestB
 	if err != nil {
 		return err
 	}
-	if statusCode != 200 {
+	if statusCode != 200 && statusCode != 201 {
 		return errors.New(string(responseBody))
 	}
 	return nil

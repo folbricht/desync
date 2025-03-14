@@ -227,6 +227,15 @@ func TestPutChunk(t *testing.T) {
 				writtenContent = content
 				w.WriteHeader(http.StatusOK)
 			}
+		case "/3cc8/3cc8e3230df5515b1b40e938e49ebc765c6157d4cf4e2b9d5f9c272571365395":
+			content, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				io.WriteString(w, err.Error())
+			} else {
+				writtenContent = content
+				w.WriteHeader(http.StatusCreated)
+			}
 		case "/0000/0000000300000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusBadRequest)
 			io.WriteString(w, "BadRequest")
@@ -266,6 +275,8 @@ func TestPutChunk(t *testing.T) {
 	}{
 		// The typical path is a successful store operation
 		"store chunk successful": {ChunkID{0x3b, 0xc8, 0xe3, 0x23, 0x0d, 0xf5, 0x51, 0x5b, 0x1b, 0x40, 0xe9, 0x38, 0xe4, 0x9e, 0xbc, 0x76, 0x5c, 0x61, 0x57, 0xd4, 0xcf, 0x4e, 0x2b, 0x9d, 0x5f, 0x9c, 0x27, 0x25, 0x71, 0x36, 0x53, 0x95}, "Chunk Content String 1", "Chunk Content String 1", false, 1},
+		// Some servers return 201/StatusCreated for a PUT
+		"store chunk successful - created": {ChunkID{0x3c, 0xc8, 0xe3, 0x23, 0x0d, 0xf5, 0x51, 0x5b, 0x1b, 0x40, 0xe9, 0x38, 0xe4, 0x9e, 0xbc, 0x76, 0x5c, 0x61, 0x57, 0xd4, 0xcf, 0x4e, 0x2b, 0x9d, 0x5f, 0x9c, 0x27, 0x25, 0x71, 0x36, 0x53, 0x95}, "Chunk Content String 1", "Chunk Content String 1", false, 1},
 		// Attempting to store a chunk with null content will be errored by the library itself, and will not result in any HTTP requests
 		"store chunk not allowed with no chunk content": {ChunkID{0, 0, 0, 2}, "", "", true, 0},
 		// HTTP 400 Bad Request - should fail immediately
