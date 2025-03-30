@@ -43,12 +43,17 @@ func runChunk(ctx context.Context, opt chunkOptions, args []string) error {
 
 	dataFile := args[0]
 
-	// Open the blob
-	f, err := os.Open(dataFile)
-	if err != nil {
-		return err
+	var f *os.File
+	if dataFile == "-" {
+		f = os.Stdin
+	} else {
+		// Open the blob
+		f, err = os.Open(dataFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
 	}
-	defer f.Close()
 	s, err := f.Seek(int64(opt.startPos), io.SeekStart)
 	if err != nil {
 		return err

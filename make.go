@@ -46,36 +46,51 @@ func IndexFromFile(ctx context.Context,
 	}
 
 	// If our input file has a catar header, copy its feature flags into the index
-	f, err := os.Open(name)
-	if err != nil {
-		return index, stats, err
-	}
-	fDecoder := NewFormatDecoder(f)
-	piece, err := fDecoder.Next()
-	if err == nil {
-		switch t := piece.(type) {
-		case FormatEntry:
-			index.Index.FeatureFlags |= t.FeatureFlags
+	var f *os.File
+	var err error
+	if name == "-" {
+		f = os.Stdin
+	} else {
+		f, err = os.Open(name)
+		if err != nil {
+			return index, stats, err
 		}
+		fDecoder := NewFormatDecoder(f)
+		piece, err := fDecoder.Next()
+		if err == nil {
+			switch t := piece.(type) {
+			case FormatEntry:
+				index.Index.FeatureFlags |= t.FeatureFlags
+			}
+		}
+		f.Close()
 	}
-	f.Close()
 
-	size, err := GetFileSize(name)
-	if err != nil {
-		return index, stats, err
-	}
+	var size uint64
+	if name != "-" {
+		size, err = GetFileSize(name)
+		if err != nil {
+			return index, stats, err
+		}
 
-	// Adjust n if it's a small file that doesn't have n*max bytes
-	nn := size/max + 1
-	if nn < uint64(n) {
-		n = int(nn)
+		// Adjust n if it's a small file that doesn't have n*max bytes
+		nn := size/max + 1
+		if nn < uint64(n) {
+			n = int(nn)
+		}
+	} else {
+		// If we're reading from stdin, we force ourselves to one worker
+		// and our progress bar is always nonsense.
+		size = 0
+		n = 1
 	}
-	span := size / uint64(n) // initial spacing between chunkers
 
 	// Setup and start the progressbar if any
 	pb.SetTotal(int(size))
 	pb.Start()
 	defer pb.Finish()
+
+	span := size / uint64(n) // initial spacing between chunkers
 
 	// Null chunks is produced when a large section of null bytes is chunked. There are no
 	// split points in those sections so it's always of max chunk size. Used for optimizations
@@ -85,19 +100,25 @@ func IndexFromFile(ctx context.Context,
 	// Create/initialize the workers
 	worker := make([]*pChunker, n)
 	for i := 0; i < n; i++ {
-		f, err := os.Open(name) // open one file per worker
-		if err != nil {
-			return index, stats, err
+		if name == "-" {
+			f = os.Stdin
+		} else {
+			f, err = os.Open(name) // open one file per worker
+			if err != nil {
+				return index, stats, err
+			}
+			defer f.Close()
 		}
-		defer f.Close()
 		start := span * uint64(i)       // starting position for this chunker
 		mChunks := (size-start)/min + 1 // max # of chunks this worker can produce
-		s, err := f.Seek(int64(start), io.SeekStart)
-		if err != nil {
-			return index, stats, err
-		}
-		if uint64(s) != start {
-			return index, stats, fmt.Errorf("requested seek to position %d, but got %d", start, s)
+		if start != 0 {
+			s, err := f.Seek(int64(start), io.SeekStart)
+			if err != nil {
+				return index, stats, err
+			}
+			if uint64(s) != start {
+				return index, stats, fmt.Errorf("requested seek to position %d, but got %d", start, s)
+			}
 		}
 		c, err := NewChunker(f, min, avg, max)
 		if err != nil {
