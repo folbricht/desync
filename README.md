@@ -23,6 +23,7 @@ Among the distinguishing factors:
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 - Allows FUSE mounting of blob indexes
 - S3/GC protocol support to access chunk stores for read operations and some some commands that write chunks
+- OCI Registries for chunk storage using [ORAS](https://oras.land/docs/)
 - Stores and retrieves index files from remote index stores such as HTTP, SFTP, Google Storage and S3
 - Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
@@ -219,6 +220,14 @@ By default, the value of "?lookup=auto" is implied.
 s3+http://127.0.0.1:9000/bucket/prefix?lookup=path
 s3+https://s3.internal.company/bucket/prefix?lookup=dns
 s3+https://example.com/bucket/prefix?lookup=auto
+```
+
+### OCI Registries as chunk stores
+
+OCI Registries can be used to store chunks. Use the `oci+http` or `oci+https` schema when pointing at OCI stores.
+
+```text
+oci+http://127.0.0.1:5000/myrepo
 ```
 
 ### Compressed vs Uncompressed chunk stores
