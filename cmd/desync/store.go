@@ -149,7 +149,7 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		if err != nil {
 			return nil, err
 		}
-	case "oci+http", "oci+https":
+	case "oci":
 		s, err = desync.NewOCIStore(loc, opt)
 		if err != nil {
 			return nil, err
