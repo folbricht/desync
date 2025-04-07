@@ -1,6 +1,7 @@
 module github.com/folbricht/desync
 
-go 1.22
+go 1.23.0
+
 toolchain go1.23.7
 
 require (
@@ -25,6 +26,12 @@ require (
 	golang.org/x/sys v0.30.0 // indirect
 	google.golang.org/api v0.116.0
 	gopkg.in/cheggaaa/pb.v1 v1.0.28
+)
+
+require (
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/opencontainers/image-spec v1.1.0
+	oras.land/oras-go/v2 v2.5.0
 )
 
 require (
