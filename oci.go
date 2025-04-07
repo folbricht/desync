@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -48,6 +47,7 @@ func (s OCIStore) Close() error { return nil }
 func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
 	r, err := s.repo.Fetch(context.Background(), ociDescriptorForChunk(id))
 	if err != nil {
+		// TODO: figure out what a 404 looks like and return ChunkMissing{id} if so
 		return nil, err
 	}
 	defer r.Close()
@@ -80,12 +80,14 @@ func (s OCIStore) HasChunk(id ChunkID) (bool, error) {
 // Used when verifying and repairing caches.
 func (s OCIStore) RemoveChunk(id ChunkID) error {
 	return s.repo.Delete(context.Background(), ociDescriptorForChunk(id))
+	// TODO: figure out what a 404 looks like and return ChunkMissing{id} if so
 }
 
 func ociDescriptorForChunk(id ChunkID) ocispec.Descriptor {
 	return ocispec.Descriptor{
 		// TODO: this may only work for SHA256 stores
-		Digest:    digest.Digest(strings.ToLower(Digest.Algorithm().String()) + ":" + id.String()),
+		Digest: digest.Digest("sha256:" + id.String()),
+		// Digest:    digest.Digest(strings.ToLower(Digest.Algorithm().String()) + ":" + id.String()),
 		MediaType: "application/vnd.oci.image.layer.v1.tar+zstd",
 	}
 }

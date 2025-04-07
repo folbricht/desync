@@ -224,10 +224,10 @@ s3+https://example.com/bucket/prefix?lookup=auto
 
 ### OCI Registries as chunk stores
 
-OCI Registries can be used to store chunks. Use the `oci+http` or `oci+https` schema when pointing at OCI stores.
+OCI Registries can be used to store chunks. Use the `oci` schema when pointing at OCI stores.
 
 ```text
-oci+http://127.0.0.1:5000/myrepo
+oci://127.0.0.1:5000/myrepo
 ```
 
 ### Compressed vs Uncompressed chunk stores
