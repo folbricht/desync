@@ -3,6 +3,7 @@ package desync
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -31,6 +32,12 @@ type OCIStore struct {
 
 // NewOCIStore initializes a new Open Registry As Storage backend.
 func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCIStore, error) {
+	// The OCI spec does not support desync's default hash algorithm (SHA512/256), so we must
+	// be using SHA256 only.
+	if Digest.Algorithm() != crypto.SHA256 {
+		return OCIStore{}, errors.New("OCI stores only support SHA256, use --digest=sha256")
+	}
+
 	repo, err := remote.NewRepository(u.Host + u.Path)
 	if err != nil {
 		return OCIStore{}, fmt.Errorf("failed to initialize oci registry store: %w", err)
@@ -65,7 +72,14 @@ func (s OCIStore) Close() error { return nil }
 
 // GetChunk reads and returns one chunk from the store
 func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
-	r, err := s.repo.Fetch(context.Background(), ociDescriptorForChunk(id))
+	descriptor, err := s.repo.Blobs().Resolve(context.Background(), ociReference(id))
+	if err != nil {
+		if errors.Is(err, errdef.ErrNotFound) {
+			return nil, ChunkMissing{id}
+		}
+		return nil, err
+	}
+	r, err := s.repo.Fetch(context.Background(), descriptor)
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
 			return nil, ChunkMissing{id}
@@ -112,8 +126,11 @@ func (s OCIStore) RemoveChunk(id ChunkID) error {
 
 func ociDescriptorForChunk(id ChunkID) ocispec.Descriptor {
 	return ocispec.Descriptor{
-		// TODO: this may only work for SHA256 stores
-		Digest:    digest.Digest("sha256:" + id.String()),
+		Digest:    digest.Digest(ociReference(id)),
 		MediaType: "application/vnd.oci.image.layer.v1.tar+zstd",
 	}
+}
+
+func ociReference(id ChunkID) string {
+	return "sha256:" + id.String()
 }
