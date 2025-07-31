@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
 // S3Creds holds credentials or references to an S3 credentials file.
@@ -32,8 +33,18 @@ type S3Creds struct {
 // Config is used to hold the global tool configuration. It's used to customize
 // store features and provide credentials where needed.
 type Config struct {
-	S3Credentials map[string]S3Creds             `json:"s3-credentials"`
-	StoreOptions  map[string]desync.StoreOptions `json:"store-options"`
+	S3Credentials  map[string]S3Creds             `json:"s3-credentials"`
+	OCICredentials map[string]OCICreds            `json:"oci-credentials"`
+	StoreOptions   map[string]desync.StoreOptions `json:"store-options"`
+}
+
+// OCICreds holds OCI credentials for a container registry store.
+type OCICreds struct {
+	// Username for OCI store authentication.
+	Username string `json:"username,omitempty"`
+
+	// Secret (password or token) for OCI store authentication.
+	Secret string `json:"secret,omitempty"`
 }
 
 // GetS3CredentialsFor attempts to find creds and region for an S3 location in the
@@ -71,6 +82,21 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 		creds = NewRefreshableSharedCredentials(credsConfig.AwsCredentialsFile, credsConfig.AwsProfile, time.Now)
 	}
 	return creds, region
+}
+
+// GetOCICredentialsFor attempts to find creds and region for an OCI location in the config.
+func (c Config) GetOCICredentialsFor(u *url.URL) auth.CredentialFunc {
+	key := u.Host + u.Path
+	credsConfig, ok := c.OCICredentials[key]
+	if !ok {
+		return nil
+	}
+	return func(ctx context.Context, hostport string) (auth.Credential, error) {
+		return auth.Credential{
+			Username: credsConfig.Username,
+			Password: credsConfig.Secret,
+		}, nil
+	}
 }
 
 // GetStoreOptionsFor returns optional config options for a specific store. Note that
