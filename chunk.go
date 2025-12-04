@@ -86,3 +86,17 @@ func (c *Chunk) ID() ChunkID {
 	c.idCalculated = true
 	return c.id
 }
+
+// Storage returns the chunk data in compressed form. If the chunk was created
+// with compressed data and same modifiers, this data will be returned as is. The
+// caller must not modify the data in the returned slice.
+func (c *Chunk) Storage(modifiers Converters) ([]byte, error) {
+	if len(c.storage) > 0 && modifiers.equal(c.converters) {
+		return c.storage, nil
+	}
+	b, err := c.Data()
+	if err != nil {
+		return nil, err
+	}
+	return modifiers.toStorage(b)
+}

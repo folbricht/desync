@@ -125,11 +125,7 @@ retry:
 func (s S3Store) StoreChunk(chunk *Chunk) error {
 	contentType := "application/zstd"
 	name := s.nameFromID(chunk.ID())
-	b, err := chunk.Data()
-	if err != nil {
-		return err
-	}
-	b, err = s.converters.toStorage(b)
+	b, err := chunk.Storage(s.converters)
 	if err != nil {
 		return err
 	}
