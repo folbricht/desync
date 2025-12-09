@@ -68,11 +68,7 @@ func (s LocalStore) RemoveChunk(id ChunkID) error {
 // StoreChunk adds a new chunk to the store
 func (s LocalStore) StoreChunk(chunk *Chunk) error {
 	d, p := s.nameFromID(chunk.ID())
-	b, err := chunk.Data()
-	if err != nil {
-		return err
-	}
-	b, err = s.converters.toStorage(b)
+	b, err := chunk.Storage(s.converters)
 	if err != nil {
 		return err
 	}

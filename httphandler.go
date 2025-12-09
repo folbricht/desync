@@ -57,18 +57,7 @@ func (h HTTPHandler) get(id ChunkID, w http.ResponseWriter) {
 	var b []byte
 	chunk, err := h.s.GetChunk(id)
 	if err == nil {
-		// Optimization for when the chunk modifiers match those
-		// of the chunk server. In that case it's not necessary
-		// to convert back and forth. Just use the raw data as loaded
-		// from the store.
-		if len(chunk.storage) > 0 && h.converters.equal(chunk.converters) {
-			b = chunk.storage
-		} else {
-			b, err = chunk.Data()
-			if err == nil {
-				b, err = h.converters.toStorage(b)
-			}
-		}
+		b, err = chunk.Storage(h.converters)
 	}
 	h.HTTPHandlerBase.get(id.String(), b, err, w)
 }

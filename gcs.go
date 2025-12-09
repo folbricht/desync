@@ -143,12 +143,7 @@ func (s GCStore) StoreChunk(chunk *Chunk) error {
 		})
 	)
 
-	b, err := chunk.Data()
-	if err != nil {
-		log.WithError(err).Error("Cannot retrieve chunk data")
-		return err
-	}
-	b, err = s.converters.toStorage(b)
+	b, err := chunk.Storage(s.converters)
 	if err != nil {
 		log.WithError(err).Error("Cannot retrieve chunk data")
 		return err

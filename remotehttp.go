@@ -247,11 +247,7 @@ func (r *RemoteHTTP) HasChunk(id ChunkID) (bool, error) {
 // StoreChunk adds a new chunk to the store
 func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 	p := r.nameFromID(chunk.ID())
-	b, err := chunk.Data()
-	if err != nil {
-		return err
-	}
-	b, err = r.converters.toStorage(b)
+	b, err := chunk.Storage(r.converters)
 	if err != nil {
 		return err
 	}

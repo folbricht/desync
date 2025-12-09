@@ -191,11 +191,7 @@ func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 	c := <-s.pool
 	defer func() { s.pool <- c }()
 	name := c.nameFromID(chunk.ID())
-	b, err := chunk.Data()
-	if err != nil {
-		return err
-	}
-	b, err = s.converters.toStorage(b)
+	b, err := chunk.Storage(s.converters)
 	if err != nil {
 		return err
 	}
