@@ -55,13 +55,18 @@ func TestMountIndex(t *testing.T) {
 	}()
 
 	// Start the Fuse mount
+	c := make(chan error, 1)
 	go func() {
 		ifs := NewIndexMountFS(index, "blob1", s)
-		MountIndex(ctx, index, ifs, mnt, s, 10)
+		c <- MountIndex(ctx, index, ifs, mnt, s, 10)
 		wg.Done()
 	}()
 
-	time.Sleep(time.Second)
+	select {
+	case err = <-c:
+		t.Fatal(err)
+	case <-time.After(time.Second):
+	}
 
 	// Calculate the hash of the file in the mount point
 	b, err = ioutil.ReadFile(filepath.Join(mnt, "blob1"))

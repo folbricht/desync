@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -46,7 +47,7 @@ func response(request *http.Request, headers http.Header, statusCode int, body s
 	}
 }
 
-func sendObject(t *testing.T, conn *net.TCPConn, request *http.Request, filePath string, sendRst bool) {
+func sendObject(conn *net.TCPConn, request *http.Request, filePath string, sendRst bool) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -56,7 +57,7 @@ func sendObject(t *testing.T, conn *net.TCPConn, request *http.Request, filePath
 			resp := response(request, http.Header{}, 500, err.Error())
 			resp.Write(conn)
 		}
-		return
+		return nil
 	}
 	defer file.Close()
 
@@ -64,7 +65,7 @@ func sendObject(t *testing.T, conn *net.TCPConn, request *http.Request, filePath
 	if err != nil {
 		resp := response(request, http.Header{}, 500, err.Error())
 		resp.Write(conn)
-		return
+		return nil
 	}
 	headers := http.Header{}
 	headers.Add("Last-Modified", stat.ModTime().Format(http.TimeFormat))
@@ -83,29 +84,30 @@ func sendObject(t *testing.T, conn *net.TCPConn, request *http.Request, filePath
 		resp.Write(conn)
 	} else {
 		if _, err := io.WriteString(conn, "HTTP/1.0 200 OK\r\n"); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if err := headers.Write(conn); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if _, err := io.WriteString(conn, "\r\n"); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if _, err := io.CopyN(conn, file, stat.Size()/2); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		// it seems that setting SO_LINGER to 0 and calling close() on the socket forces server to
 		// send RST TCP packet, which we will use to emulate network error
 		if err := conn.SetLinger(0); err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if err := conn.Close(); err != nil {
-			t.Fatal(err)
+			return err
 		}
 	}
+	return nil
 }
 
-func handleGetObjectRequest(t *testing.T, conn *net.TCPConn, bucket, store string, errorTimes *int, errorTimesLimit int) error {
+func handleGetObjectRequest(conn *net.TCPConn, bucket, store string, errorTimes *int, errorTimesLimit int) error {
 	defer conn.Close()
 	objectGetMatcher := regexp.MustCompile(`^/` + bucket + `/(.+)$`)
 
@@ -117,19 +119,18 @@ func handleGetObjectRequest(t *testing.T, conn *net.TCPConn, bucket, store strin
 
 	matches := objectGetMatcher.FindStringSubmatch(request.URL.Path)
 	if matches != nil {
-		sendObject(t, conn, request, store+"/"+matches[1], *errorTimes < errorTimesLimit)
+		err = sendObject(conn, request, store+"/"+matches[1], *errorTimes < errorTimesLimit)
 		(*errorTimes)++
 	} else {
 		resp := response(request, http.Header{}, 400, "")
 		resp.Write(conn)
 	}
-	return nil
+	return err
 }
 
 // Run S3 server that can respond objects from `store`
 // if `errorTimesLimit` > 0 server will send RST packet `errorTimesLimit` times after sending half of file
-func getTcpS3Server(t *testing.T, ctx context.Context, bucket, store string, errorTimesLimit int) (net.Listener, *errgroup.Group) {
-	group := errgroup.Group{}
+func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bucket, store string, errorTimesLimit int) net.Listener {
 	var errorTimes int
 	// using localhost + resolver let us work on hosts that support only ipv6 or only ipv4
 	ip, err := net.DefaultResolver.LookupIP(ctx, "ip", "localhost")
@@ -160,13 +161,13 @@ func getTcpS3Server(t *testing.T, ctx context.Context, bucket, store string, err
 				}
 				return err
 			}
-			err = handleGetObjectRequest(t, conn, bucket, store, &errorTimes, errorTimesLimit)
+			err = handleGetObjectRequest(conn, bucket, store, &errorTimes, errorTimesLimit)
 			if err != nil {
 				return err
 			}
 		}
 	})
-	return listener, &group
+	return listener
 }
 
 func TestS3StoreGetChunk(t *testing.T) {
@@ -181,24 +182,37 @@ func TestS3StoreGetChunk(t *testing.T) {
 	t.Run("no_error", func(t *testing.T) {
 		// Just try to get chunk from well-behaved S3 server, no errors expected
 		ctx, cancel := context.WithCancel(context.Background())
+		group, gCtx := errgroup.WithContext(ctx)
 
-		ln, group := getTcpS3Server(t, ctx, bucket, "cmd/desync/testdata", 0)
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", 0)
 
-		endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-		store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
-		if err != nil {
-			t.Fatal(err)
-		}
+		group.Go(func() error {
+			defer cancel()
+			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
+			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
+			if err != nil {
+				return err
+			}
 
-		chunk, err := store.GetChunk(chunkId)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if chunk.ID() != chunkId {
-			t.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
-		}
+			c := make(chan error)
+			go func() {
+				chunk, err := store.GetChunk(chunkId)
+				if err != nil {
+					c <- err
+				}
+				if chunk.ID() != chunkId {
+					c <- fmt.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
+				}
+				c <- nil
+			}()
+			select {
+			case <-gCtx.Done():
+				return nil
+			case err = <-c:
+				return err
+			}
+		})
 
-		cancel()
 		if err := group.Wait(); err != nil {
 			t.Fatal(err)
 		}
@@ -208,22 +222,35 @@ func TestS3StoreGetChunk(t *testing.T) {
 		// Emulate network error - after sending half of the file S3 server sends RST to the client
 		// We don't have retries here so we expect that GetChunk() will return error
 		ctx, cancel := context.WithCancel(context.Background())
+		group, gCtx := errgroup.WithContext(ctx)
 
-		ln, group := getTcpS3Server(t, ctx, bucket, "cmd/desync/testdata", 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", 1)
 
-		endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-		store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
-		if err != nil {
-			t.Fatal(err)
-		}
+		group.Go(func() error {
+			defer cancel()
+			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
+			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
+			if err != nil {
+				return err
+			}
 
-		_, err = store.GetChunk(chunkId)
-		opError := &net.OpError{}
-		if err == nil || !errors.As(err, &opError) {
-			t.Fatal(err)
-		}
+			c := make(chan error)
+			go func() {
+				_, err = store.GetChunk(chunkId)
+				opError := &net.OpError{}
+				if err == nil || !errors.As(err, &opError) {
+					c <- err
+				}
+				c <- nil
+			}()
+			select {
+			case <-gCtx.Done():
+				return nil
+			case err = <-c:
+				return err
+			}
+		})
 
-		cancel()
 		if err := group.Wait(); err != nil {
 			t.Fatal(err)
 		}
@@ -233,24 +260,37 @@ func TestS3StoreGetChunk(t *testing.T) {
 		// Emulate network error - after sending half of the file S3 server sends RST to the client
 		// We have retries here so we expect that GetChunk() will not return error
 		ctx, cancel := context.WithCancel(context.Background())
+		group, gCtx := errgroup.WithContext(ctx)
 
-		ln, group := getTcpS3Server(t, ctx, bucket, "cmd/desync/testdata", 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", 1)
 
-		endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-		store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{ErrorRetry: 1}, minio.BucketLookupAuto)
-		if err != nil {
-			t.Fatal(err)
-		}
+		group.Go(func() error {
+			defer cancel()
+			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
+			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{ErrorRetry: 1}, minio.BucketLookupAuto)
+			if err != nil {
+				return err
+			}
 
-		chunk, err := store.GetChunk(chunkId)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if chunk.ID() != chunkId {
-			t.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
-		}
+			c := make(chan error)
+			go func() {
+				chunk, err := store.GetChunk(chunkId)
+				if err != nil {
+					c <- err
+				}
+				if chunk.ID() != chunkId {
+					c <- fmt.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
+				}
+				c <- nil
+			}()
+			select {
+			case <-gCtx.Done():
+				return nil
+			case err = <-c:
+				return err
+			}
+		})
 
-		cancel()
 		if err := group.Wait(); err != nil {
 			t.Fatal(err)
 		}

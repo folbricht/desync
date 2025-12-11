@@ -1,13 +1,14 @@
 package desync
 
 import (
+	"context"
 	"crypto/rand"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestFailoverMissingChunk(t *testing.T) {
@@ -77,48 +78,46 @@ func TestFailoverMutliple(t *testing.T) {
 	g := NewFailoverGroup(storeA, storeB)
 
 	var (
-		wg       sync.WaitGroup
-		done     = make(chan struct{})
-		timeout  = time.After(time.Second)
-		failOver = time.Tick(10 * time.Millisecond)
+		ctx, cancel = context.WithTimeout(t.Context(), time.Second)
+		eg, gCtx    = errgroup.WithContext(ctx)
+		failOver    = time.Tick(10 * time.Millisecond)
 	)
+	defer cancel()
 
 	// Run several goroutines querying the group in a tight loop
 	for i := 0; i < 16; i++ {
-		wg.Add(1)
-		go func() {
+		eg.Go(func() error {
 			var id ChunkID
 			for {
 				time.Sleep(time.Millisecond)
 				select {
-				case <-done:
-					wg.Done()
-					return
+				case <-gCtx.Done():
+					return nil
 				default:
 					rand.Read(id[:])
 					if _, err := g.GetChunk(id); err != nil {
-						t.Fatal(err)
+						return err
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	// Make the stores fail over every 10 ms
-	go func() {
-		wg.Add(1)
+	eg.Go(func() error {
 		for {
 			select {
-			case <-timeout: // done running
-				close(done)
-				wg.Done()
-				return
+			case <-gCtx.Done(): // done running
+				return nil
 			case <-failOver: // switch over to the other store
 				newX := (x + 1) % 2
 				atomic.StoreInt64(&x, newX)
 			}
 		}
-	}()
+	})
 
-	wg.Wait()
+	err := eg.Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
