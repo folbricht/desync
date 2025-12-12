@@ -2,8 +2,12 @@ package desync
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"testing"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func TestProtocol(t *testing.T) {
@@ -19,51 +23,74 @@ func TestProtocol(t *testing.T) {
 	compressed, _ := Compressor{}.toStorage(uncompressed)
 	cID := inChunk.ID()
 
+	ctx, cancel := context.WithCancel(t.Context())
+	g, gCtx := errgroup.WithContext(ctx)
+	defer cancel()
+
 	// Server
-	go func() {
+	g.Go(func() error {
 		flags, err := client.Initialize(CaProtocolReadableStore)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if flags&CaProtocolPullChunks == 0 {
-			t.Fatalf("client not asking for chunks")
+			return errors.New("client not asking for chunks")
 		}
 		for {
 			m, err := client.ReadMessage()
 			if err != nil {
-				t.Fatal(err)
+				if errors.Is(ctx.Err(), context.Canceled) {
+					return nil
+				}
+				return err
 			}
 			switch m.Type {
 			case CaProtocolRequest:
 				id, err := ChunkIDFromSlice(m.Body[8:40])
 				if err != nil {
-					t.Fatal(err)
+					return err
 				}
 				if err := client.SendProtocolChunk(id, 0, compressed); err != nil {
-					t.Fatal(err)
+					return err
 				}
 			default:
 
-				t.Fatal("unexpected message")
+				return errors.New("unexpected message")
 			}
 		}
-	}()
+	})
 
 	// Client
-	flags, err := server.Initialize(CaProtocolPullChunks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if flags&CaProtocolReadableStore == 0 {
-		t.Fatalf("server not offering chunks")
-	}
+	g.Go(func() error {
+		defer cancel()
+		flags, err := server.Initialize(CaProtocolPullChunks)
+		if err != nil {
+			return err
+		}
+		if flags&CaProtocolReadableStore == 0 {
+			return errors.New("server not offering chunks")
+		}
 
-	chunk, err := server.RequestChunk(cID)
+		chunk, err := server.RequestChunk(cID)
+		if err != nil {
+			return err
+		}
+		b, _ := chunk.Data()
+		if !bytes.Equal(b, uncompressed) {
+			return errors.New("chunk data doesn't match expected")
+		}
+		return nil
+	})
+
+	<-gCtx.Done()
+	// unblock client/server in case of an error
+	r1.Close()
+	r2.Close()
+	w1.Close()
+	w2.Close()
+
+	err := g.Wait()
 	if err != nil {
 		t.Fatal(err)
-	}
-	b, _ := chunk.Data()
-	if !bytes.Equal(b, uncompressed) {
-		t.Fatal("chunk data doesn't match expected")
 	}
 }
