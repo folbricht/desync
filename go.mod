@@ -27,6 +27,12 @@ require (
 )
 
 require (
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/opencontainers/image-spec v1.1.0
+	oras.land/oras-go/v2 v2.5.0
+)
+
+require (
 	cloud.google.com/go v0.110.0 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v0.13.0 // indirect
