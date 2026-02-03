@@ -26,23 +26,13 @@ type AssembleOptions struct {
 }
 
 // writeChunk tries to write a chunk by looking at the self seed, if it is already existing in the
-// destination file or by taking it from the store
+// destination file or by taking it from the store. The in-place check runs first to avoid unnecessary
+// writes. If the target already has the correct data, no write is performed.
 func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Store, stats *ExtractStats, isBlank bool) error {
-	// If we already took this chunk from the store we can reuse it by looking
-	// into the selfSeed.
-	if segment := ss.getChunk(c.ID); segment != nil {
-		copied, cloned, err := segment.WriteInto(f, c.Start, c.Size, blocksize, isBlank)
-		if err != nil {
-			return err
-		}
-		stats.addBytesCopied(copied)
-		stats.addBytesCloned(cloned)
-		return nil
-	}
-
 	// If we operate on an existing file there's a good chance we already
 	// have the data written for this chunk. Let's read it from disk and
-	// compare to what is expected.
+	// compare to what is expected. This is checked first to avoid rewriting
+	// data that is already correct, even for chunks available in the selfSeed.
 	if !isBlank {
 		b := make([]byte, c.Size)
 		if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
@@ -55,6 +45,19 @@ func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Stor
 			return nil
 		}
 	}
+
+	// If we already took this chunk from the store we can reuse it by looking
+	// into the selfSeed.
+	if segment := ss.getChunk(c.ID); segment != nil {
+		copied, cloned, err := segment.WriteInto(f, c.Start, c.Size, blocksize, isBlank)
+		if err != nil {
+			return err
+		}
+		stats.addBytesCopied(copied)
+		stats.addBytesCloned(cloned)
+		return nil
+	}
+
 	// Record this chunk having been pulled from the store
 	stats.incChunksFromStore()
 	// Pull the (compressed) chunk from the store
