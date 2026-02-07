@@ -88,7 +88,7 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, erro
 // StoreObject adds a new object to a writable index or chunk store.
 func (s *SFTPStoreBase) StoreObject(name string, r io.Reader) error {
 	// Write to a tempfile on the remote server. This is not 100% guaranteed to not
-	// conflict between gorouties, there's no tempfile() function for remote servers.
+	// conflict between goroutines, there's no tempfile() function for remote servers.
 	// Use a large enough random number instead to build a tempfile
 	tmpfile := name + strconv.Itoa(rand.Int())
 	d := path.Dir(name)

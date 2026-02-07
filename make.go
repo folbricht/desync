@@ -12,7 +12,7 @@ import (
 
 // IndexFromFile chunks a file in parallel and returns an index. It does not
 // store chunks! Each concurrent chunker starts filesize/n bytes apart and
-// splits independently. Each chunk worker tries to sync with it's next
+// splits independently. Each chunk worker tries to sync with its next
 // neighbor and if successful stops processing letting the next one continue.
 // The main routine reads and assembles a list of (confirmed) chunks from the
 // workers, starting with the first worker.
@@ -160,7 +160,7 @@ type pChunker struct {
 	chunker Chunker
 
 	// starting position in the stream for this worker, needed to calculate
-	// the absolute position of every boundry that is returned
+	// the absolute position of every boundary that is returned
 	offset uint64
 
 	once  sync.Once
@@ -197,7 +197,7 @@ func (c *pChunker) start(ctx context.Context) {
 		if len(b) == 0 {
 			// TODO: If this worker reached the end of the stream and it's not the
 			// last one, we should probably stop all following workers. Meh, shouldn't
-			// be happening for large file or save significant CPU for small ones.
+			// be happening for large files or save significant CPU for small ones.
 			c.eof = true
 			return
 		}

@@ -36,12 +36,12 @@ func newChunkServerCommand(ctx context.Context) *cobra.Command {
 reading from multiple local or remote stores as well as a local cache. If
 --cert and --key are provided, the server will serve over HTTPS. The -w option
 enables writing to this store, but this is only allowed when just one upstream
-chunk store is provided. The option --skip-verify-write disables validation of
-chunks written to this server which bypasses checksum validation as well as
-the necessary decompression step to calculate it to improve performance. If -u
-is used, only uncompressed chunks are being served (and accepted). If the
-upstream store serves compressed chunks, everything will have to be decompressed 
-server-side so it's better to also read from uncompressed upstream stores.
+chunk store is provided. The option --skip-verify-write disables hash validation
+of chunks written to this server, avoiding the decompression step needed to
+calculate checksums, to improve performance. If -u is used, only uncompressed
+chunks are served (and accepted). If the upstream store serves compressed chunks,
+everything will have to be decompressed server-side so it's better to also read
+from uncompressed upstream stores.
 
 While --concurrency does not limit the number of clients that can be served
 concurrently, it does influence connection pools to remote upstream stores and

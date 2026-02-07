@@ -81,7 +81,7 @@ func TestExtract(t *testing.T) {
 	}
 	os.Remove(out1.Name())
 
-	// This one is a complete file matching what we exepct at the end
+	// This one is a complete file matching what we expect at the end
 	out2, err := ioutil.TempFile("", "out2")
 	if err != nil {
 		t.Fatal(err)

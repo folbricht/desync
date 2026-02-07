@@ -13,8 +13,8 @@ Among the distinguishing factors:
 - Supported on MacOS, though there could be incompatibilities when exchanging catar-files between Linux and Mac for example since devices and filemodes differ slightly. \*BSD should work as well but hasn't been tested. Windows supports a subset of commands.
 - Where the upstream command has chosen to optimize for storage efficiency (f/e, being able to use local files as "seeds", building temporary indexes into them), this command chooses to optimize for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at cost to storage efficiency.
 - Where the upstream command has chosen to take full advantage of Linux platform features, this client chooses to implement a minimum featureset and, while high-value platform-specific features (such as support for btrfs reflinks into a decompressed local chunk cache) might be added in the future, the ability to build without them on other platforms will be maintained.
-- Both, SHA512/256 and SHA256 are supported hash functions.
-- Only chunk stores using zstd compression as well uncompressed are supported at this point.
+- Both SHA512/256 and SHA256 are supported hash functions.
+- Only chunk stores using zstd compression as well as uncompressed are supported at this point.
 - Supports local stores as well as remote stores (as client) over SSH, SFTP and HTTP
 - Built-in HTTP(S) chunk server that can proxy multiple local or remote stores and also supports caching and deduplication for concurrent requests.
 - Drop-in replacement for casync on SSH servers when serving chunks read-only
@@ -22,7 +22,7 @@ Among the distinguishing factors:
 - Supports chunking with the same algorithm used by casync (see `make` command) but executed in parallel. Results are identical to what casync produces, same chunks and index files, but with significantly better performance. For example, up to 10x faster than casync if the chunks are already present in the store. If the chunks are new, it heavily depends on I/O, but it's still likely several times faster than casync.
 - While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync, min 16k, avg 64k, max 256k.
 - Allows FUSE mounting of blob indexes
-- S3/GC protocol support to access chunk stores for read operations and some some commands that write chunks
+- S3/GC protocol support to access chunk stores for read operations and some commands that write chunks
 - Stores and retrieves index files from remote index stores such as HTTP, SFTP, Google Storage and S3
 - Built-in HTTP(S) index server to read/write indexes
 - Reflinking matching blocks (rather than copying) from seed files if supported by the filesystem (currently only Btrfs and XFS)
@@ -34,7 +34,7 @@ The documentation below uses terms that may not be clear to readers not already 
 
 - **chunk** - A chunk is a section of data from a file. Typically it's between 16kB and 256kB. Chunks are identified by the SHA512-256 checksum of their uncompressed data. Files are split into several chunks with the `make` command which tries to find chunk boundaries intelligently using the algorithm outlined in this [blog post](http://0pointer.net/blog/casync-a-tool-for-distributing-file-system-images.html). By default, chunks are stored as files compressed with [zstd](https://github.com/facebook/zstd) and extension `.cacnk`.
 - **chunk store** - Location, either local or remote that stores chunks. In its most basic form, a chunk store can be a local directory, containing chunk files named after the checksum of the chunk. Other protocols like HTTP, S3, GC, SFTP and SSH are available as well.
-- **index** - Indexes are data structures containing references to chunks and their location within a file. An index is a small representation of a much larger file. Given an index and a chunk store, it's possible to re-assemble the large file or make it available via a FUSE mount. Indexes are produced during chunking operations such as the `create` command. The most common file extension for an index is `.caibx`. When catar archives are chunked, the extension `.caidx` is used instead.
+- **index** - Indexes are data structures containing references to chunks and their location within a file. An index is a small representation of a much larger file. Given an index and a chunk store, it's possible to re-assemble the large file or make it available via a FUSE mount. Indexes are produced during chunking operations such as the `make` command. The most common file extension for an index is `.caibx`. When catar archives are chunked, the extension `.caidx` is used instead.
 - **index store** - Index stores are used to keep index files. It could simply be a local directory, or accessed over SFTP, S3, GC or HTTP.
 - **catar** - Archives of directory trees, similar to what is produced by the `tar` command. These commonly have the `.catar` extension.
 - **caidx** - Index file of a chunked catar.
@@ -42,7 +42,7 @@ The documentation below uses terms that may not be clear to readers not already 
 
 ## Parallel chunking
 
-One of the significant differences to casync is that desync attempts to make chunking faster by utilizing more CPU resources, chunking data in parallel. Depending on the chosen degree of concurrency, the file is split into N equal parts and each part is chunked independently. While the chunking of each part is ongoing, part1 is trying to align with part2, and part3 is trying to align with part4 and so on. Alignment is achieved once a common split point is found in the overlapping area. If a common split point is found, the process chunking the previous part stops, eg. part1 chunker stops, part2 chunker keeps going until it aligns with part3 and so on until all split points have been found. Once all split points have been determined, the file is opened again (N times) to read, compress and store the chunks. While in most cases this process achieves significantly reduced chunking times at the cost of CPU, there are edge cases where chunking is only about as fast as upstream casync (with more CPU usage). This is the case if no split points can be found in the data between min and max chunk size as is the case if most or all of the file consists of 0-bytes. In this situation, the concurrent chunking processes for each part will not align with each other and a lot of effort is wasted. The table below shows how the type of data that is being chunked can influence runtime of each operation. `make` refers to the process of chunking, while `extract` refers to re-assembly of blobs from chunks.
+One of the significant differences to casync is that desync attempts to make chunking faster by utilizing more CPU resources, chunking data in parallel. Depending on the chosen degree of concurrency, the file is split into N equal parts and each part is chunked independently. While the chunking of each part is ongoing, part1 is trying to align with part2, and part3 is trying to align with part4 and so on. Alignment is achieved once a common split point is found in the overlapping area. If a common split point is found, the process chunking the previous part stops, e.g. part1 chunker stops, part2 chunker keeps going until it aligns with part3 and so on until all split points have been found. Once all split points have been determined, the file is opened again (N times) to read, compress and store the chunks. While in most cases this process achieves significantly reduced chunking times at the cost of CPU, there are edge cases where chunking is only about as fast as upstream casync (with more CPU usage). This is the case if no split points can be found in the data between min and max chunk size as is the case if most or all of the file consists of 0-bytes. In this situation, the concurrent chunking processes for each part will not align with each other and a lot of effort is wasted. The table below shows how the type of data that is being chunked can influence runtime of each operation. `make` refers to the process of chunking, while `extract` refers to re-assembly of blobs from chunks.
 
 Command | Mostly/All 0-bytes  | Typical data
 ------------ | ------------- | ------------
@@ -54,7 +54,7 @@ extract | Extremely fast - Effectively the speed of a truncate() syscall | Fast 
 Copy-on-write filesystems such as Btrfs and XFS support cloning of blocks between files in order to save disk space as well as improve extraction performance. To utilize this feature, desync uses several seeds to clone sections of files rather than reading the data from chunk-stores and copying it in place:
 
 - A built-in seed for Null-chunks (a chunk of Max chunk size containing only 0 bytes). This can significantly reduce disk usage of files with large 0-byte ranges, such as VM images. This will effectively turn an eager-zeroed VM disk into a sparse disk while retaining all the advantages of eager-zeroed disk images.
-- A build-in Self-seed. As chunks are being written to the destination file, the file itself becomes a seed. If one chunk, or a series of chunks is used again later in the file, it'll be cloned from the position written previously. This saves storage when the file contains several repetitive sections.
+- A built-in Self-seed. As chunks are being written to the destination file, the file itself becomes a seed. If one chunk, or a series of chunks is used again later in the file, it'll be cloned from the position written previously. This saves storage when the file contains several repetitive sections.
 - Seed files and their indexes can be provided when extracting a file. For this feature, it's necessary to already have the index plus its blob on disk. So for example `image-v1.vmdk` and `image-v1.vmdk.caibx` can be used as seed for the extract operation of `image-v2.vmdk`. The amount of additional disk space required to store `image-v2.vmdk` will be the delta between it and `image-v1.vmdk`.
 
 ![chunks-from-seeds](doc/seed.png)
@@ -63,13 +63,13 @@ Even if cloning is not available, seeds are still useful. `desync` automatically
 
 ## Reading and writing tar streams
 
-In addition to packing local filesystem trees into catar archives, it is possible to read a tar archive stream. Various tar formats such as GNU and BSD tar are supported. See [https://golang.org/pkg/archive/tar/](https://golang.org/pkg/archive/tar/) for details on supported formats. When reading from tar archives, the content is no re-ordered and written to the catar in the same order. This may create output files that are different when comparing to using the local filesystem as input since the order depends entirely on how the tar file is created. Since the catar format does not support hardlinks, the input tar stream needs to follow hardlinks for desync to process them correctly. See the `--hard-dereference` option in the tar utility.
+In addition to packing local filesystem trees into catar archives, it is possible to read a tar archive stream. Various tar formats such as GNU and BSD tar are supported. See [https://golang.org/pkg/archive/tar/](https://golang.org/pkg/archive/tar/) for details on supported formats. When reading from tar archives, the content is not re-ordered and written to the catar in the same order. This may create output files that are different when comparing to using the local filesystem as input since the order depends entirely on how the tar file is created. Since the catar format does not support hardlinks, the input tar stream needs to follow hardlinks for desync to process them correctly. See the `--hard-dereference` option in the tar utility.
 
 catar archives can also be extracted to GNU tar archive streams. All files in the output stream are ordered the same as in the catar.
 
 ## Tool
 
-The tool is provided for convenience. It uses the desync library and makes most features of it available in a consistent fashion. It does not match upsteam casync's syntax exactly, but tries to be similar at least.
+The tool is provided for convenience. It uses the desync library and makes most features of it available in a consistent fashion. It does not match upstream casync's syntax exactly, but tries to be similar at least.
 
 ### Installation
 
@@ -95,14 +95,14 @@ cd desync/cmd/desync && go install
 - `chop`         - split a blob according to an existing caibx and store the chunks in a local store
 - `pull`         - serve chunks using the casync protocol over stdin/stdout. Set `CASYNC_REMOTE_PATH=desync` on the client to use it.
 - `tar`          - pack a catar file, optionally chunk the catar and create an index file.
-- `untar`        - unpack a catar file or an index referencing a catar. Device entries in tar files are unsuppored and `--no-same-owner` and `--no-same-permissions` options are ignored on Windows.
+- `untar`        - unpack a catar file or an index referencing a catar. Device entries in tar files are unsupported and `--no-same-owner` and `--no-same-permissions` options are ignored on Windows.
 - `prune`        - remove unreferenced chunks from a local, S3 or GC store. Use with caution, can lead to data loss.
 - `verify-index` - verify that an index file matches a given blob
-- `chunk-server` - start a HTTP(S) chunk server/store
-- `index-server` - start a HTTP(S) index server/store
+- `chunk-server` - start an HTTP(S) chunk server/store
+- `index-server` - start an HTTP(S) index server/store
 - `make`         - split a blob into chunks and create an index file
 - `mount-index`  - FUSE mount a blob index. Will make the blob available as single file inside the mountpoint.
-- `info`         - Show information about an index file, such as number of chunks and optionally chunks from an index that a re present in a store
+- `info`         - Show information about an index file, such as number of chunks and optionally chunks from an index that are present in a store
 - `inspect-chunks` - Show detailed information about chunks stored in an index file
 - `mtree`        - Print the content of an archive or index in mtree-compatible format.
 
@@ -118,7 +118,7 @@ cd desync/cmd/desync && go install
 - `-l` Listening address for the HTTP chunk server. Can be used multiple times to run on more than one interface or more than one port. Only supported by the `chunk-server` command.
 - `-m` Specify the min/avg/max chunk sizes in kb. Only applicable to the `make` command. Defaults to 16:64:256 and for best results the min should be avg/4 and the max should be 4*avg.
 - `-i` When packing/unpacking an archive, don't create/read an archive file but instead store/read the chunks and use an index file (caidx) for the archive. Only applicable to `tar` and `untar` commands.
-- `-t` Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs when using a HTTPS chunk server.
+- `-t` Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs when using an HTTPS chunk server.
 - `--key` Key file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires a certificate with `--cert`
 - `--cert` Certificate file in PEM format used for HTTPS `chunk-server` and `index-server` commands. Also requires `-key`.
 - `-k` Keep partially assembled files in place when `extract` fails or is interrupted. The command can then be restarted and it'll not have to retrieve completed parts again. Also use this option to write to block devices.
@@ -134,12 +134,12 @@ cd desync/cmd/desync && go install
 
 ### Caching
 
-The `-c <store>` option can be used to either specify an existing store to act as cache or to populate a new store. Whenever a chunk is requested, it is first looked up in the cache before routing the request to the next (possibly remote) store. Any chunks downloaded from the main stores are added to the cache. In addition, when a chunk is read from the cache and it is a local store, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache store is expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), the operation will fail. Invalid chunks are not skipped or removed from the cache automatically. `verfiy -r` can be used to
+The `-c <store>` option can be used to either specify an existing store to act as cache or to populate a new store. Whenever a chunk is requested, it is first looked up in the cache before routing the request to the next (possibly remote) store. Any chunks downloaded from the main stores are added to the cache. In addition, when a chunk is read from the cache and it is a local store, mtime of the chunk is updated to allow for basic garbage collection based on file age. The cache store is expected to be writable. If the cache contains an invalid chunk (checksum does not match the chunk ID), the operation will fail. Invalid chunks are not skipped or removed from the cache automatically. `verify -r` can be used to
 evict bad chunks from a local store or cache.
 
 ### Multiple chunk stores
 
-One of the main features of desync is the ability to combine/chain multiple chunk stores of different types and also combine it with a cache store. For example, for a command that reads chunks when assembling a blob, stores can be chained in the command line like so: `-s <store1> -s <store2> -s <store3>`. A chunk will first be requested from `store1`, and if not found there, the request will be routed to `<store2>` and so on. Typically, the fastest chunk store should be listed first to improve performance. It is also possible to combine multiple chunk stores with a cache. In most cases the cache would be a local store, but that is not a requirement. When combining stores and a cache like so: `-s <store1> -s <store2> -c <cache>`, a chunk request will first be routed to the cache store, then to store1 followed by store2. Any chunks that is not yet in the cache will be stored there upon first request.
+One of the main features of desync is the ability to combine/chain multiple chunk stores of different types and also combine it with a cache store. For example, for a command that reads chunks when assembling a blob, stores can be chained in the command line like so: `-s <store1> -s <store2> -s <store3>`. A chunk will first be requested from `store1`, and if not found there, the request will be routed to `<store2>` and so on. Typically, the fastest chunk store should be listed first to improve performance. It is also possible to combine multiple chunk stores with a cache. In most cases the cache would be a local store, but that is not a requirement. When combining stores and a cache like so: `-s <store1> -s <store2> -c <cache>`, a chunk request will first be routed to the cache store, then to store1 followed by store2. Any chunk that is not yet in the cache will be stored there upon first request.
 
 Not all types of stores support all operations. The table below lists the supported operations on all store types.
 
@@ -147,7 +147,7 @@ Not all types of stores support all operations. The table below lists the suppor
 | --- | :---: | :---: | :---: | :---: | :---: |
 | Read chunks | yes | yes | yes | yes | yes |
 | Write chunks | yes | yes | yes | yes | no |
-| Use as cache | yes | yes | yes |yes | no |
+| Use as cache | yes | yes | yes | yes | no |
 | Prune | yes | yes | no | yes | no |
 | Verify | yes | yes | no | no | no |
 
@@ -157,7 +157,7 @@ Given stores with identical content (same chunks in each), it is possible to gro
 
 ### Dynamic store configuration
 
-Some long-running processes, namely `chunk-server` and `mount-index` may require a reconfiguration without having to restart them. This can be achieved by starting them with the `--store-file` options which provides the arguments that are normally passed via command line flags `--store` and `--cache` from a JSON file instead. Once the server is running, a SIGHUP to the process will trigger a reload of the configuration and replace the stores internally without restart. This can be done under load. If the configuration in the file is found to be invalid, and error is printed to STDERR and the reload ignored. The structure of the store-file is as follows:
+Some long-running processes, namely `chunk-server` and `mount-index` may require a reconfiguration without having to restart them. This can be achieved by starting them with the `--store-file` options which provides the arguments that are normally passed via command line flags `--store` and `--cache` from a JSON file instead. Once the server is running, a SIGHUP to the process will trigger a reload of the configuration and replace the stores internally without restart. This can be done under load. If the configuration in the file is found to be invalid, an error is printed to STDERR and the reload ignored. The structure of the store-file is as follows:
 
 ```json
 {
@@ -169,7 +169,7 @@ Some long-running processes, namely `chunk-server` and `mount-index` may require
 }
 ```
 
-This can be combined with store failover by providing the same syntax as is used in the command-line, for example `{"stores":["/path/to/main|/path/to/backup"]}`, See [Examples](#examples) for details on how to use the `--store-file` option.
+This can be combined with store failover by providing the same syntax as is used in the command-line, for example `{"stores":["/path/to/main|/path/to/backup"]}`, see [Examples](#examples) for details on how to use the `--store-file` option.
 
 ### Remote indexes
 
@@ -223,7 +223,7 @@ s3+https://example.com/bucket/prefix?lookup=auto
 
 ### Compressed vs Uncompressed chunk stores
 
-By default, desync reads and writes chunks in compressed form to all supported stores. This is in line with upstream casync's goal of storing in the most efficient way. It is however possible to change this behavior by providing desync with a config file (see Configuration section below). Disabling compression and store chunks uncompressed may reduce latency in some use-cases and improve performance. desync supports reading and writing uncompressed chunks to SFTP, S3, HTTP and local stores and caches. If more than one store is used, each of those can be configured independently, for example it's possible to read compressed chunks from S3 while using a local uncompressed cache for best performance. However, care needs to be taken when using the `chunk-server` command and building chains of chunk store proxies to avoid shifting the decompression load onto the server (it's possible this is actually desirable).
+By default, desync reads and writes chunks in compressed form to all supported stores. This is in line with upstream casync's goal of storing in the most efficient way. It is however possible to change this behavior by providing desync with a config file (see Configuration section below). Disabling compression and storing chunks uncompressed may reduce latency in some use-cases and improve performance. desync supports reading and writing uncompressed chunks to SFTP, S3, HTTP and local stores and caches. If more than one store is used, each of those can be configured independently, for example it's possible to read compressed chunks from S3 while using a local uncompressed cache for best performance. However, care needs to be taken when using the `chunk-server` command and building chains of chunk store proxies to avoid shifting the decompression load onto the server (it's possible this is actually desirable).
 
 In the setup below, a client reads chunks from an HTTP chunk server which itself gets chunks from S3.
 
@@ -299,7 +299,7 @@ Available configuration values:
 }
 ```
 
-#### Example aws credentials
+#### Example AWS credentials
 
 ```ini
 [default]
@@ -481,13 +481,13 @@ Start a chunk server with a store-file, this allows the configuration to be re-r
 
 ```text
 # Create store file
-echo '{"stores": ["http://192.168.1.1/"], "cache": "/tmp/cache"}` > stores.json
+echo '{"stores": ["http://192.168.1.1/"], "cache": "/tmp/cache"}' > stores.json
 
 # Start the server
 desync chunk-server --store-file stores.json -l :8080
 
 # Modify
-echo '{"stores": ["http://192.168.1.2/"], "cache": "/tmp/cache"}` > stores.json
+echo '{"stores": ["http://192.168.1.2/"], "cache": "/tmp/cache"}' > stores.json
 
 # Reload
 killall -1 desync
@@ -543,17 +543,17 @@ FUSE mount a chunked and remote index file. First a (small) index file is read f
 desync cat -s http://192.168.1.1/store http://192.168.1.2/small.caibx | desync mount-index -s http://192.168.1.1/store - /mnt/point
 ```
 
-Long-running FUSE mount that may need to have its store setup changed without unmounting. This can be done by using the `--store-file` option rather than speicifying store+cache in the command line. The process will then reload the file when a SIGHUP is sent.
+Long-running FUSE mount that may need to have its store setup changed without unmounting. This can be done by using the `--store-file` option rather than specifying store+cache in the command line. The process will then reload the file when a SIGHUP is sent.
 
 ```text
 # Create the store file
-echo '{"stores": ["http://192.168.1.1/"], "cache": "/tmp/cache"}` > stores.json
+echo '{"stores": ["http://192.168.1.1/"], "cache": "/tmp/cache"}' > stores.json
 
 # Start the mount
 desync mount-index --store-file stores.json index.caibx /some/mnt
 
 # Modify the store setup
-echo '{"stores": ["http://192.168.1.2/"], "cache": "/tmp/cache"}` > stores.json
+echo '{"stores": ["http://192.168.1.2/"], "cache": "/tmp/cache"}' > stores.json
 
 # Reload
 killall -1 desync
@@ -595,7 +595,7 @@ desync --config /path/to/client.json extract -s http://127.0.0.1:8080/ /path/to/
 HTTPS chunk server using key and certificate signed by custom CA.
 
 ```text
-# Building the CA and server certficate
+# Building the CA and server certificate
 openssl genrsa -out ca.key 4096
 openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt
 openssl genrsa -out server.key 2048
@@ -612,7 +612,7 @@ desync extract --ca-cert ca.crt -s https://hostname:8443/ image.iso.caibx image.
 HTTPS chunk server with client authentication (mutual-TLS).
 
 ```text
-# Building the CA, server and client certficates
+# Building the CA, server and client certificates
 openssl genrsa -out ca.key 4096
 openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt
 openssl genrsa -out server.key 2048

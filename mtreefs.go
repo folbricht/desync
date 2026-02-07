@@ -86,7 +86,7 @@ func (fs MtreeFS) CreateDevice(n NodeDevice) error {
 	return nil
 }
 
-// Converts filenames into an mtree-compatible format following the rules outined in mtree(5):
+// Converts filenames into an mtree-compatible format following the rules outlined in mtree(5):
 //
 // When encoding file or pathnames, any backslash character or character outside of the 95
 // printable ASCII characters must be encoded as a backslash followed by three octal digits.

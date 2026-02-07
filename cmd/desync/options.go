@@ -94,7 +94,7 @@ func (o cmdServerOptions) validate() error {
 func addServerOptions(o *cmdServerOptions, f *pflag.FlagSet) {
 	f.StringVar(&o.cert, "cert", "", "cert file in PEM format, requires --key")
 	f.StringVar(&o.key, "key", "", "key file in PEM format, requires --cert")
-	f.BoolVar(&o.mutualTLS, "mutual-tls", false, "require valid client certficate")
+	f.BoolVar(&o.mutualTLS, "mutual-tls", false, "require valid client certificate")
 	f.StringVar(&o.clientCA, "client-ca", "", "acceptable client certificate or CA")
 	f.StringVar(&o.auth, "authorization", "", "expected value of the authorization header in requests")
 }

@@ -121,7 +121,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 		}()
 	}
 
-	// Go trough all chunks underneath Base, filtering out other files, then feed
+	// Go through all chunks underneath Base, filtering out other files, then feed
 	// the IDs to the workers
 	err := filepath.Walk(s.Base, func(path string, info os.FileInfo, err error) error {
 		// See if we're meant to stop
@@ -167,7 +167,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 // Prune removes any chunks from the store that are not contained in a list
 // of chunks
 func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	// Go trough all chunks underneath Base, filtering out other directories and files
+	// Go through all chunks underneath Base, filtering out other directories and files
 	err := filepath.Walk(s.Base, func(path string, info os.FileInfo, err error) error {
 		// See if we're meant to stop
 		select {

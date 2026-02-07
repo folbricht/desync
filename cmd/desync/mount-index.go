@@ -41,7 +41,7 @@ All chunks that are accessed by the mount are retrieved from the store and writt
 the file as read operations are performed. Once all chunks have been accessed, the COR
 file is fully populated. On termination, a <name>.state file is written containing
 information about which chunks of the index have or have not been read. A state file is
-only valid for a one cache-file and one index. When re-using it with a different index,
+only valid for one cache file and one index. When re-using it with a different index,
 data corruption can occur.
 
 This command supports the --store-file option which can be used to define the stores
@@ -64,7 +64,7 @@ needing to restart the server. This can be done under load as well.
 	flags.StringVarP(&opt.corFile, "cor-file", "", "", "use a copy-on-read sparse file as cache")
 	flags.StringVarP(&opt.StateSaveFile, "cor-state-save", "", "", "file to store the state for copy-on-read")
 	flags.StringVarP(&opt.StateInitFile, "cor-state-init", "", "", "copy-on-read state init file")
-	flags.IntVarP(&opt.StateInitConcurrency, "cor-init-n", "", 10, "number of gorooutines to use for initialization (with --cor-state-init)")
+	flags.IntVarP(&opt.StateInitConcurrency, "cor-init-n", "", 10, "number of goroutines to use for initialization (with --cor-state-init)")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }

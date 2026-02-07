@@ -190,12 +190,12 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 
 		pos++
 
-		// didn't find a boundry before reaching the max?
+		// didn't find a boundary before reaching the max?
 		if pos >= m {
 			return c.split(pos, nil)
 		}
 
-		// Did we find a boundry?
+		// Did we find a boundary?
 		if c.hValue%c.hDiscriminator == c.hDiscriminator-1 {
 			return c.split(pos, nil)
 		}
@@ -247,7 +247,7 @@ func (c *Chunker) Avg() uint64 { return c.avg }
 // Max returns the maximum chunk size
 func (c *Chunker) Max() uint64 { return c.max }
 
-// Hash implements the rolling hash algorithm used to find chunk bounaries
+// Hash implements the rolling hash algorithm used to find chunk boundaries
 // in a stream of bytes.
 type Hash struct {
 	value         uint32

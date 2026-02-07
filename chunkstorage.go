@@ -5,7 +5,7 @@ import (
 )
 
 // ChunkStorage stores chunks in a writable store. It can be safely used by multiple goroutines and
-// contains an internal cache of what chunks have been store previously.
+// contains an internal cache of what chunks have been stored previously.
 type ChunkStorage struct {
 	sync.Mutex
 	ws        WriteStore

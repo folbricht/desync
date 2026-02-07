@@ -111,7 +111,7 @@ func (o *StoreOptions) UnmarshalJSON(data []byte) error {
 
 // Returns data converters that convert between plain and storage-format. Each layer
 // represents a modification such as compression or encryption and is applied in order
-// depending the direction of data. If data is written to storage, the layer's toStorage
+// depending on the direction of data. If data is written to storage, the layer's toStorage
 // method is called in the order they are returned. If data is read, the fromStorage
 // method is called in reverse order.
 func (o *StoreOptions) converters() []converter {

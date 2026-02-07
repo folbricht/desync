@@ -16,7 +16,7 @@ func newVerifyIndexCommand(ctx context.Context) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "verify-index <index> <file>",
-		Short: "Verifies an index matches a file",
+		Short: "Verify an index matches a file",
 		Long: `Verifies an index file matches the content of a blob. Use '-' to read the index
 from STDIN.`,
 		Example: `  desync verify-index sftp://192.168.1.1/myIndex.caibx largefile.bin`,

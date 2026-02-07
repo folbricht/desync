@@ -32,7 +32,7 @@ func newIndexServerCommand(ctx context.Context) *cobra.Command {
 		Use:   "index-server",
 		Short: "Server for indexes over HTTP(S)",
 		Long: `Starts an HTTP index server that can be used as remote store. It supports
-reading from a single local or a proxying to a remote store.
+reading from a single local store or proxying to a remote store.
 If --cert and --key are provided, the server will serve over HTTPS. The -w option
 enables writing to this store.`,
 		Example: `  desync index-server -s sftp://192.168.1.1/indexes -l :8080`,
@@ -127,7 +127,7 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 			return err
 		}
 		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return errors.New("no client CA certficates found in client-ca file")
+			return errors.New("no client CA certificates found in client-ca file")
 		}
 		tlsConfig.ClientCAs = certPool
 	}

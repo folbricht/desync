@@ -26,7 +26,7 @@ func (s ConsoleIndexStore) GetIndex(string) (i Index, e error) {
 	return IndexFromReader(os.Stdin)
 }
 
-// StoreIndex writes the provided indes to STDOUT. The name is ignored.
+// StoreIndex writes the provided index to STDOUT. The name is ignored.
 func (s ConsoleIndexStore) StoreIndex(name string, idx Index) error {
 	_, err := idx.WriteTo(os.Stdout)
 	return err

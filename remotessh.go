@@ -71,7 +71,7 @@ func (r *RemoteSSH) String() string {
 // StartProtocol initiates a connection to the remote store server using
 // the value in CASYNC_SSH_PATH (default "ssh"), and executes the command in
 // CASYNC_REMOTE_PATH (default "casync"). It then performs the HELLO handshake
-// to initialze the connection
+// to initialize the connection
 func StartProtocol(u *url.URL) (*Protocol, error) {
 	sshCmd := os.Getenv("CASYNC_SSH_PATH")
 	if sshCmd == "" {
