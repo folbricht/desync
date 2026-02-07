@@ -40,7 +40,7 @@ less disk space is required as no intermediary catar is created. There
 can however be a difference in performance depending on file size.
 
 By default, input is read from local disk. Using --input-format=tar,
-the input can be a tar file or stream to STDIN with '-'.
+the input can be a tar file or a stream from STDIN with '-'.
 `,
 		Example: `  desync tar documents.catar $HOME/Documents
   desync tar -i -s /path/to/local pics.caidx $HOME/Pictures`,

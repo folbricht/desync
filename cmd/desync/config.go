@@ -99,7 +99,7 @@ func newConfigCommand(ctx context.Context) *cobra.Command {
 		Short: "Show or write config file",
 		Long: `Shows the current internal configuration settings, either the defaults,
 the values from $HOME/.config/desync/config.json or the specified config file. The
-output can be used to create a custom config file writing it to the specified file
+output can be used to create a custom config file by writing it to the specified file
 or $HOME/.config/desync/config.json by default.`,
 		Example: `  desync config
   desync --config desync.json config -w`,

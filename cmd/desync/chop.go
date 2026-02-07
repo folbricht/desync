@@ -23,7 +23,7 @@ func newChopCommand(ctx context.Context) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "chop <index> <file>",
-		Short: "Reads chunks from a file according to an index",
+		Short: "Read chunks from a file according to an index",
 		Long: `Reads the index and extracts all referenced chunks from the file into a store,
 local or remote.
 

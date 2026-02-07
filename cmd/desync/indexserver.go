@@ -32,7 +32,7 @@ func newIndexServerCommand(ctx context.Context) *cobra.Command {
 		Use:   "index-server",
 		Short: "Server for indexes over HTTP(S)",
 		Long: `Starts an HTTP index server that can be used as remote store. It supports
-reading from a single local or a proxying to a remote store.
+reading from a single local store or proxying to a remote store.
 If --cert and --key are provided, the server will serve over HTTPS. The -w option
 enables writing to this store.`,
 		Example: `  desync index-server -s sftp://192.168.1.1/indexes -l :8080`,

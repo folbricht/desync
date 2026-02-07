@@ -42,9 +42,9 @@ set the path by writing the index file path, followed by a colon and the data pa
 If several seed files and indexes are available, the -seed-dir option can be used
 to automatically select all .caibx files in a directory as seeds. Use '-' to read
 the index from STDIN. If a seed is invalid, by default the extract operation will be
-aborted. With the -skip-invalid-seeds, the invalid seeds will be discarded and the
-extraction will continue without them. Otherwise with the -regenerate-invalid-seeds,
-the eventual invalid seed indexes will be regenerated, in memory, by using the
+aborted. With --skip-invalid-seeds, the invalid seeds will be discarded and the
+extraction will continue without them. Otherwise with --regenerate-invalid-seeds,
+any invalid seed indexes will be regenerated, in memory, by using the
 available data, and neither data nor indexes will be changed on disk. Also, if the seed changes
 while processing, its invalid chunks will be taken from the self seed, or the store, instead
 of aborting.`,
