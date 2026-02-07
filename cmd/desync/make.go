@@ -38,7 +38,7 @@ to STDOUT.`,
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store")
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
-	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "show chunking statistics")
+	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print chunking statistics and exit without writing the index file")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
