@@ -27,7 +27,7 @@ func newChopCommand(ctx context.Context) *cobra.Command {
 		Long: `Reads the index and extracts all referenced chunks from the file into a store,
 local or remote.
 
-Does not modify the input file or index in any. It's used to populate a chunk
+Does not modify the input file or index in any way. It's used to populate a chunk
 store by chopping up a file according to an existing index. To exclude chunks that
 are known to exist in the target store already, use --ignore <index> which will
 skip any chunks from the given index. The same can be achieved by providing the

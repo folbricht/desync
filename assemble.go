@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-// InvalidSeedAction represent the action that we will take if a seed
+// InvalidSeedAction represents the action that we will take if a seed
 // happens to be invalid. There are currently three options:
 // - fail with an error
 // - skip the invalid seed and try to continue
@@ -108,7 +108,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		ChunksTotal: len(idx.Chunks),
 	}
 
-	// Determine is the target exists and create it if not
+	// Determine if the target exists and create it if not
 	info, err := os.Stat(name)
 	switch {
 	case os.IsNotExist(err): // File doesn't exist yet => create it
@@ -147,7 +147,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	defer ns.close()
 	seeds = append([]Seed{ns}, seeds...)
 
-	// Start a self-seed which will become usable once chunks are written contigously
+	// Start a self-seed which will become usable once chunks are written contiguously
 	// beginning at position 0. There is no need to add this to the seeds list because
 	// when we create a plan it will be empty.
 	ss, err := newSelfSeed(name, idx)

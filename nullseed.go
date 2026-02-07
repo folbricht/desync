@@ -109,7 +109,7 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 		return 0, 0, fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
 	}
 
-	// When cloning isn'a available we'd normally have to copy the 0 bytes into
+	// When cloning isn't available we'd normally have to copy the 0 bytes into
 	// the target range. But if that's already blank (because it's a new/truncated
 	// file) there's no need to copy 0 bytes.
 	if !s.canReflink {

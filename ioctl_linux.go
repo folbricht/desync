@@ -21,7 +21,7 @@ const blkGetSize64 = 0x80081272
 const fiCloneRange = 0x4020940d
 
 // CanClone tries to determine if the filesystem allows cloning of blocks between
-// two files. It'll create two tempfiles in the same dirs and attempt to perfom
+// two files. It'll create two tempfiles in the same dirs and attempt to perform
 // a 0-byte long block clone. If that's successful it'll return true.
 func CanClone(dstFile, srcFile string) bool {
 	dst, err := ioutil.TempFile(filepath.Dir(dstFile), ".tmp")

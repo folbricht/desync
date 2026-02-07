@@ -10,7 +10,7 @@ var _ Store = &DedupQueue{}
 // DedupQueue wraps a store and provides deduplication of incoming chunk requests. This is useful when
 // a burst of requests for the same chunk is received and the chunk store serving those is slow. With
 // the DedupQueue wrapper, concurrent requests for the same chunk will result in just one request to the
-// upstread store. Implements the Store interface.
+// upstream store. Implements the Store interface.
 type DedupQueue struct {
 	store         Store
 	mu            sync.Mutex
@@ -126,7 +126,7 @@ func (r *request) wait() (interface{}, error) {
 	return r.data, r.err
 }
 
-// Set the result data and marks this request as comlete.
+// Set the result data and marks this request as complete.
 func (r *request) markDone(data interface{}, err error) {
 	r.data = data
 	r.err = err

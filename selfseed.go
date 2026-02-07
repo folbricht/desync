@@ -46,7 +46,7 @@ func (s *selfSeed) add(segment IndexSegment) {
 	// Advance pos until we find a chunk we don't yet have recorded while recording
 	// the chunk positions we do have in the position map used to find seed matches.
 	// Since it's guaranteed that the numbers are only increasing, we drop old numbers
-	// from the cache map to keep it's size to a minimum and only store out-of-sequence
+	// from the cache map to keep its size to a minimum and only store out-of-sequence
 	// numbers
 	for {
 		// See if we can advance the write pointer in the self-seed which requires

@@ -23,7 +23,7 @@ type LocalFS struct {
 	sErr    error
 }
 
-// LocalFSOptions influence the behavior of the filesystem when reading from or writing too it.
+// LocalFSOptions influence the behavior of the filesystem when reading from or writing to it.
 type LocalFSOptions struct {
 	// Only used when reading from the filesystem. Will only return
 	// files from the same device as the first read operation.
@@ -35,7 +35,7 @@ type LocalFSOptions struct {
 	// Ignore the incoming permissions when writing files. Use the current default instead.
 	NoSamePermissions bool
 
-	// Reads all timestamps as zero. Used in tar operations to avoid unneccessary changes.
+	// Reads all timestamps as zero. Used in tar operations to avoid unnecessary changes.
 	NoTime bool
 }
 

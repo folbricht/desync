@@ -16,13 +16,13 @@ type HashAlgorithm interface {
 	Algorithm() crypto.Hash
 }
 
-// SHA512-256 hashing algoritm for Digest.
+// SHA512-256 hashing algorithm for Digest.
 type SHA512256 struct{}
 
 func (h SHA512256) Sum(data []byte) [32]byte { return sha512.Sum512_256(data) }
 func (h SHA512256) Algorithm() crypto.Hash   { return crypto.SHA512_256 }
 
-// SHA256 hashing algoritm for Digest.
+// SHA256 hashing algorithm for Digest.
 type SHA256 struct{}
 
 func (h SHA256) Sum(data []byte) [32]byte { return sha256.Sum256(data) }

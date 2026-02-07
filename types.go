@@ -21,7 +21,7 @@ func ChunkIDFromSlice(b []byte) (ChunkID, error) {
 	return c, nil
 }
 
-// ChunkIDFromString converts a SHA512/56 encoded as string into a ChunkID
+// ChunkIDFromString converts a SHA512/256 encoded as string into a ChunkID
 func ChunkIDFromString(id string) (ChunkID, error) {
 	b, err := hex.DecodeString(id)
 	if err != nil {

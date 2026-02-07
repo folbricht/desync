@@ -127,7 +127,7 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 			return err
 		}
 		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return errors.New("no client CA certficates found in client-ca file")
+			return errors.New("no client CA certificates found in client-ca file")
 		}
 		tlsConfig.ClientCAs = certPool
 	}

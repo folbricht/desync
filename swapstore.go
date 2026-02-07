@@ -19,7 +19,7 @@ type SwapStore struct {
 	mu sync.RWMutex
 }
 
-// SwapWriteStore does ther same as SwapStore but implements WriteStore as well.
+// SwapWriteStore does the same as SwapStore but implements WriteStore as well.
 type SwapWriteStore struct {
 	SwapStore
 }
@@ -56,21 +56,21 @@ func (s *SwapStore) String() string {
 	return s.s.String()
 }
 
-// Close the store. NOP opertation, needed to implement Store interface.
+// Close the store. NOP operation, needed to implement Store interface.
 func (s *SwapStore) Close() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.s.Close()
 }
 
-// Close the store. NOP opertation, needed to implement Store interface.
+// Close the store. NOP operation, needed to implement Store interface.
 func (s *SwapStore) Swap(new Store) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, oldWritable := s.s.(WriteStore)
 	_, newWritable := new.(WriteStore)
 	if oldWritable && !newWritable {
-		return errors.New("a writable store can obly be updated with another writable one")
+		return errors.New("a writable store can only be updated with another writable one")
 	}
 	s.s.Close() // Close the old store
 	s.s = new

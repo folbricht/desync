@@ -76,7 +76,7 @@ func IndexFromReader(r io.Reader) (c Index, err error) {
 		c.Chunks[i].Start = lastOffset
 		c.Chunks[i].Size = r.Offset - lastOffset
 		lastOffset = r.Offset
-		// Check the max size of the chunk only. The min apperently doesn't apply
+		// Check the max size of the chunk only. The min apparently doesn't apply
 		// to the last chunk.
 		if c.Chunks[i].Size > c.Index.ChunkSizeMax {
 			return c, fmt.Errorf("chunk size %d is larger than maximum %d", c.Chunks[i].Size, c.Index.ChunkSizeMax)
@@ -180,7 +180,7 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 
 	// Feed the workers, stop if there are any errors. To keep the index list in
 	// order, we calculate the checksum here before handing	them over to the
-	// workers for compression and storage. That could probablybe optimized further
+	// workers for compression and storage. That could probably be optimized further
 	var num int // chunk #, so we can re-assemble the index in the right order later
 loop:
 	for {

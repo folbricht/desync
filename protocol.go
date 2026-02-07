@@ -66,7 +66,7 @@ func (p *Protocol) RecvHello() (uint64, error) {
 		return 0, err
 	}
 	if m.Type != CaProtocolHello {
-		return 0, fmt.Errorf("expected protocl hello, got %x", m.Type)
+		return 0, fmt.Errorf("expected protocol hello, got %x", m.Type)
 	}
 	if len(m.Body) != 8 {
 		return 0, fmt.Errorf("unexpected length of hello msg, got %d, expected 8", len(m.Body))

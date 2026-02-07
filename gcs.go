@@ -77,7 +77,7 @@ func (s GCStoreBase) String() string {
 	return s.Location
 }
 
-// Close the GCS base store. NOP opertation but needed to implement the store interface.
+// Close the GCS base store. NOP operation but needed to implement the store interface.
 func (s GCStoreBase) Close() error { return nil }
 
 // NewGCStore creates a chunk store with Google Storage backing. The URL

@@ -38,7 +38,7 @@ func (s Converters) fromStorage(in []byte) ([]byte, error) {
 	return b, nil
 }
 
-// Returns true is conversion involves compression. Typically
+// Returns true if conversion involves compression. Typically
 // used to determine the correct file-extension.
 func (s Converters) hasCompression() bool {
 	for _, layer := range s {
@@ -65,12 +65,12 @@ func (s Converters) equal(c Converters) bool {
 
 // converter is a storage data modifier layer.
 type converter interface {
-	// Convert data from it's original form to storage format.
+	// Convert data from its original form to storage format.
 	// The input could be plain data, or the output of a prior
 	// converter.
 	toStorage([]byte) ([]byte, error)
 
-	// Convert data from it's storage format towards it's plain
+	// Convert data from its storage format towards its plain
 	// form. The input could be encrypted or compressed, while
 	// the output may be used for the next conversion layer.
 	fromStorage([]byte) ([]byte, error)

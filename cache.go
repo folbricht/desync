@@ -62,7 +62,7 @@ func (c Cache) Close() error {
 	return c.s.Close()
 }
 
-// New cache which GetChunk() function will return ChunkMissing error instead of ChunkInvalid
+// RepairableCache is a cache whose GetChunk() function will return ChunkMissing error instead of ChunkInvalid
 // so caller can redownload invalid chunk from store
 type RepairableCache struct {
 	l WriteStore

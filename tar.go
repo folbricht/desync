@@ -11,7 +11,7 @@ import (
 
 // TarFeatureFlags are used as feature flags in the header of catar archives. These
 // should be used in index files when chunking a catar as well. TODO: Find out what
-// CaFormatWithPermissions is as that's not set incasync-produced catar archives.
+// CaFormatWithPermissions is as that's not set in casync-produced catar archives.
 const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
 	CaFormatWithNSecTime |
 	CaFormatWithPermissions |
@@ -130,7 +130,7 @@ func tar(ctx context.Context, enc FormatEncoder, fs *fsBufReader, f *File) (n in
 			}
 
 			items = append(items, FormatGoodbyeItem{
-				Offset: uint64(start), // This is tempoary, it needs to be re-calculated later as offset from the goodbye marker
+				Offset: uint64(start), // This is temporary, it needs to be re-calculated later as offset from the goodbye marker
 				Size:   uint64(n - start),
 				Hash:   SipHash([]byte(name)),
 			})

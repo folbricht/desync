@@ -81,7 +81,7 @@ func startIndexServer(t *testing.T, args ...string) (string, context.CancelFunc)
 	// Flush any handlers that were registered in the default mux before
 	http.DefaultServeMux = &http.ServeMux{}
 
-	// Start the server in a gorountine. Cancel the context when done
+	// Start the server in a goroutine. Cancel the context when done
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := newIndexServerCommand(ctx)
 	cmd.SetArgs(append(args, "-l", addr))

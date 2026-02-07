@@ -41,7 +41,7 @@ func NewChunkWithID(id ChunkID, b []byte, skipVerify bool) (*Chunk, error) {
 }
 
 // NewChunkFromStorage builds a new chunk from data that is not in plain format.
-// It uses raw storage format from it source and the modifiers are used to convert
+// It uses raw storage format from its source and the modifiers are used to convert
 // into plain data as needed.
 func NewChunkFromStorage(id ChunkID, b []byte, modifiers Converters, skipVerify bool) (*Chunk, error) {
 	c := &Chunk{id: id, storage: b, converters: modifiers}

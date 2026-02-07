@@ -22,7 +22,7 @@ type MountFS interface {
 }
 
 // IndexMountFS is used to FUSE mount an index file (as a blob, not an archive).
-// It present a single file underneath the mountpoint.
+// It presents a single file underneath the mountpoint.
 type IndexMountFS struct {
 	fs.Inode
 

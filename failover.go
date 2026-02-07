@@ -91,7 +91,7 @@ func (g *FailoverGroup) current() (Store, int) {
 	return g.stores[g.active], g.active
 }
 
-// Fail over to the next available store after recveiving an error from i (the active). We
+// Fail over to the next available store after receiving an error from i (the active). We
 // need i to know which store returned the error as there could be failures from concurrent
 // requests. Another request could have initiated the failover already. So ignore if i is not
 // (no longer) the active store.
