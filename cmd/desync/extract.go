@@ -66,7 +66,7 @@ of aborting.`,
 	flags.BoolVar(&opt.regenerateInvalidSeeds, "regenerate-invalid-seeds", false, "Regenerate seed indexes with invalid chunks")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")
-	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print statistics")
+	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print extraction statistics to stdout when done")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
