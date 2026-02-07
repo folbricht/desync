@@ -290,6 +290,125 @@ func TestSeed(t *testing.T) {
 
 }
 
+// TestSelfSeedInPlace is the same as TestSelfSeed but the target file is
+// pre-populated with the correct content before extraction. Every chunk must
+// be kept in-place and the self-seed must not cause any re-writes.
+func TestSelfSeedInPlace(t *testing.T) {
+	// Setup a temporary store
+	store, err := ioutil.TempDir("", "store")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(store)
+
+	s, err := NewLocalStore(store, StoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build a number of fake chunks that can then be used in the test in any order
+	type rawChunk struct {
+		id   ChunkID
+		data []byte
+	}
+	size := 1024
+	numChunks := 10
+	chunks := make([]rawChunk, numChunks)
+
+	for i := 0; i < numChunks; i++ {
+		b := make([]byte, size)
+		rand.Read(b)
+		chunk := NewChunk(b)
+		if err = s.StoreChunk(chunk); err != nil {
+			t.Fatal(err)
+		}
+		chunks[i] = rawChunk{chunk.ID(), b}
+	}
+
+	// The target is pre-written with the correct content,
+	// so every chunk should be detected as in-place.
+	tests := map[string]struct {
+		index []int
+	}{
+		"single chunk": {
+			index: []int{0},
+		},
+		"repeating single chunk": {
+			index: []int{0, 0, 0, 0, 0},
+		},
+		"repeating chunk sequence": {
+			index: []int{0, 1, 2, 0, 1, 2, 2},
+		},
+		"repeating chunk sequence mid file": {
+			index: []int{1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
+		},
+		"repeating chunk sequence reversed": {
+			index: []int{0, 1, 2, 2, 1, 0},
+		},
+		"non-repeating chunks": {
+			index: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Build an index from the target chunks
+			var idx Index
+			var b []byte
+			for i, p := range test.index {
+				chunk := IndexChunk{
+					ID:    chunks[p].id,
+					Start: uint64(i * size),
+					Size:  uint64(size),
+				}
+				b = append(b, chunks[p].data...)
+				idx.Chunks = append(idx.Chunks, chunk)
+			}
+
+			// Calculate the expected checksum
+			sum := md5.Sum(b)
+
+			// Build a temp target file pre-populated with the correct content
+			dst, err := ioutil.TempFile("", "dst")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.Remove(dst.Name())
+			_, err = dst.Write(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dst.Close()
+
+			// Extract the file
+			stats, err := AssembleFile(context.Background(), dst.Name(), idx, s, nil,
+				AssembleOptions{1, InvalidSeedActionBailOut},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Compare the checksums to that of the input data
+			b, err = ioutil.ReadFile(dst.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			outSum := md5.Sum(b)
+			if sum != outSum {
+				t.Fatal("checksum of extracted file doesn't match expected")
+			}
+
+			// All chunks must be in-place. The in-place check in writeChunk
+			// runs before the self-seed lookup, so repeated chunks are not
+			// re-written from the self-seed.
+			if stats.ChunksInPlace != uint64(len(test.index)) {
+				t.Fatalf("expected all %d chunks in-place, got %d", len(test.index), stats.ChunksInPlace)
+			}
+		})
+	}
+
+}
+
 func join(slices ...[]byte) []byte {
 	var out []byte
 	for _, b := range slices {
