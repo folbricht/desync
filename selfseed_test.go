@@ -11,11 +11,7 @@ import (
 
 func TestSelfSeed(t *testing.T) {
 	// Setup a temporary store
-	store, err := ioutil.TempDir("", "store")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(store)
+	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
 	if err != nil {

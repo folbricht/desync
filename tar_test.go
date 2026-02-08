@@ -15,11 +15,7 @@ import (
 
 func TestTar(t *testing.T) {
 	// First make a tempdir and create a few dirs and files in it
-	base, err := ioutil.TempDir("", "desync-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(base)
+	base := t.TempDir()
 
 	dirs := []string{
 		"dir1/sub11",
@@ -28,7 +24,7 @@ func TestTar(t *testing.T) {
 		"dir2/sub22",
 	}
 	for _, d := range dirs {
-		if err = os.MkdirAll(filepath.Join(base, d), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Join(base, d), 0755); err != nil {
 			t.Fatal()
 		}
 	}
@@ -41,14 +37,14 @@ func TestTar(t *testing.T) {
 		ioutil.WriteFile(filepath.Join(base, name), []byte(fmt.Sprintf("filecontent%d", i)), 0644)
 	}
 
-	if err = os.Symlink("dir1", filepath.Join(base, "symlink")); err != nil {
+	if err := os.Symlink("dir1", filepath.Join(base, "symlink")); err != nil {
 		t.Fatal(err)
 	}
 
 	// Encode it all into a buffer
 	fs := NewLocalFS(base, LocalFSOptions{})
 	b := new(bytes.Buffer)
-	if err = Tar(context.Background(), b, fs); err != nil {
+	if err := Tar(context.Background(), b, fs); err != nil {
 		t.Fatal(err)
 	}
 
