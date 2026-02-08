@@ -245,51 +245,43 @@ var (
 )
 
 func BenchmarkChunker(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		if err := chunkFile(b, "testdata/chunker.input"); err != nil {
+	data, err := os.ReadFile("testdata/chunker.input")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for b.Loop() {
+		c, err := NewChunker(bytes.NewReader(data), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+		if err != nil {
 			b.Fatal(err)
-		}
-	}
-}
-
-func chunkFile(b *testing.B, name string) error {
-	b.StopTimer()
-	f, err := os.Open(name)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		return err
-	}
-	b.StartTimer()
-	for {
-		start, buf, err := c.Next()
-		if err != nil {
-			return err
-		}
-		if len(buf) == 0 {
-			break
-		}
-		chunkStart = start
-		chunkBuf = buf
-	}
-	return err
-}
-
-func benchmarkChunkNull(b *testing.B, size int) {
-	in := make([]byte, size)
-	for n := 0; n < b.N; n++ {
-		c, err := NewChunker(bytes.NewReader(in), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-		if err != nil {
-			panic(err)
 		}
 		for {
 			start, buf, err := c.Next()
 			if err != nil {
-				panic(err)
+				b.Fatal(err)
+			}
+			if len(buf) == 0 {
+				break
+			}
+			chunkStart = start
+			chunkBuf = buf
+		}
+	}
+}
+
+func benchmarkChunkNull(b *testing.B, size int) {
+	in := make([]byte, size)
+	b.SetBytes(int64(size))
+	for b.Loop() {
+		c, err := NewChunker(bytes.NewReader(in), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+		if err != nil {
+			b.Fatal(err)
+		}
+		for {
+			start, buf, err := c.Next()
+			if err != nil {
+				b.Fatal(err)
 			}
 			if len(buf) == 0 {
 				break
