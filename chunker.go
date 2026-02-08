@@ -14,7 +14,20 @@ func discriminatorFromAvg(avg uint64) uint32 {
 	return uint32(float64(avg) / (-1.42888852e-7*float64(avg) + 1.33237515))
 }
 
-var hashTable = []uint32{
+// modInverse32 computes the modular multiplicative inverse of an odd number d
+// modulo 2^32 using Newton's method. This is used for Lemire's fast
+// divisibility test which replaces expensive hardware division.
+func modInverse32(d uint32) uint32 {
+	x := d             // d is odd, so d*d ≡ 1 (mod 4) is a valid start
+	x *= 2 - d*x       // 3 bits
+	x *= 2 - d*x       // 6 bits
+	x *= 2 - d*x       // 12 bits
+	x *= 2 - d*x       // 24 bits
+	x *= 2 - d*x       // 48 bits → full 32-bit precision
+	return x
+}
+
+var hashTable = [256]uint32{
 	0x458be752, 0xc10748cc, 0xfbbcdbb8, 0x6ded5b68,
 	0xb10a82b5, 0x20d75648, 0xdfc5665f, 0xa8428801,
 	0x7ebf5191, 0x841135c7, 0x65cc53b3, 0x280a597c,
@@ -81,6 +94,16 @@ var hashTable = []uint32{
 	0x7bf7cabc, 0xf9c18d66, 0x593ade65, 0xd95ddf11,
 }
 
+// hashTableRotated contains hashTable values pre-rotated by ChunkerWindowSize,
+// eliminating a RotateLeft32 call per byte in the hot loop.
+var hashTableRotated [256]uint32
+
+func init() {
+	for i := range hashTable {
+		hashTableRotated[i] = bits.RotateLeft32(hashTable[i], ChunkerWindowSize)
+	}
+}
+
 // Chunker is used to break up a data stream into chunks of data.
 type Chunker struct {
 	r             io.Reader
@@ -88,14 +111,25 @@ type Chunker struct {
 
 	start uint64
 
-	buf    []byte
-	hitEOF bool // true once the reader returned EOF
+	buf        []byte
+	backingBuf []byte // reusable backing buffer for fillBuffer
+	hitEOF     bool   // true once the reader returned EOF
 
 	// rolling hash values
 	hValue         uint32
 	hWindow        [ChunkerWindowSize]byte
 	hIdx           int
 	hDiscriminator uint32
+
+	// Precomputed values for Lemire's fast divisibility test.
+	// Tests "hValue % d == d-1" without hardware division by rewriting as
+	// "((hValue - (d-1)) >> trailShift) * inverseOdd < threshOdd"
+	// where d's power-of-2 factor is separated out.
+	hInverseOdd uint32 // modular inverse of odd part of hDiscriminator
+	hThreshOdd  uint32 // ceil(2^32 / odd part of hDiscriminator)
+	hDiscMinus1 uint32 // hDiscriminator - 1
+	hTrailShift uint   // number of trailing zeros in hDiscriminator
+	hTrailMask  uint32 // (1 << hTrailShift) - 1, for checking low bits
 }
 
 // NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
@@ -112,12 +146,29 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 	if avg > max {
 		return Chunker{}, errors.New("avg chunk size must not be greater than max")
 	}
+	disc := discriminatorFromAvg(avg)
+
+	// Precompute Lemire's fast divisibility constants.
+	// We want to test: hValue % disc == disc-1
+	// Rewritten as: (hValue - (disc-1)) is divisible by disc
+	// Factor disc = odd * 2^shift, then use modular inverse of odd part.
+	trailShift := uint(bits.TrailingZeros32(disc))
+	oddPart := disc >> trailShift
+	inverseOdd := modInverse32(oddPart)
+	// threshOdd = ceil(2^32 / oddPart)
+	threshOdd := uint32(((1 << 32) + uint64(oddPart) - 1) / uint64(oddPart))
+
 	return Chunker{
 		r:              r,
 		min:            min,
 		avg:            avg,
 		max:            max,
-		hDiscriminator: discriminatorFromAvg(avg),
+		hDiscriminator: disc,
+		hInverseOdd:    inverseOdd,
+		hThreshOdd:     threshOdd,
+		hDiscMinus1:    disc - 1,
+		hTrailShift:    trailShift,
+		hTrailMask:     (1 << trailShift) - 1,
 	}, nil
 }
 
@@ -128,7 +179,14 @@ func (c *Chunker) fillBuffer() (n int, err error) {
 		return
 	}
 	size := 10 * c.max
-	buf := make([]byte, int(size))       // Make a new slice large enough
+	// Reuse the backing buffer if it has sufficient capacity
+	var buf []byte
+	if uint64(cap(c.backingBuf)) >= size {
+		buf = c.backingBuf[:size]
+	} else {
+		buf = make([]byte, int(size))
+		c.backingBuf = buf
+	}
 	n = copy(buf, c.buf)                 // copy the remaining bytes from the old buffer
 	for uint64(n) < size && err == nil { // read until the buffer is at max or we get an EOF
 		var nn int
@@ -176,26 +234,49 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	// Position the pointer at the minimum size
 	var pos = int(c.min)
 
+	// Hoist frequently accessed struct fields into locals to avoid
+	// repeated pointer dereferences in the hot loop.
+	hValue := c.hValue
+	hIdx := c.hIdx
+	buf := c.buf
+	win := &c.hWindow
+	inverseOdd := c.hInverseOdd
+	threshOdd := c.hThreshOdd
+	discMinus1 := c.hDiscMinus1
+	trailShift := c.hTrailShift
+	trailMask := c.hTrailMask
+
 	var out, in byte
 	for {
 		// Add a byte to the hash
-		in = c.buf[pos]
-		out = c.hWindow[c.hIdx]
-		c.hWindow[c.hIdx] = in
-		c.hIdx = (c.hIdx + 1) % ChunkerWindowSize
-		c.hValue = bits.RotateLeft32(c.hValue, 1) ^
-			bits.RotateLeft32(hashTable[out], ChunkerWindowSize) ^
+		in = buf[pos]
+		out = win[hIdx]
+		win[hIdx] = in
+		hIdx++
+		if hIdx >= ChunkerWindowSize {
+			hIdx = 0
+		}
+		hValue = bits.RotateLeft32(hValue, 1) ^
+			hashTableRotated[out] ^
 			hashTable[in]
 
 		pos++
 
 		// didn't find a boundary before reaching the max?
 		if pos >= m {
+			// Write locals back (split resets them, but keep state consistent)
+			c.hValue = hValue
+			c.hIdx = hIdx
 			return c.split(pos, nil)
 		}
 
-		// Did we find a boundary?
-		if c.hValue%c.hDiscriminator == c.hDiscriminator-1 {
+		// Did we find a boundary? Uses Lemire's fast divisibility test:
+		// "hValue % d == d-1" ⟺ "(hValue - (d-1)) is divisible by d"
+		// Factor d = oddPart * 2^trailShift, check 2-part divisibility.
+		adjusted := hValue - discMinus1
+		if adjusted&trailMask == 0 && (adjusted>>trailShift)*inverseOdd < threshOdd {
+			c.hValue = hValue
+			c.hIdx = hIdx
 			return c.split(pos, nil)
 		}
 	}
