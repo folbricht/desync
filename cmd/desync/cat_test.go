@@ -3,7 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,7 +12,7 @@ import (
 
 func TestCatCommand(t *testing.T) {
 	// Read the whole expected blob from disk
-	f, err := ioutil.ReadFile("testdata/blob1")
+	f, err := os.ReadFile("testdata/blob1")
 	require.NoError(t, err)
 
 	for _, test := range []struct {
@@ -33,7 +34,7 @@ func TestCatCommand(t *testing.T) {
 
 			// Redirect the command's output
 			stdout = b
-			cmd.SetOutput(ioutil.Discard)
+			cmd.SetOutput(io.Discard)
 			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 

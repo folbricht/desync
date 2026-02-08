@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -44,7 +44,7 @@ func TestInspectChunksCommand(t *testing.T) {
 
 			// Redirect the command's output
 			stdout = b
-			cmd.SetOutput(ioutil.Discard)
+			cmd.SetOutput(io.Discard)
 			_, err = cmd.ExecuteC()
 			require.NoError(t, err)
 

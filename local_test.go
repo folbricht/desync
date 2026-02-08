@@ -2,7 +2,7 @@ package desync
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -42,7 +42,7 @@ func TestLocalStoreCompressed(t *testing.T) {
 
 	// Now let's look at the file in the store directly to make sure it's compressed
 	_, name := s.nameFromID(id)
-	b, err := ioutil.ReadFile(name)
+	b, err := os.ReadFile(name)
 	require.NoError(t, err)
 	require.NotEqual(t, dataIn, b, "chunk is not compressed")
 }
@@ -79,7 +79,7 @@ func TestLocalStoreUncompressed(t *testing.T) {
 
 	// Now let's look at the file in the store directly to make sure it's uncompressed
 	_, name := s.nameFromID(id)
-	b, err := ioutil.ReadFile(name)
+	b, err := os.ReadFile(name)
 	require.NoError(t, err)
 
 	require.Equal(t, dataIn, b, "chunk is compressed")
@@ -105,7 +105,7 @@ func TestLocalStoreErrorHandling(t *testing.T) {
 
 	dirInvalid, nameInvalid := s.nameFromID(idInvalid)
 	_ = os.Mkdir(dirInvalid, 0755)
-	err = ioutil.WriteFile(nameInvalid, []byte("invalid data"), 0644)
+	err = os.WriteFile(nameInvalid, []byte("invalid data"), 0644)
 	require.NoError(t, err)
 
 	// Also add a blank chunk
@@ -114,7 +114,7 @@ func TestLocalStoreErrorHandling(t *testing.T) {
 
 	dirBlank, nameBlank := s.nameFromID(idBlank)
 	_ = os.Mkdir(dirBlank, 0755)
-	err = ioutil.WriteFile(nameBlank, nil, 0644)
+	err = os.WriteFile(nameBlank, nil, 0644)
 	require.NoError(t, err)
 
 	// Let's see if we can retrieve the good chunk and get errors from the bad ones
@@ -131,7 +131,7 @@ func TestLocalStoreErrorHandling(t *testing.T) {
 	}
 
 	// Run the verify with repair enabled which should get rid of the invalid and blank chunks
-	err = s.Verify(context.Background(), 1, true, ioutil.Discard)
+	err = s.Verify(context.Background(), 1, true, io.Discard)
 	require.NoError(t, err)
 
 	// Let's see if we can still retrieve the good chunk and get Not Found for the others

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strings"
 
@@ -101,7 +101,7 @@ retry:
 	}
 	defer obj.Close()
 
-	b, err := ioutil.ReadAll(obj)
+	b, err := io.ReadAll(obj)
 	if err != nil {
 		if attempt <= s.opt.ErrorRetry {
 			goto retry

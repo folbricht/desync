@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -10,11 +9,11 @@ import (
 
 func TestConfigFile(t *testing.T) {
 	cfgFileContent := []byte(`{"store-options": {"/path/to/store/":{"uncompressed": true}}}`)
-	f, err := ioutil.TempFile("", "")
+	f, err := os.CreateTemp("", "")
 	require.NoError(t, err)
 	f.Close()
 	defer os.Remove(f.Name())
-	require.NoError(t, ioutil.WriteFile(f.Name(), cfgFileContent, 0644))
+	require.NoError(t, os.WriteFile(f.Name(), cfgFileContent, 0644))
 
 	// Set the global config file name
 	cfgFile = f.Name()
@@ -36,11 +35,11 @@ func TestConfigFile(t *testing.T) {
 
 func TestConfigFileMultipleMatches(t *testing.T) {
 	cfgFileContent := []byte(`{"store-options": {"/path/to/store/":{"uncompressed": true}, "/path/to/store":{"uncompressed": false}}}`)
-	f, err := ioutil.TempFile("", "")
+	f, err := os.CreateTemp("", "")
 	require.NoError(t, err)
 	f.Close()
 	defer os.Remove(f.Name())
-	require.NoError(t, ioutil.WriteFile(f.Name(), cfgFileContent, 0644))
+	require.NoError(t, os.WriteFile(f.Name(), cfgFileContent, 0644))
 
 	// Set the global config file name
 	cfgFile = f.Name()

@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"io/ioutil"
 	"os"
 
 	"io"
@@ -18,7 +17,7 @@ func NewConsoleIndexStore() (ConsoleIndexStore, error) {
 
 // GetIndexReader returns a reader from STDIN
 func (s ConsoleIndexStore) GetIndexReader(string) (io.ReadCloser, error) {
-	return ioutil.NopCloser(os.Stdin), nil
+	return io.NopCloser(os.Stdin), nil
 }
 
 // GetIndex reads an index from STDIN and returns it.

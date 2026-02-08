@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +47,7 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 	_, p := s.nameFromID(id)
-	b, err := ioutil.ReadFile(p)
+	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
 		return nil, ChunkMissing{id}
 	}

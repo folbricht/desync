@@ -5,9 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -60,7 +60,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	// Load custom CA set if provided
 	if opt.CACert != "" {
 		certPool := x509.NewCertPool()
-		b, err := ioutil.ReadFile(opt.CACert)
+		b, err := os.ReadFile(opt.CACert)
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +132,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 
 	defer resp.Body.Close()
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.WithError(err).Error("error while reading response")
 		return 0, nil, errors.Wrap(err, u.String())

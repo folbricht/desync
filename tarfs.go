@@ -3,7 +3,6 @@ package desync
 import (
 	gnutar "archive/tar"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 )
@@ -100,7 +99,7 @@ func (fs TarWriter) Close() error {
 // TarReader uses a GNU tar archive as source for a tar operation (to produce
 // a catar).
 type TarReader struct {
-	r *gnutar.Reader
+	r    *gnutar.Reader
 	root *File
 }
 
@@ -122,7 +121,7 @@ func NewTarReader(r io.Reader, opts TarReaderOptions) *TarReader {
 		}
 	}
 	return &TarReader{
-		r: gnutar.NewReader(r),
+		r:    gnutar.NewReader(r),
 		root: root,
 	}
 }
@@ -155,7 +154,7 @@ func (fs *TarReader) Next() (f *File, err error) {
 		Xattrs:     h.Xattrs,
 		DevMajor:   uint64(h.Devmajor),
 		DevMinor:   uint64(h.Devminor),
-		Data:       ioutil.NopCloser(fs.r),
+		Data:       io.NopCloser(fs.r),
 	}
 
 	return f, nil

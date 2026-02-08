@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -13,16 +14,16 @@ import (
 
 func TestExtractCommand(t *testing.T) {
 	// Read the whole expected blob from disk
-	expected, err := ioutil.ReadFile("testdata/blob1")
+	expected, err := os.ReadFile("testdata/blob1")
 	require.NoError(t, err)
 
 	// Now prepare several files used to extract into
 	outDir := t.TempDir()
 	out1 := filepath.Join(outDir, "out1") // Doesn't exit
 	out2 := filepath.Join(outDir, "out2") // Exists, but different content
-	require.NoError(t, ioutil.WriteFile(out2, []byte{0, 1, 2, 3}, 0644))
+	require.NoError(t, os.WriteFile(out2, []byte{0, 1, 2, 3}, 0644))
 	out3 := filepath.Join(outDir, "out3") // Exist and complete match
-	require.NoError(t, ioutil.WriteFile(out3, expected, 0644))
+	require.NoError(t, os.WriteFile(out3, expected, 0644))
 
 	// Make a cache dir
 	cacheDir := t.TempDir()
@@ -87,13 +88,13 @@ func TestExtractCommand(t *testing.T) {
 			cmd.SetArgs(append(test.args, test.output))
 
 			// Redirect the command's output and run it
-			stderr = ioutil.Discard
-			cmd.SetOutput(ioutil.Discard)
+			stderr = io.Discard
+			cmd.SetOutput(io.Discard)
 			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			// Compare to what we should have gotten
-			got, err := ioutil.ReadFile(test.output)
+			got, err := os.ReadFile(test.output)
 			require.NoError(t, err)
 			require.Equal(t, expected, got)
 		})
@@ -115,8 +116,8 @@ func TestExtractWithFailover(t *testing.T) {
 	cmd.SetArgs([]string{"--store", ts.URL + "|testdata/blob1.store", "testdata/blob1.caibx", out})
 
 	// Redirect the command's output and run it
-	stderr = ioutil.Discard
-	cmd.SetOutput(ioutil.Discard)
+	stderr = io.Discard
+	cmd.SetOutput(io.Discard)
 	_, err := cmd.ExecuteC()
 	require.NoError(t, err)
 }
@@ -150,8 +151,8 @@ func TestExtractWithInvalidSeeds(t *testing.T) {
 			cmd.SetArgs(append(test.args, test.output))
 
 			// Redirect the command's output and run it
-			stderr = ioutil.Discard
-			cmd.SetOutput(ioutil.Discard)
+			stderr = io.Discard
+			cmd.SetOutput(io.Discard)
 			_, err := cmd.ExecuteC()
 			require.Error(t, err)
 		})

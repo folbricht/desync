@@ -2,7 +2,6 @@ package desync
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -118,7 +117,7 @@ func TestEncoder(t *testing.T) {
 		"testdata/nested.catar",
 	}
 	for _, name := range files {
-		in, err := ioutil.ReadFile(name)
+		in, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}

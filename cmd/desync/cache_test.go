@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,13 +28,13 @@ func TestCacheCommand(t *testing.T) {
 			cmd.SetArgs(append(test.args, "-c", cache))
 
 			// Redirect the command's output to turn off the progressbar and run it
-			stderr = ioutil.Discard
-			cmd.SetOutput(ioutil.Discard)
+			stderr = io.Discard
+			cmd.SetOutput(io.Discard)
 			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			// If the file was split right, we'll have chunks in the dir now
-			dirs, err := ioutil.ReadDir(cache)
+			dirs, err := os.ReadDir(cache)
 			require.NoError(t, err)
 			require.NotEmpty(t, dirs)
 		})

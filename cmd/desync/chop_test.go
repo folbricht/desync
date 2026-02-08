@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,13 +29,13 @@ func TestChopCommand(t *testing.T) {
 		cmd.SetArgs(args)
 
 		// Redirect the command's output to turn off the progressbar and run it
-		stderr = ioutil.Discard
-		cmd.SetOutput(ioutil.Discard)
+		stderr = io.Discard
+		cmd.SetOutput(io.Discard)
 		_, err := cmd.ExecuteC()
 		require.NoError(t, err)
 
 		// If the file was split right, we'll have chunks in the dir now
-		dirs, err := ioutil.ReadDir(store)
+		dirs, err := os.ReadDir(store)
 		require.NoError(t, err)
 		require.NotEmpty(t, dirs)
 	}
@@ -53,7 +53,7 @@ func TestChopErrors(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := newChopCommand(context.Background())
-			cmd.SetOutput(ioutil.Discard)
+			cmd.SetOutput(io.Discard)
 			cmd.SetArgs(test.args)
 			_, err := cmd.ExecuteC()
 			require.Error(t, err)

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/bits"
 )
 
@@ -234,7 +233,7 @@ func (c *Chunker) Advance(n int) error {
 		_, err := rs.Seek(readerN, io.SeekCurrent)
 		return err
 	}
-	_, err := io.CopyN(ioutil.Discard, c.r, readerN)
+	_, err := io.CopyN(io.Discard, c.r, readerN)
 	return err
 }
 

@@ -2,7 +2,6 @@ package desync
 
 import (
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -219,7 +218,7 @@ func TestPutChunk(t *testing.T) {
 		attemptCount++
 		switch r.URL.String() {
 		case "/3bc8/3bc8e3230df5515b1b40e938e49ebc765c6157d4cf4e2b9d5f9c272571365395":
-			content, err := ioutil.ReadAll(r.Body)
+			content, err := io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				io.WriteString(w, err.Error())
@@ -228,7 +227,7 @@ func TestPutChunk(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			}
 		case "/3cc8/3cc8e3230df5515b1b40e938e49ebc765c6157d4cf4e2b9d5f9c272571365395":
-			content, err := ioutil.ReadAll(r.Body)
+			content, err := io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				io.WriteString(w, err.Error())
@@ -247,7 +246,7 @@ func TestPutChunk(t *testing.T) {
 			io.WriteString(w, "Bad Gateway")
 		case "/65a1/65a128d0658c4cf0941771c7090fea6d9c6f981810659c24c91ba23edd71574b":
 			if attemptCount >= 2 {
-				content, err := ioutil.ReadAll(r.Body)
+				content, err := io.ReadAll(r.Body)
 				if err != nil {
 					w.WriteHeader(http.StatusBadRequest)
 					io.WriteString(w, err.Error())

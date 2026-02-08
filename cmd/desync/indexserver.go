@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -122,7 +121,7 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 	}
 	if opt.clientCA != "" {
 		certPool := x509.NewCertPool()
-		b, err := ioutil.ReadFile(opt.clientCA)
+		b, err := os.ReadFile(opt.clientCA)
 		if err != nil {
 			return err
 		}
