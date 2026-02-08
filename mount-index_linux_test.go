@@ -14,11 +14,7 @@ import (
 
 func TestMountIndex(t *testing.T) {
 	// Create the mount point
-	mnt, err := ioutil.TempDir("", "mount-index-store")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(mnt)
+	mnt := t.TempDir()
 
 	// Define the store
 	s, err := NewLocalStore("testdata/blob1.store", StoreOptions{})

@@ -82,11 +82,7 @@ func TestIndexChunking(t *testing.T) {
 	}
 
 	// Make a temp local store
-	dir, err := ioutil.TempDir("", "chunktest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir) // clean up
+	dir := t.TempDir()
 	s, err := NewLocalStore(dir, StoreOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -174,11 +170,7 @@ func splitBlob(b *testing.B) {
 	}
 
 	// Make a temp local store
-	dir, err := ioutil.TempDir("", "chunktest")
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer os.RemoveAll(dir) // clean up
+	dir := b.TempDir()
 	s, err := NewLocalStore(dir, StoreOptions{})
 	if err != nil {
 		b.Fatal(err)

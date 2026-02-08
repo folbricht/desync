@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -18,9 +17,7 @@ func TestExtractCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	// Now prepare several files used to extract into
-	outDir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outDir)
+	outDir := t.TempDir()
 	out1 := filepath.Join(outDir, "out1") // Doesn't exit
 	out2 := filepath.Join(outDir, "out2") // Exists, but different content
 	require.NoError(t, ioutil.WriteFile(out2, []byte{0, 1, 2, 3}, 0644))
@@ -28,9 +25,7 @@ func TestExtractCommand(t *testing.T) {
 	require.NoError(t, ioutil.WriteFile(out3, expected, 0644))
 
 	// Make a cache dir
-	cacheDir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(cacheDir)
+	cacheDir := t.TempDir()
 
 	for _, test := range []struct {
 		name   string
@@ -106,9 +101,7 @@ func TestExtractCommand(t *testing.T) {
 }
 
 func TestExtractWithFailover(t *testing.T) {
-	outDir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outDir)
+	outDir := t.TempDir()
 	out := filepath.Join(outDir, "out")
 
 	// Start a server that'll always fail
@@ -124,14 +117,12 @@ func TestExtractWithFailover(t *testing.T) {
 	// Redirect the command's output and run it
 	stderr = ioutil.Discard
 	cmd.SetOutput(ioutil.Discard)
-	_, err = cmd.ExecuteC()
+	_, err := cmd.ExecuteC()
 	require.NoError(t, err)
 }
 
 func TestExtractWithInvalidSeeds(t *testing.T) {
-	outDir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(outDir)
+	outDir := t.TempDir()
 	out := filepath.Join(outDir, "out")
 
 	for _, test := range []struct {

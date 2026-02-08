@@ -20,9 +20,7 @@ func TestChopCommand(t *testing.T) {
 		{"chop with ignore",
 			[]string{"--ignore", "testdata/blob2.caibx", "testdata/blob1.caibx", "testdata/blob1"}},
 	} {
-		store, err := ioutil.TempDir("", "")
-		require.NoError(t, err)
-		defer os.RemoveAll(store)
+		store := t.TempDir()
 
 		args := []string{"-s", store}
 		args = append(args, test.args...)
@@ -33,7 +31,7 @@ func TestChopCommand(t *testing.T) {
 		// Redirect the command's output to turn off the progressbar and run it
 		stderr = ioutil.Discard
 		cmd.SetOutput(ioutil.Discard)
-		_, err = cmd.ExecuteC()
+		_, err := cmd.ExecuteC()
 		require.NoError(t, err)
 
 		// If the file was split right, we'll have chunks in the dir now

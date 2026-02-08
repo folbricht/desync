@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,9 +21,7 @@ func TestCacheCommand(t *testing.T) {
 			[]string{"--store", "testdata/blob1.store", "--store", "testdata/blob2.store", "testdata/blob1.caibx", "testdata/blob2.caibx"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			cache, err := ioutil.TempDir("", "")
-			require.NoError(t, err)
-			defer os.RemoveAll(cache)
+			cache := t.TempDir()
 
 			cmd := newCacheCommand(context.Background())
 			cmd.SetArgs(append(test.args, "-c", cache))
@@ -32,7 +29,7 @@ func TestCacheCommand(t *testing.T) {
 			// Redirect the command's output to turn off the progressbar and run it
 			stderr = ioutil.Discard
 			cmd.SetOutput(ioutil.Discard)
-			_, err = cmd.ExecuteC()
+			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			// If the file was split right, we'll have chunks in the dir now

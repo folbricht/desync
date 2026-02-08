@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -47,9 +46,7 @@ func TestIndexServerReadCommand(t *testing.T) {
 
 func TestIndexServerWriteCommand(t *testing.T) {
 	// Create an empty store to be used for writing
-	store, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(store)
+	store := t.TempDir()
 
 	// Start a read-write server
 	addr, cancel := startIndexServer(t, "-s", store, "-w")
@@ -60,7 +57,7 @@ func TestIndexServerWriteCommand(t *testing.T) {
 	makeCmd := newMakeCommand(context.Background())
 	makeCmd.SetArgs([]string{fmt.Sprintf("http://%s/new.caibx", addr), "testdata/blob1"})
 	makeCmd.SetOutput(ioutil.Discard)
-	_, err = makeCmd.ExecuteC()
+	_, err := makeCmd.ExecuteC()
 	require.NoError(t, err)
 
 	// The index server should not accept arbitrary (non-index) files.

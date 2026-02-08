@@ -49,11 +49,7 @@ func TestExtract(t *testing.T) {
 	}
 
 	// Chop up the input file into a (temporary) local store
-	store, err := ioutil.TempDir("", "store")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(store)
+	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
 	if err != nil {
@@ -64,11 +60,7 @@ func TestExtract(t *testing.T) {
 	}
 
 	// Make a blank store - used to test a case where no chunk *should* be requested
-	blankstore, err := ioutil.TempDir("", "blankstore")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(blankstore)
+	blankstore := t.TempDir()
 	bs, err := NewLocalStore(blankstore, StoreOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -160,11 +152,7 @@ func TestSeed(t *testing.T) {
 	rand.Read(rand2)
 
 	// Setup a temporary store
-	store, err := ioutil.TempDir("", "store")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(store)
+	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
 	if err != nil {
@@ -295,11 +283,7 @@ func TestSeed(t *testing.T) {
 // be kept in-place and the self-seed must not cause any re-writes.
 func TestSelfSeedInPlace(t *testing.T) {
 	// Setup a temporary store
-	store, err := ioutil.TempDir("", "store")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(store)
+	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
 	if err != nil {
