@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"reflect"
@@ -148,7 +147,7 @@ func (d *FormatDecoder) Next() (interface{}, error) {
 	// If we previously returned a reader, make sure we advance all the way in
 	// case the caller didn't read it all.
 	if d.advance != nil {
-		io.Copy(ioutil.Discard, d.advance)
+		io.Copy(io.Discard, d.advance)
 		d.advance = nil
 	}
 	hdr, err := d.r.ReadHeader()

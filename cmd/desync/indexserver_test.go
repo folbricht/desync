@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -21,8 +21,8 @@ func TestIndexServerReadCommand(t *testing.T) {
 	// Run a "list-chunks" command on a valid index to confirm it can be read
 	listCmd := newListCommand(context.Background())
 	listCmd.SetArgs([]string{fmt.Sprintf("http://%s/blob1.caibx", addr)})
-	stdout = ioutil.Discard
-	listCmd.SetOutput(ioutil.Discard)
+	stdout = io.Discard
+	listCmd.SetOutput(io.Discard)
 	_, err := listCmd.ExecuteC()
 	require.NoError(t, err)
 
@@ -38,7 +38,7 @@ func TestIndexServerReadCommand(t *testing.T) {
 	// the "make" command and storing a new index on the index server.
 	makeCmd := newMakeCommand(context.Background())
 	makeCmd.SetArgs([]string{fmt.Sprintf("http://%s/new.caibx", addr), "testdata/blob1"})
-	makeCmd.SetOutput(ioutil.Discard)
+	makeCmd.SetOutput(io.Discard)
 	_, err = makeCmd.ExecuteC()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "writing to upstream")
@@ -56,7 +56,7 @@ func TestIndexServerWriteCommand(t *testing.T) {
 	// the "make" command and storing a new index on the index server.
 	makeCmd := newMakeCommand(context.Background())
 	makeCmd.SetArgs([]string{fmt.Sprintf("http://%s/new.caibx", addr), "testdata/blob1"})
-	makeCmd.SetOutput(ioutil.Discard)
+	makeCmd.SetOutput(io.Discard)
 	_, err := makeCmd.ExecuteC()
 	require.NoError(t, err)
 

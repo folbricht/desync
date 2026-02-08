@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/rand"
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -98,7 +97,7 @@ func TestSelfSeed(t *testing.T) {
 			sum := md5.Sum(b)
 
 			// Build a temp target file to extract into
-			dst, err := ioutil.TempFile("", "dst")
+			dst, err := os.CreateTemp("", "dst")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -114,7 +113,7 @@ func TestSelfSeed(t *testing.T) {
 			}
 
 			// Compare the checksums to that of the input data
-			b, err = ioutil.ReadFile(dst.Name())
+			b, err = os.ReadFile(dst.Name())
 			if err != nil {
 				t.Fatal(err)
 			}

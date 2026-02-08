@@ -3,7 +3,6 @@ package desync
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"net/url"
 )
 
@@ -29,7 +28,7 @@ func (r RemoteHTTPIndex) GetIndexReader(name string) (rdr io.ReadCloser, e error
 	if err != nil {
 		return rdr, err
 	}
-	rc := ioutil.NopCloser(bytes.NewReader(b))
+	rc := io.NopCloser(bytes.NewReader(b))
 	return rc, nil
 }
 

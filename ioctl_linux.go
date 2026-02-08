@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package desync
@@ -5,7 +6,6 @@ package desync
 import (
 	"bytes"
 	"encoding/binary"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -24,13 +24,13 @@ const fiCloneRange = 0x4020940d
 // two files. It'll create two tempfiles in the same dirs and attempt to perform
 // a 0-byte long block clone. If that's successful it'll return true.
 func CanClone(dstFile, srcFile string) bool {
-	dst, err := ioutil.TempFile(filepath.Dir(dstFile), ".tmp")
+	dst, err := os.CreateTemp(filepath.Dir(dstFile), ".tmp")
 	if err != nil {
 		return false
 	}
 	defer os.Remove(dst.Name())
 	defer dst.Close()
-	src, err := ioutil.TempFile(filepath.Dir(srcFile), ".tmp")
+	src, err := os.CreateTemp(filepath.Dir(srcFile), ".tmp")
 	if err != nil {
 		return false
 	}

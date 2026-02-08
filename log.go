@@ -1,7 +1,7 @@
 package desync
 
 import (
-	"io/ioutil"
+	"io"
 
 	"github.com/sirupsen/logrus"
 )
@@ -9,5 +9,5 @@ import (
 var Log = logrus.New()
 
 func init() {
-	Log.SetOutput(ioutil.Discard)
+	Log.SetOutput(io.Discard)
 }

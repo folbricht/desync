@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,7 +25,7 @@ func TestVerifyCommand(t *testing.T) {
 	invalidChunkFile := filepath.Join(store, "1234", invalidChunkID+".cacnk")
 	err = os.MkdirAll(filepath.Dir(invalidChunkFile), 0755)
 	require.NoError(t, err)
-	err = ioutil.WriteFile(invalidChunkFile, []byte("invalid"), 0600)
+	err = os.WriteFile(invalidChunkFile, []byte("invalid"), 0600)
 	require.NoError(t, err)
 
 	// Now run verify on the store. There should be an invalid one in there that should

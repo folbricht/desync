@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/url"
 	"os"
@@ -167,7 +166,7 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 		return nil, err
 	}
 	defer f.Close()
-	b, err := ioutil.ReadAll(f)
+	b, err := io.ReadAll(f)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to read from %s", name)
 	}

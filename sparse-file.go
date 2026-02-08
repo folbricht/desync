@@ -3,7 +3,6 @@ package desync
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"os"
 	"sort"
 	"sync"
@@ -321,7 +320,7 @@ func (l *sparseFileLoader) preloadChunksFromState(r io.Reader, n int) error {
 }
 
 func (l *sparseFileLoader) stateFromReader(r io.Reader) (bitmap.Bitmap, error) {
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

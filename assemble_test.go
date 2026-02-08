@@ -5,17 +5,17 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/rand"
-	"github.com/stretchr/testify/require"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtract(t *testing.T) {
 	// Make a test file that's guaranteed to have duplicate chunks.
-	b, err := ioutil.ReadFile("testdata/chunker.input")
+	b, err := os.ReadFile("testdata/chunker.input")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestExtract(t *testing.T) {
 		b = append(b, b...)
 	}
 	b = append(b, make([]byte, 2*ChunkSizeMaxDefault)...) // want to have at least one null-chunk in the input
-	in, err := ioutil.TempFile("", "in")
+	in, err := os.CreateTemp("", "in")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,14 +67,14 @@ func TestExtract(t *testing.T) {
 	}
 
 	// Prepare output files for each test - first a non-existing one
-	out1, err := ioutil.TempFile("", "out1")
+	out1, err := os.CreateTemp("", "out1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	os.Remove(out1.Name())
 
 	// This one is a complete file matching what we expect at the end
-	out2, err := ioutil.TempFile("", "out2")
+	out2, err := os.CreateTemp("", "out2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestExtract(t *testing.T) {
 	defer os.Remove(out2.Name())
 
 	// Incomplete or damaged file that has most but not all data
-	out3, err := ioutil.TempFile("", "out3")
+	out3, err := os.CreateTemp("", "out3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestExtract(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-			b, err := ioutil.ReadFile(test.outfile)
+			b, err := os.ReadFile(test.outfile)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,7 +141,7 @@ func TestExtract(t *testing.T) {
 func TestSeed(t *testing.T) {
 	// Prepare different types of data slices that'll be used to assemble target
 	// and seed files with varying amount of duplication
-	data1, err := ioutil.ReadFile("testdata/chunker.input")
+	data1, err := os.ReadFile("testdata/chunker.input")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestSeed(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Build the destination file so we can chunk it
-			dst, err := ioutil.TempFile("", "dst")
+			dst, err := os.CreateTemp("", "dst")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -234,7 +234,7 @@ func TestSeed(t *testing.T) {
 			// Build the seed files and indexes then populate the array of seeds
 			var seeds []Seed
 			for _, f := range test.seeds {
-				seedFile, err := ioutil.TempFile("", "seed")
+				seedFile, err := os.CreateTemp("", "seed")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -265,7 +265,7 @@ func TestSeed(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-			b, err := ioutil.ReadFile(dst.Name())
+			b, err := os.ReadFile(dst.Name())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -353,7 +353,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 			sum := md5.Sum(b)
 
 			// Build a temp target file pre-populated with the correct content
-			dst, err := ioutil.TempFile("", "dst")
+			dst, err := os.CreateTemp("", "dst")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -373,7 +373,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 			}
 
 			// Compare the checksums to that of the input data
-			b, err = ioutil.ReadFile(dst.Name())
+			b, err = os.ReadFile(dst.Name())
 			if err != nil {
 				t.Fatal(err)
 			}

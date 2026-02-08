@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"strings"
 
@@ -37,9 +36,10 @@ type GCStore struct {
 // where there never is a leading slash,
 // and every folder name always is followed by a slash
 // so example outputs will be:
-// 		<blank string>
-// 		folder1/
-//		folder1/folder2/folder3/
+//
+//	<blank string>
+//	folder1/
+//	folder1/folder2/folder3/
 func normalizeGCPrefix(path string) string {
 	prefix := strings.Trim(path, "/")
 
@@ -114,7 +114,7 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 	}
 	defer rc.Close()
 
-	b, err := ioutil.ReadAll(rc)
+	b, err := io.ReadAll(rc)
 
 	if err == storage.ErrObjectNotExist {
 		log.Warning("Unable to read from object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")

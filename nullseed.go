@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -16,7 +15,7 @@ type nullChunkSeed struct {
 }
 
 func newNullChunkSeed(dstFile string, blocksize uint64, max uint64) (*nullChunkSeed, error) {
-	blockfile, err := ioutil.TempFile(filepath.Dir(dstFile), ".tmp-block")
+	blockfile, err := os.CreateTemp(filepath.Dir(dstFile), ".tmp-block")
 	if err != nil {
 		return nil, err
 	}

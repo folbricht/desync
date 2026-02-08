@@ -3,7 +3,6 @@ package desync
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -42,7 +41,7 @@ func TestIndexLoad(t *testing.T) {
 }
 
 func TestIndexWrite(t *testing.T) {
-	in, err := ioutil.ReadFile("testdata/index.caibx")
+	in, err := os.ReadFile("testdata/index.caibx")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +98,7 @@ func TestIndexChunking(t *testing.T) {
 	if _, err = idx.WriteTo(b); err != nil {
 		t.Fatal(err)
 	}
-	i, err := ioutil.ReadFile("testdata/chunker.index")
+	i, err := os.ReadFile("testdata/chunker.index")
 	if err != nil {
 		t.Fatal(err)
 	}

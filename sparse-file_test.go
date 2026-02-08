@@ -3,7 +3,6 @@ package desync
 import (
 	"bytes"
 	"crypto/sha256"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"testing"
@@ -52,7 +51,7 @@ func TestLoaderChunkRange(t *testing.T) {
 
 func TestSparseFileRead(t *testing.T) {
 	// Sparse output file
-	sparseFile, err := ioutil.TempFile("", "")
+	sparseFile, err := os.CreateTemp("", "")
 	require.NoError(t, err)
 	defer os.Remove(sparseFile.Name())
 
@@ -69,7 +68,7 @@ func TestSparseFileRead(t *testing.T) {
 	require.NoError(t, err)
 
 	// // Calculate the expected hash
-	b, err := ioutil.ReadFile("testdata/blob1")
+	b, err := os.ReadFile("testdata/blob1")
 	require.NoError(t, err)
 
 	// Initialize the sparse file and open a handle
@@ -82,8 +81,7 @@ func TestSparseFileRead(t *testing.T) {
 	// Read a few random ranges and compare to the expected blob content
 	for i := 0; i < 1000; i++ {
 		length := rand.Intn(int(index.Index.ChunkSizeMax))
-		offset := rand.Intn(int(index.Length()) - length -1)
-		
+		offset := rand.Intn(int(index.Length()) - length - 1)
 
 		fromSparse := make([]byte, length)
 		fromBlob := make([]byte, length)

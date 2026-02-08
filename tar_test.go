@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package desync
@@ -6,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -34,7 +34,7 @@ func TestTar(t *testing.T) {
 		"dir1/sub11/f12",
 	}
 	for i, name := range files {
-		ioutil.WriteFile(filepath.Join(base, name), []byte(fmt.Sprintf("filecontent%d", i)), 0644)
+		os.WriteFile(filepath.Join(base, name), []byte(fmt.Sprintf("filecontent%d", i)), 0644)
 	}
 
 	if err := os.Symlink("dir1", filepath.Join(base, "symlink")); err != nil {

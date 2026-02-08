@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -35,7 +34,7 @@ func TestMountIndex(t *testing.T) {
 	}
 
 	// Calculate the expected hash
-	b, err := ioutil.ReadFile("testdata/blob1")
+	b, err := os.ReadFile("testdata/blob1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +64,7 @@ func TestMountIndex(t *testing.T) {
 	}
 
 	// Calculate the hash of the file in the mount point
-	b, err = ioutil.ReadFile(filepath.Join(mnt, "blob1"))
+	b, err = os.ReadFile(filepath.Join(mnt, "blob1"))
 	if err != nil {
 		t.Fatal(err)
 	}
