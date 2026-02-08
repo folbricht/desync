@@ -38,7 +38,7 @@ to STDOUT.`,
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store")
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
-	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print chunking statistics and exit without writing the index file")
+	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print chunking statistics to stderr when done")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -81,7 +81,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 		}
 	}
 	if opt.printStats {
-		return printJSON(stderr, stats) // write to stderr since stdout could be used for index data
+		printJSON(stderr, stats) // write to stderr since stdout could be used for index data
 	}
 	return storeCaibxFile(index, indexFile, opt.cmdStoreOptions)
 }
