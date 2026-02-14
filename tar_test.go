@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package desync
 
@@ -34,7 +33,7 @@ func TestTar(t *testing.T) {
 		"dir1/sub11/f12",
 	}
 	for i, name := range files {
-		os.WriteFile(filepath.Join(base, name), []byte(fmt.Sprintf("filecontent%d", i)), 0644)
+		os.WriteFile(filepath.Join(base, name), fmt.Appendf(nil, "filecontent%d", i), 0644)
 	}
 
 	if err := os.Symlink("dir1", filepath.Join(base, "symlink")); err != nil {
@@ -52,7 +51,7 @@ func TestTar(t *testing.T) {
 	d := NewFormatDecoder(b)
 
 	// Define an array of what is expected in the test file
-	expected := []interface{}{
+	expected := []any{
 		FormatEntry{},
 		FormatFilename{}, // "dir1"
 		FormatEntry{},

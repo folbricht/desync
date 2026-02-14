@@ -55,7 +55,7 @@ func (s Converters) equal(c Converters) bool {
 	if len(s) != len(c) {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		if !s[i].equal(c[i]) {
 			return false
 		}

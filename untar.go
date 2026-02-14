@@ -71,7 +71,7 @@ func UnTarIndex(ctx context.Context, fs FilesystemWriter, index Index, s Store, 
 	r, w := io.Pipe()
 
 	// Workers - getting chunks from the store
-	for i := 0; i < n; i++ {
+	for range n {
 		g.Go(func() error {
 			for r := range req {
 				// Pull the chunk from the store

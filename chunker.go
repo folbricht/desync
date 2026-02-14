@@ -18,12 +18,12 @@ func discriminatorFromAvg(avg uint64) uint32 {
 // modulo 2^32 using Newton's method. This is used for Lemire's fast
 // divisibility test which replaces expensive hardware division.
 func modInverse32(d uint32) uint32 {
-	x := d             // d is odd, so d*d ≡ 1 (mod 4) is a valid start
-	x *= 2 - d*x       // 3 bits
-	x *= 2 - d*x       // 6 bits
-	x *= 2 - d*x       // 12 bits
-	x *= 2 - d*x       // 24 bits
-	x *= 2 - d*x       // 48 bits → full 32-bit precision
+	x := d       // d is odd, so d*d ≡ 1 (mod 4) is a valid start
+	x *= 2 - d*x // 3 bits
+	x *= 2 - d*x // 6 bits
+	x *= 2 - d*x // 12 bits
+	x *= 2 - d*x // 24 bits
+	x *= 2 - d*x // 48 bits → full 32-bit precision
 	return x
 }
 
@@ -218,10 +218,7 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 
 	// m is the upper boundary for the current chunk. It's either c.max if we have
 	// enough bytes in the buffer, or len(c.buf)
-	m := int(c.max)
-	if len(c.buf) < int(c.max) {
-		m = len(c.buf)
-	}
+	m := min(len(c.buf), int(c.max))
 
 	// Initialize the rolling hash window with the ChunkerWindowSize bytes
 	// immediately prior to min size

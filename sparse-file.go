@@ -298,7 +298,7 @@ func (l *sparseFileLoader) preloadChunksFromState(r io.Reader, n int) error {
 
 	// Start the workers for parallel pre-loading
 	ch := make(chan int)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			for chunkIdx := range ch {
 				_ = l.loadChunk(chunkIdx)

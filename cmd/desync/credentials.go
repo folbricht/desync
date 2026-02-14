@@ -17,7 +17,7 @@ import (
 // Builds the shared config file path based on the OS's platform.
 //
 //   - Linux/Unix: $HOME/.aws/credentials
-// 	 - Windows %USERPROFILE%\.aws\credentials
+//   - Windows %USERPROFILE%\.aws\credentials
 func SharedCredentialsFilename() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

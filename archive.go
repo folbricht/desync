@@ -62,7 +62,7 @@ type NodeDevice struct {
 type ArchiveDecoder struct {
 	d    FormatDecoder
 	dir  string
-	last interface{}
+	last any
 }
 
 // NewArchiveDecoder initializes a decoder for a catar archive.
@@ -73,7 +73,7 @@ func NewArchiveDecoder(r io.Reader) ArchiveDecoder {
 // Next returns a node from an archive, or nil if the end is reached. If NodeFile
 // is returned, the caller should read the file body before calling Next() again
 // as that invalidates the reader.
-func (a *ArchiveDecoder) Next() (interface{}, error) {
+func (a *ArchiveDecoder) Next() (any, error) {
 	var (
 		entry   *FormatEntry
 		payload *FormatPayload
@@ -81,7 +81,7 @@ func (a *ArchiveDecoder) Next() (interface{}, error) {
 		device  *FormatDevice
 		xattrs  map[string]string
 		name    string
-		c       interface{}
+		c       any
 		err     error
 	)
 

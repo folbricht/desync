@@ -17,7 +17,7 @@ func TestFormatDecoder(t *testing.T) {
 	d := NewFormatDecoder(f)
 
 	// Define an array of what is expected in the test file
-	expected := []interface{}{
+	expected := []any{
 		FormatEntry{},
 		FormatUser{},
 		FormatGroup{},

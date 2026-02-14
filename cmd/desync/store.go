@@ -68,8 +68,8 @@ func storeGroup(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 		return storeFromLocation(location, cmdOpt)
 	}
 	var stores []desync.Store
-	members := strings.Split(location, "|")
-	for _, m := range members {
+	members := strings.SplitSeq(location, "|")
+	for m := range members {
 		s, err := storeFromLocation(m, cmdOpt)
 		if err != nil {
 			return nil, err

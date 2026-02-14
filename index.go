@@ -160,7 +160,7 @@ func ChunkStream(ctx context.Context, c Chunker, ws WriteStore, n int) (Index, e
 
 	// Start the workers responsible for checksum calculation, compression and
 	// storage (if required). Each job comes with a chunk number for sorting later
-	for i := 0; i < n; i++ {
+	for range n {
 		g.Go(func() error {
 			for c := range in {
 				// Create a chunk object, needed to calculate the checksum

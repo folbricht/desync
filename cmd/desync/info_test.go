@@ -103,7 +103,7 @@ func TestInfoCommand(t *testing.T) {
 			}`)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			exp := make(map[string]interface{})
+			exp := make(map[string]any)
 			err := json.Unmarshal(test.expectedOutput, &exp)
 			require.NoError(t, err)
 
@@ -118,7 +118,7 @@ func TestInfoCommand(t *testing.T) {
 			require.NoError(t, err)
 
 			// Decode the output and compare to what's expected
-			got := make(map[string]interface{})
+			got := make(map[string]any)
 			err = json.Unmarshal(b.Bytes(), &got)
 			require.NoError(t, err)
 			require.Equal(t, exp, got)

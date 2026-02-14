@@ -23,7 +23,7 @@ func ChopFile(ctx context.Context, name string, chunks []IndexChunk, ws WriteSto
 	s := NewChunkStorage(ws)
 
 	// Start the workers, each having its own filehandle to read concurrently
-	for i := 0; i < n; i++ {
+	for range n {
 		f, err := os.Open(name)
 		if err != nil {
 			return fmt.Errorf("unable to open file %s, %s", name, err)

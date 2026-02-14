@@ -78,7 +78,7 @@ func (r *SeedSequencer) Rewind() {
 	r.current = 0
 }
 
-//isFileSeed returns true if this segment is pointing to a fileSeed
+// isFileSeed returns true if this segment is pointing to a fileSeed
 func (s SeedSegmentCandidate) isFileSeed() bool {
 	// We expect an empty filename when using nullSeeds
 	return s.source != nil && s.source.FileName() != ""
@@ -145,7 +145,7 @@ func (p Plan) Validate(ctx context.Context, n int, pb ProgressBar) (err error) {
 	}
 	g, ctx := errgroup.WithContext(ctx)
 	// Concurrently validate all the chunks in this plan
-	for i := 0; i < n; i++ {
+	for range n {
 		g.Go(func() error {
 			for job := range in {
 				if err := job.candidate.source.Validate(job.file); err != nil {

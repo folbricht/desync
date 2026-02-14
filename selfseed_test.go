@@ -26,7 +26,7 @@ func TestSelfSeed(t *testing.T) {
 	numChunks := 10
 	chunks := make([]rawChunk, numChunks)
 
-	for i := 0; i < numChunks; i++ {
+	for i := range numChunks {
 		b := make([]byte, size)
 		rand.Read(b)
 		chunk := NewChunk(b)
