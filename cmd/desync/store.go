@@ -257,7 +257,7 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 			lookup = minio.BucketLookupPath
 		case "", "auto":
 		default:
-			return nil, "", fmt.Errorf("unknown S3 bucket lookup type: %q", s)
+			return nil, "", fmt.Errorf("unknown S3 bucket lookup type: %q", ls)
 		}
 		s, err = desync.NewS3IndexStore(&p, s3Creds, region, opt, lookup)
 		if err != nil {

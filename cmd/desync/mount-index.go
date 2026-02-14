@@ -157,7 +157,7 @@ func mountIndexStore(opt mountIndexOptions) (desync.Store, error) {
 		}
 		stores, cache, err = readStoreFile(opt.storeFile)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read store-file '%s'", err)
+			return nil, errors.Wrapf(err, "failed to read store-file '%s'", opt.storeFile)
 		}
 	}
 

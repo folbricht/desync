@@ -173,8 +173,9 @@ func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc)
 	cmd := newChunkServerCommand(ctx)
 	cmd.SetArgs(append(args, "-l", addr))
 	go func() {
-		_, err = cmd.ExecuteC()
-		require.NoError(t, err)
+		if _, err := cmd.ExecuteC(); err != nil && ctx.Err() == nil {
+			t.Errorf("chunk server error: %v", err)
+		}
 	}()
 
 	// Wait a little for the server to start

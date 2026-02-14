@@ -120,7 +120,7 @@ func runConfig(ctx context.Context, write bool) error {
 	if err != nil {
 		return err
 	}
-	var w io.Writer = os.Stderr
+	var w io.Writer = os.Stdout
 	if write {
 		if err = os.MkdirAll(filepath.Dir(cfgFile), 0755); err != nil {
 			return err

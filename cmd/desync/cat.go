@@ -60,10 +60,12 @@ func runCat(ctx context.Context, opt catOptions, args []string) error {
 	)
 	if len(args) == 2 {
 		outFileName := args[1]
-		outFile, err = os.Create(outFileName)
+		f, err := os.Create(outFileName)
 		if err != nil {
 			return err
 		}
+		defer f.Close()
+		outFile = f
 	} else {
 		outFile = stdout
 	}

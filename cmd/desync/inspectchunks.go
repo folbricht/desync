@@ -48,10 +48,12 @@ func runInspectChunks(ctx context.Context, opt inspectChunksOptions, args []stri
 	)
 	if len(args) == 2 {
 		outFileName := args[1]
-		outFile, err = os.Create(outFileName)
+		f, err := os.Create(outFileName)
 		if err != nil {
 			return err
 		}
+		defer f.Close()
+		outFile = f
 	} else {
 		outFile = stdout
 	}
