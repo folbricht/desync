@@ -19,7 +19,7 @@ var (
 	stderr io.Writer = os.Stderr
 )
 
-var sighup = make(chan os.Signal)
+var sighup = make(chan os.Signal, 1)
 
 func main() {
 	// Install a signal handler for SIGINT or SIGTERM to cancel a context in

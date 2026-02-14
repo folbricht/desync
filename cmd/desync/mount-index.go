@@ -123,7 +123,7 @@ func runMountIndex(ctx context.Context, opt mountIndexOptions, args []string) er
 		}
 
 		// Save state file on SIGHUP
-		sighup := make(chan os.Signal)
+		sighup := make(chan os.Signal, 1)
 		signal.Notify(sighup, syscall.SIGHUP)
 		go func() {
 			for range sighup {
