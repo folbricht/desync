@@ -95,7 +95,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 	ids := make(chan ChunkID)
 
 	// Start the workers
-	for i := 0; i < n; i++ {
+	for range n {
 		wg.Add(1)
 		go func() {
 			for id := range ids {

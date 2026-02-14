@@ -143,7 +143,7 @@ func NewFormatDecoder(r io.Reader) FormatDecoder {
 // Next returns the next format element from the stream. If an element
 // contains a reader, that reader should be used before any subsequent calls as
 // it'll be invalidated then. Returns nil when the end is reached.
-func (d *FormatDecoder) Next() (interface{}, error) {
+func (d *FormatDecoder) Next() (any, error) {
 	// If we previously returned a reader, make sure we advance all the way in
 	// case the caller didn't read it all.
 	if d.advance != nil {
@@ -347,7 +347,7 @@ func (d *FormatDecoder) Next() (interface{}, error) {
 		n := (hdr.Size - 16) / 24
 		items := make([]FormatGoodbyeItem, n)
 		e := FormatGoodbye{FormatHeader: hdr, Items: items}
-		for i := uint64(0); i < n; i++ {
+		for i := range n {
 			items[i].Offset, err = d.r.ReadUint64()
 			if err != nil {
 				return nil, err
@@ -448,7 +448,7 @@ func NewFormatEncoder(w io.Writer) FormatEncoder {
 	return FormatEncoder{w: writer{w}}
 }
 
-func (e *FormatEncoder) Encode(v interface{}) (int64, error) {
+func (e *FormatEncoder) Encode(v any) (int64, error) {
 	switch t := v.(type) {
 	case FormatEntry:
 		return e.w.WriteUint64(

@@ -111,7 +111,7 @@ func (q *queue) delete(id ChunkID) {
 // queueRequests is used to dedup requests for GetChunk() or HasChunk() with the data
 // being either the chunk itself or a bool in case of HasChunk().
 type request struct {
-	data interface{}
+	data any
 	err  error
 	done chan struct{}
 }
@@ -121,13 +121,13 @@ func newRequest() *request {
 }
 
 // Wait for the request to complete. Returns the data as well as the error from the request.
-func (r *request) wait() (interface{}, error) {
+func (r *request) wait() (any, error) {
 	<-r.done
 	return r.data, r.err
 }
 
 // Set the result data and marks this request as complete.
-func (r *request) markDone(data interface{}, err error) {
+func (r *request) markDone(data any, err error) {
 	r.data = data
 	r.err = err
 	close(r.done)

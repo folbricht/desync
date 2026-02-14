@@ -19,7 +19,7 @@ func TestExtract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 4; i++ { // Replicate it a few times to make sure we get dupes
+	for range 4 { // Replicate it a few times to make sure we get dupes
 		b = append(b, b...)
 	}
 	b = append(b, make([]byte, 2*ChunkSizeMaxDefault)...) // want to have at least one null-chunk in the input
@@ -299,7 +299,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 	numChunks := 10
 	chunks := make([]rawChunk, numChunks)
 
-	for i := 0; i < numChunks; i++ {
+	for i := range numChunks {
 		b := make([]byte, size)
 		rand.Read(b)
 		chunk := NewChunk(b)

@@ -72,7 +72,7 @@ func TestDedupQueueParallel(t *testing.T) {
 	)
 
 	// Start several goroutines all asking for the same chunk from the store
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			<-start

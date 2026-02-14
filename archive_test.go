@@ -17,7 +17,7 @@ func TestArchiveDecoderTypes(t *testing.T) {
 	d := NewArchiveDecoder(f)
 
 	// Define an array of what is expected in the test file
-	expected := []interface{}{
+	expected := []any{
 		NodeDirectory{},
 		NodeDevice{},
 		NodeFile{},
@@ -48,7 +48,7 @@ func TestArchiveDecoderNesting(t *testing.T) {
 
 	// Define an array of what is expected in the test file
 	expected := []struct {
-		Type interface{}
+		Type any
 		Name string
 		UID  int
 		GID  int

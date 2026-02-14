@@ -20,7 +20,7 @@ func Copy(ctx context.Context, ids []ChunkID, src Store, dst WriteStore, n int, 
 	defer pb.Finish()
 
 	// Start the workers
-	for i := 0; i < n; i++ {
+	for range n {
 		g.Go(func() error {
 			for id := range in {
 				pb.Increment()

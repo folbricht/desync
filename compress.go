@@ -1,3 +1,4 @@
+//go:build !datadog
 // +build !datadog
 
 package desync

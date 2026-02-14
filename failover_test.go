@@ -85,7 +85,7 @@ func TestFailoverMutliple(t *testing.T) {
 	defer cancel()
 
 	// Run several goroutines querying the group in a tight loop
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		eg.Go(func() error {
 			var id ChunkID
 			for {

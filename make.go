@@ -222,7 +222,7 @@ func (c *pChunker) start(ctx context.Context) {
 					return
 				}
 				nc := chunk
-				for i := 0; i < numNullChunks; i++ {
+				for range numNullChunks {
 					nc = IndexChunk{Start: nc.Start + nc.Size, Size: uint64(len(c.nullChunk.Data)), ID: c.nullChunk.ID}
 					c.results <- nc
 					zeroes -= uint64(len(c.nullChunk.Data))

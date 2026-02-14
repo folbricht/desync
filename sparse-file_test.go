@@ -79,7 +79,7 @@ func TestSparseFileRead(t *testing.T) {
 	defer h.Close()
 
 	// Read a few random ranges and compare to the expected blob content
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		length := rand.Intn(int(index.Index.ChunkSizeMax))
 		offset := rand.Intn(int(index.Length()) - length - 1)
 

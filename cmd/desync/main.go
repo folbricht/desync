@@ -71,7 +71,7 @@ func main() {
 	}
 }
 
-func printJSON(w io.Writer, v interface{}) error {
+func printJSON(w io.Writer, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
