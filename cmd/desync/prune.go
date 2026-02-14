@@ -85,7 +85,9 @@ func runPrune(ctx context.Context, opt pruneOptions, args []string) error {
 		for {
 			var a string
 			fmt.Printf("[y/N]: ")
-			fmt.Fscanln(os.Stdin, &a)
+			if _, err := fmt.Fscanln(os.Stdin, &a); err != nil {
+				return err
+			}
 			switch a {
 			case "y", "Y":
 				break ask

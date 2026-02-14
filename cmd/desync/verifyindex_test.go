@@ -15,7 +15,6 @@ func TestVerifyIndexCommand(t *testing.T) {
 	stderr = b
 	_, err := verifyIndex.ExecuteC()
 	require.NoError(t, err)
-	require.Contains(t, b.String(), "")
 
 	// Do the same for blob2
 	verifyIndex = newVerifyIndexCommand(context.Background())
@@ -24,7 +23,6 @@ func TestVerifyIndexCommand(t *testing.T) {
 	stderr = b
 	_, err = verifyIndex.ExecuteC()
 	require.NoError(t, err)
-	require.Contains(t, b.String(), "")
 
 	// Run again against the wrong blob
 	verifyIndex = newVerifyIndexCommand(context.Background())

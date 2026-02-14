@@ -157,7 +157,7 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 // Wrapper for http.HandlerFunc to add logging for requests (and response codes)
 func withLog(h http.Handler, log *log.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		lrw := &loggingResponseWriter{ResponseWriter: w}
+		lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		h.ServeHTTP(lrw, r)
 		log.Printf("Client: %s, Request: %s %s, Response: %d", r.RemoteAddr, r.Method, r.RequestURI, lrw.statusCode)
 	}
@@ -178,7 +178,7 @@ func chunkServerStore(opt chunkServerOptions) (desync.Store, error) {
 		}
 		stores, cache, err = readStoreFile(opt.storeFile)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read store-file '%s'", err)
+			return nil, errors.Wrapf(err, "failed to read store-file '%s'", opt.storeFile)
 		}
 	}
 

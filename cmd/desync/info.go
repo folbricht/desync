@@ -242,7 +242,7 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 		fmt.Println("Chunk size avg:", results.ChunkSizeAvg)
 		fmt.Println("Chunk size max:", results.ChunkSizeMax)
 	default:
-		return fmt.Errorf("unsupported output format '%s", opt.printFormat)
+		return fmt.Errorf("unsupported output format %q", opt.printFormat)
 	}
 	return nil
 }
