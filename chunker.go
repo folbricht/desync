@@ -202,7 +202,9 @@ func (c *Chunker) fillBuffer() (n int, err error) {
 }
 
 // Next returns the starting position as well as the chunk data. Returns
-// an empty byte slice when complete
+// an empty byte slice when complete. The returned byte slice is only valid
+// until the next call to Next; callers that pass the slice to other
+// goroutines must copy it first.
 func (c *Chunker) Next() (uint64, []byte, error) {
 	if len(c.buf) < int(c.max) {
 		n, err := c.fillBuffer()
