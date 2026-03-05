@@ -3,6 +3,7 @@ package desync
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"os"
 	"reflect"
 	"testing"
@@ -141,6 +142,52 @@ func TestIndexChunking(t *testing.T) {
 		if !hasChunk {
 			t.Fatalf("store is missing chunk %s", id)
 		}
+	}
+}
+
+// TestChunkStreamIntegrity verifies that chunks stored by ChunkStream match
+// their IDs. This catches buffer-reuse races where the chunker's internal
+// backing buffer is overwritten by fillBuffer() before workers finish
+// processing the slice sent through the channel. The input must be large
+// enough to trigger multiple fillBuffer() calls (> 10*ChunkSizeMaxDefault).
+func TestChunkStreamIntegrity(t *testing.T) {
+	// 8MB of pseudo-random data ensures multiple fillBuffer() cycles.
+	// The chunker's internal buffer is 10*max = 2.5MB, so this triggers
+	// at least 3 refills and produces ~125 chunks at 64KB average.
+	data := make([]byte, 8*1024*1024)
+	for i := range len(data) / 8 {
+		binary.LittleEndian.PutUint64(data[i*8:], uint64(i)*0x9E3779B97F4A7C15)
+	}
+
+	c, err := NewChunker(bytes.NewReader(data), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	s, err := NewLocalStore(dir, StoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	index, err := ChunkStream(context.Background(), c, s, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify every stored chunk: read it back, decompress, and check
+	// that its content hashes to the expected ChunkID. GetChunk with
+	// SkipVerify=false (the default) returns ChunkInvalid on mismatch.
+	var corrupted int
+	for i, chunk := range index.Chunks {
+		_, err := s.GetChunk(chunk.ID)
+		if err != nil {
+			corrupted++
+			t.Errorf("chunk %d (%s): %v", i, chunk.ID, err)
+		}
+	}
+	if corrupted > 0 {
+		t.Fatalf("%d of %d chunks are corrupted", corrupted, len(index.Chunks))
 	}
 }
 

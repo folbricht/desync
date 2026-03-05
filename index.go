@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -191,6 +192,12 @@ loop:
 		if len(b) == 0 {
 			break
 		}
+
+		// Copy the buffer before sending it to workers. The chunker
+		// reuses its internal backing buffer across fillBuffer() calls,
+		// so the slice returned by Next() may be overwritten by the
+		// next call.
+		b = slices.Clone(b)
 
 		// Send it off for compression and storage
 		select {
