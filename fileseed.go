@@ -40,11 +40,13 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 // and a nil SeedSegment.
 func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 	s.mu.RLock()
+	isInvalid := s.isInvalid
+	s.mu.RUnlock()
+
 	// isInvalid can be concurrently read or written. Use a mutex to avoid a race
-	if len(chunks) == 0 || len(s.index.Chunks) == 0 || s.isInvalid {
+	if len(chunks) == 0 || len(s.index.Chunks) == 0 || isInvalid {
 		return 0, nil
 	}
-	s.mu.RUnlock()
 	pos, ok := s.pos[chunks[0].ID]
 	if !ok {
 		return 0, nil
