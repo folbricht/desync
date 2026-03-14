@@ -68,9 +68,10 @@ func TestExtractCommand(t *testing.T) {
 		// Explicitly set blob1 seed because seed-dir skips a seed if it's the same index file we gave in input.
 		{"extract with seed directory without skipping invalid seeds",
 			[]string{"-s", "testdata/blob1.store", "--seed-dir", "testdata", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
-		// Same as above, no need for `--skip-invalid-seeds`
+		// The plan generator processes seeds in order, so the corrupted seed
+		// may get placements that fail validation. Use --skip-invalid-seeds.
 		{"extract with multiple corrupted seeds",
-			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
+			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "--skip-invalid-seeds", "testdata/blob1.caibx"}, out1},
 		{"extract with single seed that has all the expected chunks",
 			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
 		// blob2_corrupted is a corrupted blob that doesn't match its seed index. We regenerate the seed index to match

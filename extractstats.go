@@ -22,8 +22,8 @@ func (s *ExtractStats) incChunksFromStore() {
 	atomic.AddUint64(&s.ChunksFromStore, 1)
 }
 
-func (s *ExtractStats) incChunksInPlace() {
-	atomic.AddUint64(&s.ChunksInPlace, 1)
+func (s *ExtractStats) addChunksInPlace(n uint64) {
+	atomic.AddUint64(&s.ChunksInPlace, n)
 }
 
 func (s *ExtractStats) addChunksFromSeed(n uint64) {

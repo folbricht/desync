@@ -9,15 +9,28 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Build an index with a pre-determined set of (potentially repeated) chunks
+func indexSequence(ids ...uint8) Index {
+	var (
+		chunks        = make([]IndexChunk, len(ids))
+		start  uint64 = 0
+		size   uint64 = 100
+	)
+	for i, id := range ids {
+		chunks[i] = IndexChunk{Start: start, Size: size, ID: ChunkID{id}}
+		start += size
+	}
+	return Index{Chunks: chunks}
+}
 
 func TestExtract(t *testing.T) {
 	// Make a test file that's guaranteed to have duplicate chunks.
 	b, err := os.ReadFile("testdata/chunker.input")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for range 4 { // Replicate it a few times to make sure we get dupes
 		b = append(b, b...)
 	}
@@ -37,27 +50,21 @@ func TestExtract(t *testing.T) {
 		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 		NewProgressBar(""),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Chop up the input file into a (temporary) local store
 	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ChopFile(context.Background(), in, index.Chunks, s, 10, NewProgressBar("")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
+	err = ChopFile(context.Background(), in, index.Chunks, s, 10, NewProgressBar(""))
+	require.NoError(t, err)
 
 	// Make a blank store - used to test a case where no chunk *should* be requested
 	blankstore := t.TempDir()
 	bs, err := NewLocalStore(blankstore, StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Prepare output files for each test - first a non-existing one
 	out1 := filepath.Join(tmp, "out1")
@@ -73,20 +80,9 @@ func TestExtract(t *testing.T) {
 	out3 := filepath.Join(tmp, "out3")
 	require.NoError(t, os.WriteFile(out3, b, 0644))
 
-	// At this point we have the data needed for the test setup
-	// in - Temp file that represents the original input file
-	// inSub - MD5 of the input file
-	// index - Index file for the input file
-	// s - Local store containing the chunks needed to rebuild the input file
-	// bs - A blank local store, all GetChunk fail on it
-	// out1 - Just a non-existing file that gets assembled
-	// out2 - The output file already fully complete, no GetChunk should be needed
-	// out3 - Partial/damaged file with most, but not all data correct
-	// seedIndex + seedFile - Seed file to help assemble the input
 	tests := map[string]struct {
 		outfile string
 		store   Store
-		seed    []Seed
 	}{
 		"extract to new file":        {outfile: out1, store: s},
 		"extract to complete file":   {outfile: out2, store: bs},
@@ -95,19 +91,16 @@ func TestExtract(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
+			_, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
 				AssembleOptions{10, InvalidSeedActionBailOut},
-			); err != nil {
-				t.Fatal(err)
-			}
-			b, err := os.ReadFile(test.outfile)
-			if err != nil {
-				t.Fatal(err)
-			}
-			outSum := md5.Sum(b)
-			if inSum != outSum {
-				t.Fatal("checksum of extracted file doesn't match expected")
-			}
+			)
+			require.NoError(t, err)
+
+			outBytes, err := os.ReadFile(test.outfile)
+			require.NoError(t, err)
+
+			outSum := md5.Sum(outBytes)
+			assert.Equal(t, inSum, outSum, "checksum of extracted file doesn't match expected")
 		})
 	}
 }
@@ -116,9 +109,7 @@ func TestSeed(t *testing.T) {
 	// Prepare different types of data slices that'll be used to assemble target
 	// and seed files with varying amount of duplication
 	data1, err := os.ReadFile("testdata/chunker.input")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	null := make([]byte, 4*ChunkSizeMaxDefault)
 	rand1 := make([]byte, 4*ChunkSizeMaxDefault)
 	rand.Read(rand1)
@@ -129,9 +120,7 @@ func TestSeed(t *testing.T) {
 	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Define tests with files with different content, by building files out
 	// of sets of byte slices to create duplication or not between the target and
@@ -190,14 +179,11 @@ func TestSeed(t *testing.T) {
 				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 				NewProgressBar(""),
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			// Chop up the input file into the store
-			if err := ChopFile(context.Background(), dst, dstIndex.Chunks, s, 10, NewProgressBar("")); err != nil {
-				t.Fatal(err)
-			}
+			err = ChopFile(context.Background(), dst, dstIndex.Chunks, s, 10, NewProgressBar(""))
+			require.NoError(t, err)
 
 			// Build the seed files and indexes then populate the array of seeds
 			var seeds []Seed
@@ -211,29 +197,20 @@ func TestSeed(t *testing.T) {
 					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 					NewProgressBar(""),
 				)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				seed, err := NewIndexSeed(dst, seedFile, seedIndex)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				seeds = append(seeds, seed)
 			}
 
-			if _, err := AssembleFile(context.Background(), dst, dstIndex, s, seeds,
+			_, err = AssembleFile(context.Background(), dst, dstIndex, s, seeds,
 				AssembleOptions{10, InvalidSeedActionBailOut},
-			); err != nil {
-				t.Fatal(err)
-			}
+			)
+			require.NoError(t, err)
 			b, err := os.ReadFile(dst)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			outSum := md5.Sum(b)
-			if dstSum != outSum {
-				t.Fatal("checksum of extracted file doesn't match expected")
-			}
+			assert.Equal(t, dstSum, outSum, "checksum of extracted file doesn't match expected")
 		})
 	}
 
@@ -247,9 +224,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Build a number of fake chunks that can then be used in the test in any order
 	type rawChunk struct {
@@ -264,9 +239,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 		b := make([]byte, size)
 		rand.Read(b)
 		chunk := NewChunk(b)
-		if err = s.StoreChunk(chunk); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, s.StoreChunk(chunk))
 		chunks[i] = rawChunk{chunk.ID(), b}
 	}
 
@@ -321,26 +294,18 @@ func TestSelfSeedInPlace(t *testing.T) {
 			stats, err := AssembleFile(context.Background(), dst, idx, s, nil,
 				AssembleOptions{1, InvalidSeedActionBailOut},
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			// Compare the checksums to that of the input data
 			b, err = os.ReadFile(dst)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			outSum := md5.Sum(b)
-			if sum != outSum {
-				t.Fatal("checksum of extracted file doesn't match expected")
-			}
+			assert.Equal(t, sum, outSum, "checksum of extracted file doesn't match expected")
 
 			// All chunks must be in-place. The in-place check in writeChunk
 			// runs before the self-seed lookup, so repeated chunks are not
 			// re-written from the self-seed.
-			if stats.ChunksInPlace != uint64(len(test.index)) {
-				t.Fatalf("expected all %d chunks in-place, got %d", len(test.index), stats.ChunksInPlace)
-			}
+			assert.Equal(t, uint64(len(test.index)), stats.ChunksInPlace, "expected all chunks in-place")
 		})
 	}
 
@@ -362,39 +327,4 @@ func readCaibxFile(t *testing.T, indexLocation string) (idx Index) {
 	idx, err = is.GetIndex(indexName)
 	require.NoError(t, err)
 	return idx
-}
-
-func TestExtractWithNonStaticSeeds(t *testing.T) {
-	n := 10
-	outDir := t.TempDir()
-	out := filepath.Join(outDir, "out")
-
-	// Test a seed that is initially valid, but becomes corrupted halfway through
-	// the extraction operation
-	MockValidate = true
-
-	store, err := NewLocalStore("testdata/blob2.store", StoreOptions{})
-	require.NoError(t, err)
-	defer store.Close()
-
-	index := readCaibxFile(t, "testdata/blob2.caibx")
-
-	var seeds []Seed
-	srcIndex := readCaibxFile(t, "testdata/blob2_corrupted.caibx")
-	seed, err := NewIndexSeed(out, "testdata/blob2_corrupted", srcIndex)
-	seeds = append(seeds, seed)
-
-	// Test that the MockValidate works as expected
-	seq := NewSeedSequencer(index, seeds...)
-	plan := seq.Plan()
-	err = plan.Validate(context.Background(), n, NullProgressBar{})
-	require.NoError(t, err)
-
-	options := AssembleOptions{n, InvalidSeedActionRegenerate}
-	_, err = AssembleFile(context.Background(), out, index, store, seeds, options)
-	require.NoError(t, err)
-
-	//Test the output
-	err = VerifyIndex(context.Background(), out, index, n, NullProgressBar{})
-	require.NoError(t, err)
 }

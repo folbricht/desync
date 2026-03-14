@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 )
 
 // FileSeed is used to copy or clone blocks from an existing index+blob during
@@ -15,8 +14,6 @@ type FileSeed struct {
 	index      Index
 	pos        map[ChunkID][]int
 	canReflink bool
-	isInvalid  bool
-	mu         sync.RWMutex
 }
 
 // NewIndexSeed initializes a new seed that uses an existing index and its blob
@@ -26,7 +23,6 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 		pos:        make(map[ChunkID][]int),
 		index:      index,
 		canReflink: CanClone(dstFile, srcFile),
-		isInvalid:  false,
 	}
 	for i, c := range s.index.Chunks {
 		s.pos[c.ID] = append(s.pos[c.ID], i)
@@ -39,12 +35,7 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 // if reflinks are not supported. If there is no match, it returns a length of zero
 // and a nil SeedSegment.
 func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
-	s.mu.RLock()
-	isInvalid := s.isInvalid
-	s.mu.RUnlock()
-
-	// isInvalid can be concurrently read or written. Use a mutex to avoid a race
-	if len(chunks) == 0 || len(s.index.Chunks) == 0 || isInvalid {
+	if len(chunks) == 0 || len(s.index.Chunks) == 0 {
 		return 0, nil
 	}
 	pos, ok := s.pos[chunks[0].ID]
@@ -87,25 +78,12 @@ func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seed
 	}
 
 	s.index = index
-	s.SetInvalid(false)
 	s.pos = make(map[ChunkID][]int, len(s.index.Chunks))
 	for i, c := range s.index.Chunks {
 		s.pos[c.ID] = append(s.pos[c.ID], i)
 	}
 
 	return nil
-}
-
-func (s *FileSeed) SetInvalid(value bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.isInvalid = value
-}
-
-func (s *FileSeed) IsInvalid() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.isInvalid
 }
 
 // Returns a slice of chunks from the seed. Compares chunks from position 0
