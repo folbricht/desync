@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -93,8 +94,14 @@ func (p *AssemblePlan) Close() {
 // Validate checks that all file seed placements still match their underlying
 // data. Returns a SeedInvalid error if a seed file was modified after its
 // index was created.
-// TODO: run the verification steps in parallel.
 func (p *AssemblePlan) Validate() error {
+	// Phase 1 — Sequential: collect unique fileSeedSource placements, open
+	// their backing files, and build a list of items to validate.
+	type validateItem struct {
+		fs   *fileSeedSource
+		file *os.File
+	}
+
 	seen := make(map[*placement]struct{})
 	fileMap := make(map[string]*os.File)
 	defer func() {
@@ -106,6 +113,7 @@ func (p *AssemblePlan) Validate() error {
 	invalidSeeds := make(map[Seed]error)
 	failedFiles := make(map[string]struct{})
 
+	var items []validateItem
 	for _, pl := range p.placements {
 		if _, ok := seen[pl]; ok {
 			continue
@@ -136,11 +144,26 @@ func (p *AssemblePlan) Validate() error {
 			fileMap[fs.srcFile] = f
 		}
 
-		if err := fs.segment.Validate(fileMap[fs.srcFile]); err != nil {
-			invalidSeeds[fs.seed] = err
-		}
+		items = append(items, validateItem{fs: fs, file: fileMap[fs.srcFile]})
 	}
 
+	// Phase 2 — Concurrent: validate each segment in parallel.
+	var mu sync.Mutex
+	var g errgroup.Group
+	g.SetLimit(p.concurrency)
+	for _, item := range items {
+		g.Go(func() error {
+			if err := item.fs.segment.Validate(item.file); err != nil {
+				mu.Lock()
+				invalidSeeds[item.fs.seed] = err
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+	g.Wait()
+
+	// Phase 3 — Sequential: build the error result.
 	if len(invalidSeeds) > 0 {
 		seeds := make([]Seed, 0, len(invalidSeeds))
 		errs := make([]error, 0, len(invalidSeeds))
