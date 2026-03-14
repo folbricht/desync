@@ -77,15 +77,6 @@ func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int, attempt int,
 	panic("A nullseed can't be regenerated")
 }
 
-func (s *nullChunkSeed) SetInvalid(value bool) {
-	panic("A nullseed is never expected to be invalid")
-}
-
-func (s *nullChunkSeed) IsInvalid() bool {
-	// A nullseed is never expected to be invalid
-	return false
-}
-
 type nullChunkSection struct {
 	from, to   uint64
 	blockfile  *os.File
