@@ -757,7 +757,7 @@ killall -1 desync
 Start a writable index server, chunk a file and store the index.
 
 ```text
-server# desync index-server -s /mnt/indexes --writable -l :8080
+server# desync index-server -s /mnt/indexes --writeable -l :8080
 
 client# desync make -s /some/store http://192.168.1.1:8080/file.vmdk.caibx file.vmdk
 ```
@@ -913,8 +913,7 @@ desync info --seed local_index.caibx --format=json update.caibx
 | Windows | Partial | Subset of commands. Device entries unsupported in tar; `--no-same-owner` and `--no-same-permissions` ignored in `untar`. |
 | BSD | Untested | Expected to work |
 
-<details>
-<summary><h2>Design Philosophy</h2></summary>
+## Design Philosophy
 
 - **Performance over storage efficiency** — where upstream casync optimizes for storage efficiency (e.g. using local files as seeds, building temporary indexes), desync optimizes for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at the cost of storage efficiency.
 - **Cross-platform over platform-specific features** — where upstream casync takes full advantage of Linux platform features, desync implements a minimum feature set. High-value platform-specific features (such as Btrfs reflinks) are added while maintaining the ability to build on other platforms.
@@ -922,8 +921,6 @@ desync info --seed local_index.caibx --format=json update.caibx
 - **Compression** — only zstd compression and uncompressed stores are supported.
 - **casync as drop-in replacement** — desync can serve as a drop-in replacement for casync on SSH servers for read-only chunk serving. Set `CASYNC_REMOTE_PATH=desync` on the client.
 - **catar limitations** — SELinux and ACLs in existing catar files are ignored and won't be present in newly created catars. FCAPs are supported only as a verbatim copy of the `security.capability` XAttr.
-
-</details>
 
 ## Links
 
