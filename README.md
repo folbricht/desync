@@ -4,7 +4,6 @@ Content-addressed binary distribution, reimplemented in Go.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/folbricht/desync.svg)](https://pkg.go.dev/github.com/folbricht/desync)
 [![CI](https://github.com/folbricht/desync/actions/workflows/validate.yaml/badge.svg)](https://github.com/folbricht/desync/actions/workflows/validate.yaml)
-![Go Version](https://img.shields.io/github/go-mod/go-version/folbricht/desync)
 [![License](https://img.shields.io/github/license/folbricht/desync)](LICENSE)
 
 desync is a Go library and CLI tool that re-implements [casync](https://github.com/systemd/casync) features for content-addressed binary distribution. It chunks large files using a rolling hash, deduplicates and compresses chunks with [zstd](https://github.com/facebook/zstd), and distributes them via multiple store backends. It maintains compatibility with casync's data structures, protocols and types (chunk stores, index files, archives) to function as a drop-in replacement.
