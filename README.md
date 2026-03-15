@@ -305,7 +305,8 @@ The CLI tool uses the desync library and makes most features available in a cons
 | `extract` | Build a blob from an index file, optionally using seed indexes+blobs |
 | `verify-index` | Verify that an index file matches a given blob |
 | `mount-index` | FUSE mount a blob index as a single file |
-| `cat` | Output a blob from an index to stdout |
+| `cat` | Stream a blob to stdout or a file |
+| `chunk` | Chunk input file and print chunk boundaries plus chunk IDs |
 
 #### Archives
 
@@ -313,7 +314,7 @@ The CLI tool uses the desync library and makes most features available in a cons
 | --- | --- |
 | `tar` | Pack a catar file, optionally chunk and create an index |
 | `untar` | Unpack a catar file or index referencing a catar |
-| `mtree` | Print archive or index content in mtree-compatible format |
+| `mtree` | Print the content of a catar, caidx, or local directory in mtree format |
 
 #### Servers
 
@@ -328,7 +329,7 @@ The CLI tool uses the desync library and makes most features available in a cons
 | Command | Description |
 | --- | --- |
 | `info` | Show information about an index file |
-| `inspect-chunks` | Show detailed information about chunks in an index |
+| `inspect-chunks` | Show detailed information about chunks in an index and optional local store |
 | `list-chunks` | List all chunk IDs in an index file |
 
 #### Maintenance
@@ -340,27 +341,83 @@ The CLI tool uses the desync library and makes most features available in a cons
 | `chop` | Split a blob according to an existing index and store chunks |
 | `prune` | Remove unreferenced chunks from a store (use with caution) |
 
+#### Utility
+
+| Command | Description |
+| --- | --- |
+| `config` | Show or write the config file |
+| `manpage` | Generate manpages for desync |
+
 <details>
 <summary><h3>Common Options</h3></summary>
 
 Not all options apply to all commands.
 
+**Global options:**
+
+| Option | Description |
+| --- | --- |
+| `--config <file>` | Path to config file. Default: `$HOME/.config/desync/config.json`. |
+| `--digest <algorithm>` | Digest algorithm: `sha512-256` (default) or `sha256`. |
+| `--verbose` | Enable verbose/debug logging. |
+
+**Store options:**
+
 | Option | Description |
 | --- | --- |
 | `-s <store>` | Location of the chunk store, can be local directory or a URL like `ssh://hostname/path/to/store`. Multiple stores can be specified, they'll be queried in order. The `chop`, `make`, `tar` and `prune` commands support updating chunk stores in S3, while `verify` only operates on a local store. |
+| `-c <store>` | Location of a chunk store to be used as cache. Needs to be writable. |
+| `-n <int>` | Number of concurrent goroutines. Default: 10. |
+| `-t` | Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs. |
+| `--ca-cert <file>` | Trust authorities in this file instead of the OS trust store. |
+| `--client-cert <file>` | Client certificate for mutual TLS authentication. |
+| `--client-key <file>` | Client key for mutual TLS authentication. |
+| `-e` / `--error-retry <int>` | Number of times to retry on network error. |
+| `-b` / `--error-retry-base-interval <duration>` | Initial retry delay; attempt N waits N times this interval. |
+
+**Extract options:**
+
+| Option | Description |
+| --- | --- |
 | `--seed <indexfile>` | Specifies a seed file and index for the `extract` command. The tool expects the matching file to have the same name as the index file, without the `.caibx` extension. |
 | `--seed-dir <dir>` | Specifies a directory containing seed files and their indexes for `extract`. Each index file (`*.caibx`) needs a matching blob without the extension. |
-| `-c <store>` | Location of a chunk store to be used as cache. Needs to be writable. |
-| `-n <int>` | Number of concurrent download jobs and ssh sessions to the chunk store. |
-| `-r` | Repair a local cache by removing invalid chunks. Only valid for `verify`. |
-| `-y` | Answer with `yes` when asked for confirmation. Only supported by `prune`. |
-| `-l` | Listening address for the HTTP chunk server. Can be used multiple times for more than one interface or port. Only supported by `chunk-server`. |
+| `-k` / `--in-place` | Keep partially assembled files in place when `extract` fails or is interrupted. Also use this option to write to block devices. |
+| `--print-stats` | Print extraction statistics (`extract`) or chunking statistics (`make`) to stderr. |
+| `--skip-invalid-seeds` | Skip seeds with invalid chunks instead of failing. |
+| `--regenerate-invalid-seeds` | Regenerate seed indexes when invalid chunks are found. |
+
+**Chunking and archive options:**
+
+| Option | Description |
+| --- | --- |
 | `-m` | Specify the min/avg/max chunk sizes in KB. Only applicable to `make`. Defaults to 16:64:256. For best results: min = avg/4, max = 4*avg. |
 | `-i` | When packing/unpacking an archive, don't create/read an archive file but instead use an index file (caidx). Only applicable to `tar` and `untar`. |
-| `-t` | Trust all certificates presented by HTTPS stores. Allows the use of self-signed certs. |
-| `--key` | Key file in PEM format for HTTPS `chunk-server` and `index-server`. Requires `--cert`. |
-| `--cert` | Certificate file in PEM format for HTTPS `chunk-server` and `index-server`. Requires `--key`. |
-| `-k` | Keep partially assembled files in place when `extract` fails or is interrupted. Also use this option to write to block devices. |
+| `--input-format <format>` | Input format for `tar`: `disk` (default) or `tar`. |
+| `--output-format <format>` | Output format for `untar`: `disk` (default) or `gnu-tar`. |
+| `--ignore <indexfile>` | Index file(s) whose chunks should be skipped. Applies to `chop` and `cache`. |
+
+**Server options:**
+
+| Option | Description |
+| --- | --- |
+| `-l <address>` | Listening address for the HTTP chunk server. Can be used multiple times for more than one interface or port. |
+| `-w` / `--writeable` | Enable write support. Applies to `chunk-server` and `index-server`. |
+| `-u` / `--uncompressed` | Serve uncompressed chunks. Applies to `chunk-server`. |
+| `--store-file <file>` | Read store arguments from a JSON file; supports SIGHUP reload. Applies to `chunk-server` and `mount-index`. |
+| `--key <file>` | Key file in PEM format for HTTPS `chunk-server` and `index-server`. Requires `--cert`. |
+| `--cert <file>` | Certificate file in PEM format for HTTPS `chunk-server` and `index-server`. Requires `--key`. |
+| `--mutual-tls` | Require a valid client certificate. Applies to `chunk-server` and `index-server`. |
+| `--client-ca <file>` | Acceptable client certificate or CA for mutual TLS. |
+| `--authorization <value>` | Expected value of the Authorization header in client requests. |
+| `--log <file>` | Request log file, or `-` for STDOUT. Applies to `chunk-server` and `index-server`. |
+
+**Other options:**
+
+| Option | Description |
+| --- | --- |
+| `-r` | Repair a local store by removing invalid chunks. Only valid for `verify`. |
+| `-y` | Answer with `yes` when asked for confirmation. Only supported by `prune`. |
+| `-f` / `--format <format>` | Output format for `info`: `plain` (default) or `json`. |
 
 </details>
 
