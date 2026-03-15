@@ -149,6 +149,13 @@ graph LR
     NS -- "clone/copy<br/>zero regions" --> Result
     SS -- "clone/copy<br/>repeated sections" --> Result
     CS -. "fetch<br/>remaining chunks" .-> Result
+
+    style S1 fill:#4a90d9,stroke:#2a6cb0,color:#fff
+    style S2 fill:#4a90d9,stroke:#2a6cb0,color:#fff
+    style NS fill:#6ab04c,stroke:#4a8a2c,color:#fff
+    style SS fill:#6ab04c,stroke:#4a8a2c,color:#fff
+    style CS fill:#e17055,stroke:#c0392b,color:#fff
+    style Result fill:#f6b93b,stroke:#d4951a,color:#fff
 ```
 
 Even if cloning is not available, seeds are still useful. desync automatically determines if reflinks are available (and the block size used in the filesystem). If cloning is not supported, sections are copied instead of cloned. Copying still improves performance and reduces the load created by retrieving chunks over the network and decompressing them.
@@ -192,6 +199,14 @@ graph LR
     S2a -. "on failure" .-> S2b
     S1 -- "found" --> Cache
     FG -- "found" --> Cache
+
+    style Client fill:#6c5ce7,stroke:#4b3ec4,color:#fff
+    style Cache fill:#6ab04c,stroke:#4a8a2c,color:#fff
+    style Router fill:#4a90d9,stroke:#2a6cb0,color:#fff
+    style S1 fill:#f6b93b,stroke:#d4951a,color:#fff
+    style FG fill:#e17055,stroke:#c0392b,color:#fff
+    style S2a fill:#f6b93b,stroke:#d4951a,color:#fff
+    style S2b fill:#f6b93b,stroke:#d4951a,color:#fff
 ```
 
 ### Chaining and Caching
