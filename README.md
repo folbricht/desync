@@ -70,8 +70,6 @@ git clone https://github.com/folbricht/desync.git
 cd desync/cmd/desync && go install
 ```
 
-Pre-built binaries are also available on the [Releases](https://github.com/folbricht/desync/releases) page.
-
 ## Quick Start
 
 **Chunk a file** — split a blob into chunks and create an index:
