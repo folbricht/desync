@@ -1,6 +1,4 @@
 version: 2
-env:
-  - GO111MODULE=on
 
 before:
   hooks:
@@ -13,11 +11,9 @@ builds:
       - linux
       - darwin
       - windows
-    ignore:
-      - goos: darwin
-        goarch: arm64
-      - goos: windows
-        goarch: arm64
+    goarch:
+      - amd64
+      - arm64
 
 checksum:
   name_template: 'checksums.txt'
