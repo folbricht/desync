@@ -51,9 +51,9 @@ func (s *selfSeed) Close() {
 	s.readers = nil
 }
 
-// longestMatchFrom returns the longest sequence of matching chunks after a
+// LongestMatchFrom returns the longest sequence of matching chunks after a
 // given starting position.
-func (s *selfSeed) longestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
+func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
 	if len(chunks) <= startPos || len(s.index.Chunks) == 0 {
 		return 0, 0
 	}
@@ -119,56 +119,46 @@ func (s *selfSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) (int, int
 	return p, dp - p
 }
 
-func (s *selfSeed) getSegment(from, to, length int) *selfSeedSegment {
+func (s *selfSeed) GetSegment(srcOffset, dstOffset, size uint64) *selfSeedSegment {
 	return &selfSeedSegment{
-		seed:   s,
-		from:   from,
-		to:     to,
-		length: length,
+		seed:      s,
+		srcOffset: srcOffset,
+		dstOffset: dstOffset,
+		size:      size,
 	}
 }
 
 type selfSeedSegment struct {
-	seed   *selfSeed
-	from   int // Index of the first chunk to copy from
-	to     int // Index of the first chunk to copy to
-	length int // Number of chunks to copy
+	seed      *selfSeed
+	srcOffset uint64
+	dstOffset uint64
+	size      uint64
 }
 
 func (s *selfSeedSegment) Execute(f *os.File) (copied uint64, cloned uint64, err error) {
-	srcStart := s.seed.index.Chunks[s.from].Start
-	dstStart := s.seed.index.Chunks[s.to].Start
-	lastFrom := s.from + s.length - 1
-	length := s.seed.index.Chunks[lastFrom].Start + s.seed.index.Chunks[lastFrom].Size - srcStart
-
 	blocksize := blocksizeOfFile(f.Name())
 
 	// Use reflinks if supported and blocks are aligned
-	if s.seed.canReflink && srcStart%blocksize == dstStart%blocksize {
-		return 0, length, CloneRange(f, f, srcStart, length, dstStart)
+	if s.seed.canReflink && s.srcOffset%blocksize == s.dstOffset%blocksize {
+		return 0, s.size, CloneRange(f, f, s.srcOffset, s.size, s.dstOffset)
 	}
 
 	// Borrow a read handle from the pool
 	src := <-s.seed.readers
 	defer func() { s.seed.readers <- src }()
 
-	if _, err := src.Seek(int64(srcStart), io.SeekStart); err != nil {
+	if _, err := src.Seek(int64(s.srcOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
-	if _, err := f.Seek(int64(dstStart), io.SeekStart); err != nil {
+	if _, err := f.Seek(int64(s.dstOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
-	_, err = io.CopyBuffer(f, io.LimitReader(src, int64(length)), make([]byte, 64*1024))
-	return length, 0, err
+	_, err = io.CopyBuffer(f, io.LimitReader(src, int64(s.size)), make([]byte, 64*1024))
+	return s.size, 0, err
 }
 
 func (s *selfSeedSegment) String() string {
-	fromStart := s.seed.index.Chunks[s.from].Start
-	toStart := s.seed.index.Chunks[s.to].Start
-	lastFromChunkIndex := s.from + s.length - 1
-	lastToChunkIndex := s.to + s.length - 1
-	fromEnd := s.seed.index.Chunks[lastFromChunkIndex].Start + s.seed.index.Chunks[lastFromChunkIndex].Size
-	toEnd := s.seed.index.Chunks[lastToChunkIndex].Start + s.seed.index.Chunks[lastToChunkIndex].Size
-
-	return fmt.Sprintf("SelfSeed: Copy [%d:%d] to [%d:%d]", fromStart, fromEnd, toStart, toEnd)
+	return fmt.Sprintf("SelfSeed: Copy [%d:%d] to [%d:%d]",
+		s.srcOffset, s.srcOffset+s.size,
+		s.dstOffset, s.dstOffset+s.size)
 }
