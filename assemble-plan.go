@@ -235,7 +235,7 @@ func (p *AssemblePlan) generate() error {
 			continue // Already filled
 		}
 
-		start, n := p.selfSeed.longestMatchFrom(p.idx.Chunks, i)
+		start, n := p.selfSeed.LongestMatchFrom(p.idx.Chunks, i)
 		if n < 1 {
 			continue
 		}
@@ -263,50 +263,63 @@ func (p *AssemblePlan) generate() error {
 		i-- // compensate for the outer loop's i++
 
 		// Update the step with the potentially adjusted length
-		pl.source = p.selfSeed.getSegment(start, to, size)
+		seedOffset := p.idx.Chunks[start].Start
+		last := p.idx.Chunks[start+size-1]
+		length := last.Start + last.Size - seedOffset
+		offset := p.idx.Chunks[to].Start
+
+		pl.source = p.selfSeed.GetSegment(seedOffset, offset, length)
 		pl.dependsOnStart = start
 		pl.dependsOnSize = size
 	}
 
 	// Check file seeds for matches in unfilled positions.
 	for _, seed := range p.seeds {
-		for i := 0; i < len(p.idx.Chunks); {
+		for i := 0; i < len(p.idx.Chunks); i++ {
 			if p.placements[i] != nil {
-				i++
 				continue
 			}
 
-			// Count consecutive unfilled positions to bound the match.
-			available := 0
-			for j := i; j < len(p.idx.Chunks) && p.placements[j] == nil; j++ {
-				available++
-			}
-
-			n, segment := seed.LongestMatchWith(p.idx.Chunks[i : i+available])
+			seedOffset, n := seed.LongestMatchFrom(p.idx.Chunks, i)
 			if n < 1 {
-				i++
 				continue
 			}
 
-			offset := p.idx.Chunks[i].Start
-			last := p.idx.Chunks[i+n-1]
+			// Repeat the same placement for all chunks in the sequence.
+			// We dedup sequences later.
+			pl := &placement{}
+
+			// We can use up to n chunks from the seed, find out how much
+			// we can actually use without overwriting any existing placements
+			// in the list.
+			var (
+				to   = i
+				size int
+			)
+			for range n {
+				if p.placements[i] != nil {
+					break
+				}
+				p.placements[i] = pl
+				i++
+				size++
+			}
+			i-- // compensate for the outer loop's i++
+
+			// Update the step with the potentially adjusted length
+			offset := p.idx.Chunks[to].Start
+			last := p.idx.Chunks[to+size-1]
 			length := last.Start + last.Size - offset
+			segment := seed.GetSegment(seedOffset, length)
 
-			pl := &placement{
-				source: &fileSeedSource{
-					segment: segment,
-					seed:    seed,
-					srcFile: segment.FileName(),
-					offset:  offset,
-					length:  length,
-					isBlank: p.targetIsBlank,
-				},
+			pl.source = &fileSeedSource{
+				segment: segment,
+				seed:    seed,
+				srcFile: segment.FileName(),
+				offset:  offset,
+				length:  length,
+				isBlank: p.targetIsBlank,
 			}
-
-			for j := i; j < i+n; j++ {
-				p.placements[j] = pl
-			}
-			i += n
 		}
 	}
 
