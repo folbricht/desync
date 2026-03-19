@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	minio "github.com/minio/minio-go/v6"
 	"github.com/minio/minio-go/v6/pkg/credentials"
@@ -95,6 +96,7 @@ retry:
 	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
 		if attempt <= s.opt.ErrorRetry {
+			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
 		return nil, errors.Wrap(err, s.String())
@@ -104,6 +106,7 @@ retry:
 	b, err := io.ReadAll(obj)
 	if err != nil {
 		if attempt <= s.opt.ErrorRetry {
+			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
 		if e, ok := err.(minio.ErrorResponse); ok {
@@ -135,6 +138,7 @@ retry:
 	_, err = s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	if err != nil {
 		if attempt < s.opt.ErrorRetry {
+			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
 	}
