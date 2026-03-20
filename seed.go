@@ -12,7 +12,11 @@ const DefaultBlockSize = 4096
 // another index+blob that present on disk already and is used to copy or clone
 // existing chunks or blocks into the target from.
 type Seed interface {
-	LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, int)
+	// LongestMatchFrom returns the longest sequence of chunks anywhere in the seed
+	// that match chunks starting at chunks[startPos]. It returns the byte offset
+	// and byte length of the match in the seed, plus the chunk offset and chunk
+	// length. Returns (0, 0, 0, 0) if there is no match.
+	LongestMatchFrom(chunks []IndexChunk, startPos int) (byteOffset uint64, byteLength uint64, chunkOffset int, chunkLength int)
 	GetSegment(offset, size uint64) SeedSegment
 	RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error
 }

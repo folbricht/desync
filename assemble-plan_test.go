@@ -229,7 +229,58 @@ func TestFileSeedPlanSteps(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			seed, err := NewIndexSeed("test", "seed", test.seed)
+			seed, err := NewFileSeed("test", "seed", test.seed)
+			require.NoError(t, err)
+
+			plan, err := NewPlan("test", test.target, nil, PlanWithSeeds([]Seed{seed}))
+			require.NoError(t, err)
+			defer plan.Close()
+
+			steps := plan.Steps()
+			got := make([]string, len(steps))
+			for i, s := range steps {
+				got[i] = s.source.String()
+			}
+			require.Equal(t, test.expected, got)
+		})
+	}
+}
+
+func TestInPlaceSeedPlanSteps(t *testing.T) {
+	tests := map[string]struct {
+		target   Index
+		seed     Index
+		expected []string
+	}{
+		"basic matching": {
+			target: indexSequence(0x01, 0x02, 0x03, 0x04),
+			seed:   indexSequence(0x02, 0x03),
+			expected: []string{
+				"Store: Copy 0100000000000000000000000000000000000000000000000000000000000000 to [0:100]",
+				"FileSeed(test): Copy to [100:300]",
+				"Store: Copy 0400000000000000000000000000000000000000000000000000000000000000 to [300:400]",
+			},
+		},
+		"all from seed": {
+			target: indexSequence(0x01, 0x02, 0x03),
+			seed:   indexSequence(0x01, 0x02, 0x03),
+			expected: []string{
+				"FileSeed(test): Copy to [0:300]",
+			},
+		},
+		"no match": {
+			target: indexSequence(0x01, 0x02),
+			seed:   indexSequence(0x05, 0x06),
+			expected: []string{
+				"Store: Copy 0100000000000000000000000000000000000000000000000000000000000000 to [0:100]",
+				"Store: Copy 0200000000000000000000000000000000000000000000000000000000000000 to [100:200]",
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			seed, err := NewInPlaceSeed("test", test.seed)
 			require.NoError(t, err)
 
 			plan, err := NewPlan("test", test.target, nil, PlanWithSeeds([]Seed{seed}))
@@ -281,7 +332,7 @@ func TestFileSeedValidation(t *testing.T) {
 		require.NoError(t, err)
 		f.Close()
 
-		seed, err := NewIndexSeed("target", seedFile, seedIndex)
+		seed, err := NewFileSeed("target", seedFile, seedIndex)
 		require.NoError(t, err)
 
 		plan, err := NewPlan("target", targetIndex, nil, PlanWithSeeds([]Seed{seed}))
@@ -301,7 +352,7 @@ func TestFileSeedValidation(t *testing.T) {
 		require.NoError(t, err)
 		f.Close()
 
-		seed, err := NewIndexSeed("target", seedFile, seedIndex)
+		seed, err := NewFileSeed("target", seedFile, seedIndex)
 		require.NoError(t, err)
 
 		plan, err := NewPlan("target", targetIndex, nil, PlanWithSeeds([]Seed{seed}))

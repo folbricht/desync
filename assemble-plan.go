@@ -43,12 +43,26 @@ type AssemblePlan struct {
 	// length of the index but a single step can span multiple chunks.
 	placements []*placement
 
+	// InPlaceReads is a list of placements with sources that read sections
+	// from the target file. This needs to happen before any steps that
+	// overwrite the in-place source data. This is sparsely populated and
+	// used to express a dependency in the form "don't write to this chunk
+	// until these chunks are read from the in-place target".
+	inPlaceReads []*placement
+
 	selfSeed *selfSeed
 }
 
 type assembleSource interface {
 	fmt.Stringer
 	Execute(f *os.File) (copied uint64, cloned uint64, err error)
+}
+
+type assembleSeedSource interface {
+	assembleSource
+	Seed() Seed
+	File() string
+	Validate(file *os.File) error
 }
 
 type placement struct {
@@ -66,6 +80,7 @@ func NewPlan(name string, idx Index, s Store, opts ...PlanOption) (*AssemblePlan
 		store:         s,
 		targetIsBlank: true,
 		placements:    make([]*placement, len(idx.Chunks)),
+		inPlaceReads:  make([]*placement, len(idx.Chunks)),
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -98,7 +113,7 @@ func (p *AssemblePlan) Validate() error {
 	// Phase 1 — Sequential: collect unique fileSeedSource placements, open
 	// their backing files, and build a list of items to validate.
 	type validateItem struct {
-		fs   *fileSeedSource
+		fs   assembleSeedSource
 		file *os.File
 	}
 
@@ -120,31 +135,31 @@ func (p *AssemblePlan) Validate() error {
 		}
 		seen[pl] = struct{}{}
 
-		fs, ok := pl.source.(*fileSeedSource)
-		if !ok || fs.srcFile == "" {
+		fs, ok := pl.source.(assembleSeedSource)
+		if !ok || fs.File() == "" {
 			continue
 		}
 
 		// Skip seeds and files already known to be invalid
-		if _, ok := invalidSeeds[fs.seed]; ok {
+		if _, ok := invalidSeeds[fs.Seed()]; ok {
 			continue
 		}
-		if _, ok := failedFiles[fs.srcFile]; ok {
-			invalidSeeds[fs.seed] = fmt.Errorf("seed file %s could not be opened", fs.srcFile)
+		if _, ok := failedFiles[fs.File()]; ok {
+			invalidSeeds[fs.Seed()] = fmt.Errorf("seed file %s could not be opened", fs.File())
 			continue
 		}
 
-		if _, ok := fileMap[fs.srcFile]; !ok {
-			f, err := os.Open(fs.srcFile)
+		if _, ok := fileMap[fs.File()]; !ok {
+			f, err := os.Open(fs.File())
 			if err != nil {
-				failedFiles[fs.srcFile] = struct{}{}
-				invalidSeeds[fs.seed] = err
+				failedFiles[fs.File()] = struct{}{}
+				invalidSeeds[fs.Seed()] = err
 				continue
 			}
-			fileMap[fs.srcFile] = f
+			fileMap[fs.File()] = f
 		}
 
-		items = append(items, validateItem{fs: fs, file: fileMap[fs.srcFile]})
+		items = append(items, validateItem{fs: fs, file: fileMap[fs.File()]})
 	}
 
 	// Phase 2 — Concurrent: validate each segment in parallel.
@@ -153,9 +168,9 @@ func (p *AssemblePlan) Validate() error {
 	g.SetLimit(p.concurrency)
 	for _, item := range items {
 		g.Go(func() error {
-			if err := item.fs.segment.Validate(item.file); err != nil {
+			if err := item.fs.Validate(item.file); err != nil {
 				mu.Lock()
-				invalidSeeds[item.fs.seed] = err
+				invalidSeeds[item.fs.Seed()] = err
 				mu.Unlock()
 			}
 			return nil
@@ -227,15 +242,52 @@ func (p *AssemblePlan) generate() error {
 		}
 	}
 
-	// Find all matches in file itself. As it's populated, sections can be
-	// copied to other chunks. This involves depending on earlier steps
-	// before chunks can be copied within the file.
+	// If we have an in-place seed, use it to find matches in the file
+	// before anything gets overwritten by subsequent steps. We schedule
+	// steps that re-arrange chunks that already exist in other places in
+	// the target file before they get overwritten by subsequent steps like
+	// copying from other seeds or the store.
+	for _, seed := range p.seeds {
+		inPlaceSeed, ok := seed.(*InPlaceSeed)
+		if !ok {
+			continue
+		}
+
+		_ = inPlaceSeed
+
+		// TODO: Implement finding chunk slices in the existing file.
+		// Create placements with sources that consist of multiple
+		// operations, such as "Copy to other spot in the file", "Read
+		// to memory", "Write memory to file". Each dependency cycle is
+		// represented as multiple operations. Each cycle can be
+		// executed independently of other (disconnected) cycles.
+		// Update inPlaceReads placements so subsequent steps that
+		// write to the same sections in the file from other seeds or
+		// store happen after the selfseed operations are done.
+		for i := 0; i < len(p.idx.Chunks); i++ {
+			byteOffset, byteLength, seedOffset, n := inPlaceSeed.LongestMatchFrom(p.idx.Chunks, i)
+			if n < 1 {
+				continue
+			}
+
+			_ = byteOffset
+			_ = byteLength
+			_ = seedOffset
+		}
+
+		break // There can only be one in-place seed
+	}
+
+	// Find all matches in file itself as they're written. As it's
+	// populated, sections can be copied to other chunks. This involves
+	// depending on earlier steps before chunks can be copied within the
+	// file.
 	for i := 0; i < len(p.idx.Chunks); i++ {
 		if p.placements[i] != nil {
 			continue // Already filled
 		}
 
-		start, n := p.selfSeed.LongestMatchFrom(p.idx.Chunks, i)
+		_, _, start, n := p.selfSeed.LongestMatchFrom(p.idx.Chunks, i)
 		if n < 1 {
 			continue
 		}
@@ -275,12 +327,16 @@ func (p *AssemblePlan) generate() error {
 
 	// Check file seeds for matches in unfilled positions.
 	for _, seed := range p.seeds {
+		if _, ok := seed.(*InPlaceSeed); ok { // Skip the in-place seed, it's already handled
+			continue
+		}
+
 		for i := 0; i < len(p.idx.Chunks); i++ {
 			if p.placements[i] != nil {
 				continue
 			}
 
-			seedOffset, n := seed.LongestMatchFrom(p.idx.Chunks, i)
+			seedOffset, _, _, n := seed.LongestMatchFrom(p.idx.Chunks, i)
 			if n < 1 {
 				continue
 			}
@@ -371,6 +427,10 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 			stepsPerPlacement[pl].addDependency(stepsPerPlacement[p.placements[i]])
 			stepsPerPlacement[p.placements[i]].addDependent(stepsPerPlacement[pl])
 		}
+
+		// TODO: setup dependencies on inPlaceReads to make sure
+		// in-seed operations on chunks are done before subsequent
+		// writes overwrite the data.
 	}
 
 	// Make a slice of steps, preserving the order

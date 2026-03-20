@@ -42,9 +42,9 @@ func (s *nullChunkSeed) close() error {
 	return nil
 }
 
-func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, int) {
+func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, uint64, int, int) {
 	if startPos >= len(chunks) {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
 	var (
 		n     int
@@ -62,7 +62,12 @@ func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uin
 		}
 		n++
 	}
-	return 0, n
+	if n == 0 {
+		return 0, 0, 0, 0
+	}
+	last := chunks[startPos+n-1]
+	byteLength := last.Start + last.Size - chunks[startPos].Start
+	return 0, byteLength, 0, n
 }
 
 func (s *nullChunkSeed) GetSegment(offset, size uint64) SeedSegment {

@@ -18,7 +18,7 @@ type FileSeed struct {
 }
 
 // NewIndexSeed initializes a new seed that uses an existing index and its blob
-func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error) {
+func NewFileSeed(dstFile string, srcFile string, index Index) (*FileSeed, error) {
 	s := FileSeed{
 		srcFile:    srcFile,
 		pos:        make(map[ChunkID][]int),
@@ -33,15 +33,15 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 
 // LongestMatchFrom returns the longest sequence of chunks anywhere in the seed
 // that match chunks starting at chunks[startPos]. It returns the byte offset
-// of the match in the seed and the number of matching chunks. Returns (0, 0)
-// if there is no match.
-func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, int) {
+// and byte length of the match in the seed, plus the chunk offset and chunk
+// length. Returns (0, 0, 0, 0) if there is no match.
+func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, uint64, int, int) {
 	if startPos >= len(chunks) || len(s.index.Chunks) == 0 {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
 	pos, ok := s.pos[chunks[startPos].ID]
 	if !ok {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
 	// From every position of chunks[startPos] in the source, find a run of
 	// matching chunks. Then return the longest of those runs.
@@ -68,9 +68,12 @@ func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, 
 		}
 	}
 	if maxLen == 0 {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
-	return s.index.Chunks[bestSeedPos].Start, maxLen
+	byteOffset := s.index.Chunks[bestSeedPos].Start
+	last := s.index.Chunks[bestSeedPos+maxLen-1]
+	byteLength := last.Start + last.Size - byteOffset
+	return byteOffset, byteLength, bestSeedPos, maxLen
 }
 
 // GetSegment constructs a SeedSegment for a matched range identified by its
@@ -250,6 +253,13 @@ type fileSeedSource struct {
 func (s *fileSeedSource) Execute(f *os.File) (copied uint64, cloned uint64, err error) {
 	blocksize := blocksizeOfFile(f.Name())
 	return s.segment.WriteInto(f, s.offset, s.length, blocksize, s.isBlank)
+}
+
+func (s *fileSeedSource) Seed() Seed { return s.seed }
+func (s *fileSeedSource) File() string { return s.srcFile }
+
+func (s *fileSeedSource) Validate(file *os.File) error {
+	return s.segment.Validate(file)
 }
 
 func (s *fileSeedSource) String() string {
