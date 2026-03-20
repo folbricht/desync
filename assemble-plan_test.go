@@ -251,6 +251,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 	// Each chunk is filled with a distinct byte so the SHA512/256 hash is unique.
 	type chunk struct {
 		id   ChunkID
+		data []byte
 		size uint64
 	}
 	newChunk := func(size int, fill byte) chunk {
@@ -258,7 +259,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		for i := range data {
 			data[i] = fill
 		}
-		return chunk{id: ChunkID(Digest.Sum(data)), size: uint64(size)}
+		return chunk{id: ChunkID(Digest.Sum(data)), data: data, size: uint64(size)}
 	}
 
 	A := newChunk(200, 0xAA)
@@ -279,10 +280,22 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		return Index{Chunks: ic}
 	}
 
-	// planSteps is a helper that creates a plan and returns its step strings.
-	planSteps := func(t *testing.T, target Index, opts ...PlanOption) []string {
+	// writeFile writes concatenated chunk data to a temp file and returns its path.
+	writeFile := func(t *testing.T, chunks ...chunk) string {
 		t.Helper()
-		plan, err := NewPlan("test", target, nil, opts...)
+		f := filepath.Join(t.TempDir(), "target")
+		var content []byte
+		for _, c := range chunks {
+			content = append(content, c.data...)
+		}
+		require.NoError(t, os.WriteFile(f, content, 0644))
+		return f
+	}
+
+	// planSteps is a helper that creates a plan and returns its step strings.
+	planSteps := func(t *testing.T, name string, target Index, opts ...PlanOption) []string {
+		t.Helper()
+		plan, err := NewPlan(name, target, nil, opts...)
 		require.NoError(t, err)
 		t.Cleanup(func() { plan.Close() })
 		steps := plan.Steps()
@@ -303,10 +316,12 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// In-place: [A:200][B:150]
 		// Target:   [B:150][A:200]
 		// One cycle: A↔B.
-		inPlace, err := NewInPlaceSeed("test", buildIndex(A, B))
+		f := writeFile(t, A, B)
+		inPlace, err := NewInPlaceSeed(f, buildIndex(A, B))
 		require.NoError(t, err)
 
-		got := planSteps(t, buildIndex(B, A), PlanWithSeeds([]Seed{inPlace}))
+		got := planSteps(t, f, buildIndex(B, A),
+			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [0:200] to [150:350]",
 			"InPlace: Copy [200:350] to [0:150]",
@@ -319,10 +334,12 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// Target:   [B:150][A:200][D:50][C:100]
 		// Cycle 1: A↔B in byte range [0,350)
 		// Cycle 2: C↔D in byte range [350,500)
-		inPlace, err := NewInPlaceSeed("test", buildIndex(A, B, C, D))
+		f := writeFile(t, A, B, C, D)
+		inPlace, err := NewInPlaceSeed(f, buildIndex(A, B, C, D))
 		require.NoError(t, err)
 
-		got := planSteps(t, buildIndex(B, A, D, C), PlanWithSeeds([]Seed{inPlace}))
+		got := planSteps(t, f, buildIndex(B, A, D, C),
+			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [0:200] to [150:350]",
 			"InPlace: Copy [200:350] to [0:150]",
@@ -336,10 +353,12 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// In-place: [A:200][B:150]
 		// Target:   [B:150][A:200][E:180]
 		// A↔B cycle, E from store (not in seed).
-		inPlace, err := NewInPlaceSeed("test", buildIndex(A, B))
+		f := writeFile(t, A, B)
+		inPlace, err := NewInPlaceSeed(f, buildIndex(A, B))
 		require.NoError(t, err)
 
-		got := planSteps(t, buildIndex(B, A, E), PlanWithSeeds([]Seed{inPlace}))
+		got := planSteps(t, f, buildIndex(B, A, E),
+			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [0:200] to [150:350]",
 			"InPlace: Copy [200:350] to [0:150]",
@@ -353,10 +372,12 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// Target:   [A:200][C:100][B:150]
 		// A already at [0:200] in both indexes → skip.
 		// B↔C cycle: B [200:350]→[300:450], C [350:450]→[200:300].
-		inPlace, err := NewInPlaceSeed("test", buildIndex(A, B, C))
+		f := writeFile(t, A, B, C)
+		inPlace, err := NewInPlaceSeed(f, buildIndex(A, B, C))
 		require.NoError(t, err)
 
-		got := planSteps(t, buildIndex(A, C, B), PlanWithSeeds([]Seed{inPlace}))
+		got := planSteps(t, f, buildIndex(A, C, B),
+			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Skip [0:200]",
 			"InPlace: Copy [200:350] to [300:450]",
@@ -372,13 +393,14 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// A at same offset → skip.
 		// B moves [200:350]→[320:470] (B must read before F writes to [200:320]).
 		// F from file seed at [200:320].
-		inPlaceSeed, err := NewInPlaceSeed("test", buildIndex(A, B))
+		f := writeFile(t, A, B)
+		inPlaceSeed, err := NewInPlaceSeed(f, buildIndex(A, B))
 		require.NoError(t, err)
-		fileSeed, err := NewFileSeed("test", "seedfile", buildIndex(F))
+		fileSeed, err := NewFileSeed(f, "seedfile", buildIndex(F))
 		require.NoError(t, err)
 
-		got := planSteps(t, buildIndex(A, F, B),
-			PlanWithSeeds([]Seed{inPlaceSeed, fileSeed}))
+		got := planSteps(t, f, buildIndex(A, F, B),
+			PlanWithSeeds([]Seed{inPlaceSeed, fileSeed}), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Skip [0:200]",
 			"InPlace: Copy [200:350] to [320:470]",

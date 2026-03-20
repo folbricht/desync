@@ -68,20 +68,25 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		isBlank = true
 	}
 
-	// TODO: Update to account for inplace-seeds. If the inplace-seed is
-	// longer than the file we probably want to truncate the file down
-	// after execution all steps. If the in-place-seed is smaller than the
-	// target file, we can truncate here. Note, it's possible that the
-	// in-place seed is recalculated below. If we truncated the target file
-	// down, that in-place seed's chunk list may need to be truncated as
-	// well.
+	// Find the in-place seed size (if any) to decide truncation strategy.
+	var inPlaceSeedSize int64
+	for _, seed := range seeds {
+		if ips, ok := seed.(*InPlaceSeed); ok {
+			inPlaceSeedSize = ips.index.Length()
+			break
+		}
+	}
 
 	// Truncate the output file to the full expected size. Not only does this
 	// confirm there's enough disk space, but it allows for an optimization
-	// when dealing with the Null Chunk
+	// when dealing with the Null Chunk. If the in-place seed is larger than
+	// the target, defer truncation until after assembly so in-place reads
+	// can access the tail data.
 	if !isBlkDevice {
-		if err := os.Truncate(name, idx.Length()); err != nil {
-			return stats, err
+		if inPlaceSeedSize <= idx.Length() {
+			if err := os.Truncate(name, idx.Length()); err != nil {
+				return stats, err
+			}
 		}
 	}
 
@@ -209,6 +214,8 @@ retry:
 						stats.incChunksFromStore()
 					case *skipInPlace:
 						stats.addChunksInPlace(uint64(step.numChunks))
+					case *inPlaceCopy:
+						stats.addChunksInPlace(uint64(step.numChunks))
 					case *fileSeedSource, *selfSeedSegment:
 						stats.addChunksFromSeed(uint64(step.numChunks))
 					}
@@ -269,6 +276,14 @@ retry:
 	// Stop the dispatch goroutine
 	close(completed)
 	wg.Wait()
+
+	// If the in-place seed was larger than the target, truncate now that
+	// all in-place reads are complete.
+	if err == nil && inPlaceSeedSize > idx.Length() && !isBlkDevice {
+		if err := os.Truncate(name, idx.Length()); err != nil {
+			return stats, err
+		}
+	}
 
 	return stats, err
 }
