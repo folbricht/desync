@@ -746,15 +746,6 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	}
 }
 
-// overlaps returns true if byte ranges [aStart, aStart+aSize) and
-// [bStart, bStart+bSize) overlap.
-func overlaps(aStart, aSize, bStart, bSize uint64) bool {
-	if aSize == 0 || bSize == 0 {
-		return false
-	}
-	return aStart < bStart+bSize && bStart < aStart+aSize
-}
-
 // tarjanSCC finds all strongly connected components of a directed graph.
 // adj[v] lists the successors of node v. Returns SCCs in reverse
 // topological order (sinks first).
