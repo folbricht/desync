@@ -79,7 +79,7 @@ func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, 
 		if p <= startPos {
 			continue
 		}
-		start, n := s.maxMatchFrom(chunks[startPos:], p, limit)
+		start, n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
 		// Clamp to prevent source [p, p+n) overlapping destination [startPos, startPos+n)
 		if max := p - startPos; n > max {
 			n = max
@@ -99,30 +99,6 @@ func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, 
 	last := s.index.Chunks[maxStart+maxLen-1]
 	byteLength := last.Start + last.Size - byteOffset
 	return byteOffset, byteLength, maxStart, maxLen
-}
-
-func (s *selfSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) (int, int) {
-	if len(chunks) == 0 {
-		return 0, 0
-	}
-	var (
-		sp int
-		dp = p
-	)
-	for {
-		if limit != 0 && sp == limit {
-			break
-		}
-		if dp >= len(s.index.Chunks) || sp >= len(chunks) {
-			break
-		}
-		if chunks[sp].ID != s.index.Chunks[dp].ID {
-			break
-		}
-		dp++
-		sp++
-	}
-	return p, dp - p
 }
 
 func (s *selfSeed) GetSegment(srcOffset, dstOffset, size uint64) *selfSeedSegment {

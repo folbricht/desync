@@ -365,7 +365,6 @@ func (p *AssemblePlan) generate() error {
 			pl.source = &fileSeedSource{
 				segment: segment,
 				seed:    seed,
-				srcFile: segment.FileName(),
 				offset:  offset,
 				length:  length,
 				isBlank: p.targetIsBlank,
@@ -421,24 +420,24 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 			stepsPerPlacement[pl].addDependency(stepsPerPlacement[p.placements[i]])
 			stepsPerPlacement[p.placements[i]].addDependent(stepsPerPlacement[pl])
 		}
+	}
 
-		// Link in-place read dependencies: if a subsequent step (store
-		// copy, file seed) writes to a byte range that an in-place
-		// copy needs to read, the in-place copy must execute first.
-		for i, inPlaceRead := range p.inPlaceReads {
-			if inPlaceRead == nil {
-				continue
-			}
-			target := p.placements[i]
-			if target == inPlaceRead {
-				continue
-			}
-			ipStep := stepsPerPlacement[inPlaceRead]
-			step := stepsPerPlacement[target]
-			if step != ipStep {
-				step.addDependency(ipStep)
-				ipStep.addDependent(step)
-			}
+	// Link in-place read dependencies: if a subsequent step (store
+	// copy, file seed) writes to a byte range that an in-place
+	// copy needs to read, the in-place copy must execute first.
+	for i, inPlaceRead := range p.inPlaceReads {
+		if inPlaceRead == nil {
+			continue
+		}
+		target := p.placements[i]
+		if target == inPlaceRead {
+			continue
+		}
+		ipStep := stepsPerPlacement[inPlaceRead]
+		step := stepsPerPlacement[target]
+		if step != ipStep {
+			step.addDependency(ipStep)
+			ipStep.addDependent(step)
 		}
 	}
 
@@ -582,23 +581,32 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	sccs := tarjanSCC(n, succ)
 	slices.Reverse(sccs) // topological order
 
+	// Pre-compute minimum target index per SCC for deterministic sorting.
+	sccMin := make([]int, len(sccs))
+	for si, scc := range sccs {
+		m := moves[scc[0]].targetIdx
+		for _, i := range scc[1:] {
+			if moves[i].targetIdx < m {
+				m = moves[i].targetIdx
+			}
+		}
+		sccMin[si] = m
+	}
+
 	// Stable-sort independent SCCs by minimum target index so the
 	// output order is deterministic and follows the target layout.
-	slices.SortStableFunc(sccs, func(a, b []int) int {
-		minA := moves[a[0]].targetIdx
-		for _, i := range a[1:] {
-			if moves[i].targetIdx < minA {
-				minA = moves[i].targetIdx
-			}
-		}
-		minB := moves[b[0]].targetIdx
-		for _, i := range b[1:] {
-			if moves[i].targetIdx < minB {
-				minB = moves[i].targetIdx
-			}
-		}
-		return minA - minB
+	indices := make([]int, len(sccs))
+	for i := range indices {
+		indices[i] = i
+	}
+	slices.SortStableFunc(indices, func(a, b int) int {
+		return sccMin[a] - sccMin[b]
 	})
+	sorted := make([][]int, len(sccs))
+	for i, idx := range indices {
+		sorted[i] = sccs[idx]
+	}
+	sccs = sorted
 
 	for _, scc := range sccs {
 		if len(scc) == 1 {
@@ -625,8 +633,8 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 
 		// Remove bufIdx's outgoing edges and topologically sort the
 		// remaining cycle members.
-		localSucc := make([][]int, n)
-		localInDeg := make(map[int]int)
+		localSucc := make(map[int][]int, len(scc))
+		localInDeg := make(map[int]int, len(scc))
 		for _, i := range scc {
 			if i == bufIdx {
 				continue // exclude buffer-break from topo sort
