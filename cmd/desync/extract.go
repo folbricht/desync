@@ -174,6 +174,10 @@ func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.S
 
 func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
+	absDst, err := filepath.Abs(dstFile)
+	if err != nil {
+		return nil, err
+	}
 	for _, seedInfo := range seedsInfo {
 		var (
 			srcIndexFile string
@@ -200,7 +204,17 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desy
 			return nil, err
 		}
 
-		seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
+		absSrc, err := filepath.Abs(srcFile)
+		if err != nil {
+			return nil, err
+		}
+
+		var seed desync.Seed
+		if absSrc == absDst {
+			seed, err = desync.NewInPlaceSeed(srcFile, srcIndex)
+		} else {
+			seed, err = desync.NewFileSeed(dstFile, srcFile, srcIndex)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -212,6 +226,10 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desy
 func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	absIn, err := filepath.Abs(dstIdxFile)
+	if err != nil {
+		return nil, err
+	}
+	absDst, err := filepath.Abs(dstFile)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +262,16 @@ func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOption
 			if err != nil {
 				return err
 			}
-			seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
+			absSrc, err := filepath.Abs(srcFile)
+			if err != nil {
+				return err
+			}
+			var seed desync.Seed
+			if absSrc == absDst {
+				seed, err = desync.NewInPlaceSeed(srcFile, srcIndex)
+			} else {
+				seed, err = desync.NewFileSeed(dstFile, srcFile, srcIndex)
+			}
 			if err != nil {
 				return err
 			}

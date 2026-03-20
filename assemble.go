@@ -68,6 +68,14 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		isBlank = true
 	}
 
+	// TODO: Update to account for inplace-seeds. If the inplace-seed is
+	// longer than the file we probably want to truncate the file down
+	// after execution all steps. If the in-place-seed is smaller than the
+	// target file, we can truncate here. Note, it's possible that the
+	// in-place seed is recalculated below. If we truncated the target file
+	// down, that in-place seed's chunk list may need to be truncated as
+	// well.
+
 	// Truncate the output file to the full expected size. Not only does this
 	// confirm there's enough disk space, but it allows for an optimization
 	// when dealing with the Null Chunk

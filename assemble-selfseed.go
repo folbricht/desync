@@ -53,13 +53,13 @@ func (s *selfSeed) Close() {
 
 // LongestMatchFrom returns the longest sequence of matching chunks after a
 // given starting position.
-func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
+func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, uint64, int, int) {
 	if len(chunks) <= startPos || len(s.index.Chunks) == 0 {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
 	pos, ok := s.pos[chunks[startPos].ID]
 	if !ok {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
 	// From every position of chunks[startPos] in the source, find a slice of
 	// matching chunks. Then return the longest of those slices.
@@ -92,7 +92,13 @@ func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int
 			break
 		}
 	}
-	return maxStart, maxLen
+	if maxLen == 0 {
+		return 0, 0, 0, 0
+	}
+	byteOffset := s.index.Chunks[maxStart].Start
+	last := s.index.Chunks[maxStart+maxLen-1]
+	byteLength := last.Start + last.Size - byteOffset
+	return byteOffset, byteLength, maxStart, maxLen
 }
 
 func (s *selfSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) (int, int) {

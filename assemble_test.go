@@ -198,7 +198,7 @@ func TestSeed(t *testing.T) {
 					NewProgressBar(""),
 				)
 				require.NoError(t, err)
-				seed, err := NewIndexSeed(dst, seedFile, seedIndex)
+				seed, err := NewFileSeed(dst, seedFile, seedIndex)
 				require.NoError(t, err)
 				seeds = append(seeds, seed)
 			}
