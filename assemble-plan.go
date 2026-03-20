@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"sort"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -549,9 +550,29 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	// overlaps move j's destination (i must read before j writes).
 	n := len(moves)
 	succ := make([][]int, n)
+
+	// Build a sorted index of moves by destination start for O(n log n) overlap search.
+	sortedByDst := make([]int, n)
+	for i := range sortedByDst {
+		sortedByDst[i] = i
+	}
+	sort.Slice(sortedByDst, func(a, b int) bool {
+		return moves[sortedByDst[a]].dstStart < moves[sortedByDst[b]].dstStart
+	})
+
 	for i := range moves {
-		for j := range moves {
-			if i != j && overlaps(moves[i].srcStart, moves[i].srcSize, moves[j].dstStart, moves[j].dstSize) {
+		srcEnd := moves[i].srcStart + moves[i].srcSize
+		// First move whose dstStart+dstSize > srcStart
+		lo := sort.Search(len(sortedByDst), func(k int) bool {
+			m := moves[sortedByDst[k]]
+			return m.dstStart+m.dstSize > moves[i].srcStart
+		})
+		for k := lo; k < len(sortedByDst); k++ {
+			j := sortedByDst[k]
+			if moves[j].dstStart >= srcEnd {
+				break
+			}
+			if i != j {
 				succ[i] = append(succ[i], j)
 			}
 		}
@@ -707,14 +728,20 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	// Non-nil positions at this point are all in-place sources whose
 	// ordering is already handled by inPlaceDeps above.
 	for _, m := range moves {
+		srcEnd := m.srcStart + m.srcSize
 		pl := p.placements[m.targetIdx]
-		for j, c := range p.idx.Chunks {
+		// Binary search for first chunk where Start+Size > srcStart.
+		lo := sort.Search(len(p.idx.Chunks), func(j int) bool {
+			return p.idx.Chunks[j].Start+p.idx.Chunks[j].Size > m.srcStart
+		})
+		for j := lo; j < len(p.idx.Chunks); j++ {
+			if p.idx.Chunks[j].Start >= srcEnd {
+				break
+			}
 			if p.placements[j] != nil {
-				continue // in-place source ordering handled by inPlaceDeps
+				continue
 			}
-			if overlaps(m.srcStart, m.srcSize, c.Start, c.Size) {
-				p.inPlaceReads[j] = pl
-			}
+			p.inPlaceReads[j] = pl
 		}
 	}
 }
