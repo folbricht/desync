@@ -344,6 +344,246 @@ func join(slices ...[]byte) []byte {
 	return out
 }
 
+// TestAssembleIntegration exercises the full assembly pipeline end-to-end,
+// combining all source types in a single reconstruction: in-place skips,
+// in-place copies (including cycle detection with buffer-break), self-seed,
+// file seeds, and store fetches. It uses variable-size chunks so that
+// byte-offset calculations, overlap detection, and buffer sizing are tested
+// with non-uniform boundaries.
+//
+// Each scenario writes an "old" file (the in-place seed), then calls
+// AssembleFile to reconstruct a different target layout. The test verifies
+// both the output content (md5 checksum + file size) and the per-source
+// chunk statistics reported by ExtractStats.
+func TestAssembleIntegration(t *testing.T) {
+	// Create 10 chunks of different sizes filled with random data.
+	// Variable sizes ensure offset math in overlaps(), inPlaceCopy.Execute()
+	// (buffer sizing), and Tarjan cycle detection are exercised with
+	// non-trivial byte boundaries.
+	type rawChunk struct {
+		id   ChunkID
+		data []byte
+	}
+	chunkSizes := []int{1024, 768, 512, 896, 640, 1152, 384, 1280, 576, 704}
+	chunks := make([]rawChunk, len(chunkSizes))
+	for i, size := range chunkSizes {
+		b := make([]byte, size)
+		rand.Read(b)
+		id := Digest.Sum(b)
+		chunks[i] = rawChunk{id: id, data: b}
+	}
+
+	// Named constants for chunk indices to make scenario definitions readable.
+	const (
+		A = 0 // 1024 bytes
+		B = 1 // 768 bytes
+		C = 2 // 512 bytes
+		D = 3 // 896 bytes
+		E = 4 // 640 bytes
+		F = 5 // 1152 bytes
+		G = 6 // 384 bytes
+		H = 7 // 1280 bytes
+		X = 8 // 576 bytes
+		Y = 9 // 704 bytes
+	)
+
+	// buildIndex constructs an Index from chunk references, laying them out
+	// contiguously. It also sets ChunkSizeMax to the largest chunk in the
+	// index, which is required by newNullChunkSeed inside AssembleFile.
+	buildIndex := func(indices ...int) Index {
+		ic := make([]IndexChunk, len(indices))
+		var offset uint64
+		var maxSize uint64
+		for i, idx := range indices {
+			size := uint64(len(chunks[idx].data))
+			ic[i] = IndexChunk{ID: chunks[idx].id, Start: offset, Size: size}
+			offset += size
+			if size > maxSize {
+				maxSize = size
+			}
+		}
+		return Index{
+			Index:  FormatIndex{ChunkSizeMax: maxSize},
+			Chunks: ic,
+		}
+	}
+
+	// buildContent returns the raw bytes for a sequence of chunks,
+	// used both as file content and as the expected output for verification.
+	buildContent := func(indices ...int) []byte {
+		var out []byte
+		for _, idx := range indices {
+			out = append(out, chunks[idx].data...)
+		}
+		return out
+	}
+
+	// buildStore creates a TestStore containing only the specified chunks.
+	// Limiting the store to the minimum required set means that if the
+	// planner incorrectly routes a chunk to the store (instead of a seed
+	// or in-place source), the test fails with ChunkMissing rather than
+	// silently succeeding.
+	buildStore := func(indices ...int) *TestStore {
+		s := &TestStore{Chunks: make(map[ChunkID][]byte)}
+		for _, idx := range indices {
+			s.Chunks[chunks[idx].id] = chunks[idx].data
+		}
+		return s
+	}
+
+	type scenario struct {
+		name            string
+		inPlaceIndices  []int // Chunks written to target file before assembly (the "old" content)
+		targetIndices   []int // Desired output layout
+		fileSeedIndices []int // External file seed content (nil = no file seed)
+		storeIndices    []int // Chunks available in the store
+		wantInPlace     uint64
+		wantFromSeeds   uint64
+		wantFromStore   uint64
+	}
+
+	scenarios := []scenario{
+		// Scenario 1: exercises every source type in one assembly.
+		//
+		// In-place seed (old file): [A][B][C][D][E] = 3840 bytes
+		// Target:                   [B][A][C][F][G][G][D][H] = 6400 bytes
+		// File seed:                [F][X][X]
+		// Store:                    G, H
+		//
+		// After truncation to 6400 bytes the file is:
+		//   [A:1024][B:768][C:512][D:896][E:640][zeros:2560]
+		//
+		// Source analysis per target position:
+		//   Pos 0 (B): in-place copy — B exists at seed offset 1024, target offset 0.
+		//              Part of A↔B cycle (asymmetric sizes: 1024 vs 768).
+		//   Pos 1 (A): in-place copy — A exists at seed offset 0, target offset 768.
+		//              Part of A↔B cycle. Buffer-break picks B (smaller src).
+		//   Pos 2 (C): skip in-place — C is at offset 1792 in both seed and target.
+		//   Pos 3 (F): file seed — F is not in the in-place seed, found in file seed.
+		//              D's in-place read [2304:3200] overlaps F's write [2304:3456],
+		//              so D's read must complete first (enforced by inPlaceReads).
+		//   Pos 4 (G): self-seed — G appears at both pos 4 and 5. Self-seed copies
+		//              from pos 5 (requires source position > target position).
+		//   Pos 5 (G): store — self-seed can't source from itself (p <= startPos).
+		//   Pos 6 (D): in-place copy — D at seed offset 2304, target offset 4224.
+		//              Independent move, no cycle.
+		//   Pos 7 (H): store — H is not in any seed.
+		{
+			name:            "all source types combined",
+			inPlaceIndices:  []int{A, B, C, D, E},
+			targetIndices:   []int{B, A, C, F, G, G, D, H},
+			fileSeedIndices: []int{F, X, X},
+			storeIndices:    []int{G, H},
+			wantInPlace:     4, // B (cycle), A (cycle), C (skip), D (independent move)
+			wantFromSeeds:   2, // F (file seed), G at pos 4 (self-seed)
+			wantFromStore:   2, // G at pos 5, H
+		},
+
+		// Scenario 2: in-place seed is larger than the target.
+		//
+		// In-place seed: [A][B][C][D] = 3200 bytes
+		// Target:        [B][A] = 1792 bytes
+		//
+		// Since the seed (3200) is larger than the target (1792), truncation
+		// is deferred until after assembly so that in-place reads can access
+		// the full seed data. A↔B form a swap cycle. After assembly, the
+		// file is truncated to 1792 bytes.
+		{
+			name:           "in-place seed larger than target",
+			inPlaceIndices: []int{A, B, C, D},
+			targetIndices:  []int{B, A},
+			storeIndices:   nil,
+			wantInPlace:    2, // A↔B swap cycle
+			wantFromSeeds:  0,
+			wantFromStore:  0,
+		},
+
+		// Scenario 3: in-place seed is smaller than the target.
+		//
+		// In-place seed: [A][B] = 1792 bytes
+		// Target:        [A][B][C][D] = 3200 bytes
+		//
+		// The file is extended (truncated up) to 3200 bytes. A and B are
+		// already at the correct offsets and detected by the initial scan.
+		// C and D are beyond the seed data and must come from the store.
+		{
+			name:           "in-place seed smaller than target",
+			inPlaceIndices: []int{A, B},
+			targetIndices:  []int{A, B, C, D},
+			storeIndices:   []int{C, D},
+			wantInPlace:    2, // A, B detected in-place by initial scan
+			wantFromSeeds:  0,
+			wantFromStore:  2, // C, D fetched from store
+		},
+	}
+
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			targetPath := filepath.Join(dir, "target")
+
+			// Write the "old" file content — this is what the in-place seed
+			// describes. AssembleFile will detect it as non-empty, run the
+			// initial scan, and use the in-place seed to rearrange chunks.
+			inPlaceContent := buildContent(sc.inPlaceIndices...)
+			require.NoError(t, os.WriteFile(targetPath, inPlaceContent, 0644))
+
+			// Create the in-place seed. This wraps a FileSeed where source
+			// and destination are the same file.
+			inPlaceIdx := buildIndex(sc.inPlaceIndices...)
+			inPlaceSeed, err := NewInPlaceSeed(targetPath, inPlaceIdx)
+			require.NoError(t, err)
+			seeds := []Seed{inPlaceSeed}
+
+			// If the scenario includes a file seed, write it to a separate
+			// file and create a FileSeed that maps its chunks by ID.
+			if sc.fileSeedIndices != nil {
+				seedPath := filepath.Join(dir, "fileseed")
+				seedContent := buildContent(sc.fileSeedIndices...)
+				require.NoError(t, os.WriteFile(seedPath, seedContent, 0644))
+				seedIdx := buildIndex(sc.fileSeedIndices...)
+				fs, err := NewFileSeed(targetPath, seedPath, seedIdx)
+				require.NoError(t, err)
+				seeds = append(seeds, fs)
+			}
+
+			// Build the target index (desired output layout) and compute
+			// the expected content for verification.
+			targetIdx := buildIndex(sc.targetIndices...)
+			expected := buildContent(sc.targetIndices...)
+			expectedSum := md5.Sum(expected)
+
+			// Build the store with only the chunks that should be fetched
+			// from it. Any chunk incorrectly routed here will succeed;
+			// any chunk missing from here will fail with ChunkMissing.
+			store := buildStore(sc.storeIndices...)
+
+			// Run the full assembly pipeline with 4 concurrent workers.
+			stats, err := AssembleFile(
+				context.Background(), targetPath, targetIdx, store, seeds,
+				AssembleOptions{N: 4, InvalidSeedAction: InvalidSeedActionBailOut},
+			)
+			require.NoError(t, err)
+
+			// Verify the output file matches the expected content.
+			output, err := os.ReadFile(targetPath)
+			require.NoError(t, err)
+			assert.Equal(t, int64(len(expected)), int64(len(output)), "output file size mismatch")
+			outSum := md5.Sum(output)
+			assert.Equal(t, expectedSum, outSum, "output checksum mismatch")
+
+			// Verify that chunks were sourced from the expected places.
+			// This catches planner bugs where the output is correct but
+			// chunks were fetched from the wrong source (e.g. store
+			// instead of in-place copy).
+			assert.Equal(t, len(sc.targetIndices), stats.ChunksTotal, "ChunksTotal")
+			assert.Equal(t, sc.wantInPlace, stats.ChunksInPlace, "ChunksInPlace")
+			assert.Equal(t, sc.wantFromSeeds, stats.ChunksFromSeeds, "ChunksFromSeeds")
+			assert.Equal(t, sc.wantFromStore, stats.ChunksFromStore, "ChunksFromStore")
+		})
+	}
+}
+
 func readCaibxFile(t *testing.T, indexLocation string) (idx Index) {
 	is, err := NewLocalIndexStore(filepath.Dir(indexLocation))
 	require.NoError(t, err)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -50,8 +51,21 @@ type AssemblePlan struct {
 	// until these chunks are read from the in-place target".
 	inPlaceReads []*placement
 
+	// inPlaceDeps records ordering constraints between in-place copy
+	// placements produced by Tarjan's SCC linearization. Each entry
+	// says placement[from] must complete before placement[to] starts.
+	inPlaceDeps []inPlaceDep
+
+	// inPlaceOrder lists placements from generateInPlace in their
+	// desired step output order: skips first, then copies in
+	// linearized cycle order. Steps() iterates this before
+	// p.placements so in-place operations precede other sources.
+	inPlaceOrder []*placement
+
 	selfSeed *selfSeed
 }
+
+type inPlaceDep struct{ from, to int }
 
 type assembleSource interface {
 	fmt.Stringer
@@ -253,28 +267,7 @@ func (p *AssemblePlan) generate() error {
 			continue
 		}
 
-		_ = inPlaceSeed
-
-		// TODO: Implement finding chunk slices in the existing file.
-		// Create placements with sources that consist of multiple
-		// operations, such as "Copy to other spot in the file", "Read
-		// to memory", "Write memory to file". Each dependency cycle is
-		// represented as multiple operations. Each cycle can be
-		// executed independently of other (disconnected) cycles.
-		// Update inPlaceReads placements so subsequent steps that
-		// write to the same sections in the file from other seeds or
-		// store happen after the selfseed operations are done.
-		for i := 0; i < len(p.idx.Chunks); i++ {
-			byteOffset, byteLength, seedOffset, n := inPlaceSeed.LongestMatchFrom(p.idx.Chunks, i)
-			if n < 1 {
-				continue
-			}
-
-			_ = byteOffset
-			_ = byteLength
-			_ = seedOffset
-		}
-
+		p.generateInPlace(inPlaceSeed)
 		break // There can only be one in-place seed
 	}
 
@@ -428,13 +421,52 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 			stepsPerPlacement[p.placements[i]].addDependent(stepsPerPlacement[pl])
 		}
 
-		// TODO: setup dependencies on inPlaceReads to make sure
-		// in-seed operations on chunks are done before subsequent
-		// writes overwrite the data.
+		// Link in-place read dependencies: if a subsequent step (store
+		// copy, file seed) writes to a byte range that an in-place
+		// copy needs to read, the in-place copy must execute first.
+		for i, inPlaceRead := range p.inPlaceReads {
+			if inPlaceRead == nil {
+				continue
+			}
+			target := p.placements[i]
+			if target == inPlaceRead {
+				continue
+			}
+			ipStep := stepsPerPlacement[inPlaceRead]
+			step := stepsPerPlacement[target]
+			if step != ipStep {
+				step.addDependency(ipStep)
+				ipStep.addDependent(step)
+			}
+		}
 	}
 
-	// Make a slice of steps, preserving the order
+	// Link in-place inter-operation dependencies from Tarjan
+	// linearization. These ensure cycle members and cross-SCC
+	// operations execute in the correct order.
+	for _, dep := range p.inPlaceDeps {
+		from := stepsPerPlacement[p.placements[dep.from]]
+		to := stepsPerPlacement[p.placements[dep.to]]
+		if from != to {
+			to.addDependency(from)
+			from.addDependent(to)
+		}
+	}
+
+	// Make a slice of steps, preserving the order. Iterate
+	// inPlaceOrder first so in-place seed placements (skips + copies)
+	// precede other sources. Then iterate p.placements for everything
+	// else. Deduplication by pointer identity ensures each step
+	// appears exactly once.
 	steps := make([]*PlanStep, 0, len(stepsPerPlacement))
+	for _, pl := range p.inPlaceOrder {
+		s, ok := stepsPerPlacement[pl]
+		if !ok {
+			continue
+		}
+		steps = append(steps, s)
+		delete(stepsPerPlacement, pl)
+	}
 	for _, pl := range p.placements {
 		s, ok := stepsPerPlacement[pl]
 		if !ok {
@@ -445,4 +477,310 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 	}
 
 	return steps
+}
+
+// generateInPlace processes an in-place seed to find chunks that exist at
+// different offsets in the file and creates placements that rearrange them.
+// It handles dependency cycles using Tarjan's SCC algorithm.
+func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
+	// Stage 1: Source mapping — index every chunk in the seed by its
+	// ChunkID, recording all byte ranges where it appears.
+	type byteRange struct{ start, size uint64 }
+	srcOf := make(map[ChunkID][]byteRange)
+	for _, c := range seed.index.Chunks {
+		srcOf[c.ID] = append(srcOf[c.ID], byteRange{c.Start, c.Size})
+	}
+
+	// Stage 2: Operation list — walk target index and classify each chunk.
+	type moveOp struct {
+		targetIdx int    // index into p.idx.Chunks
+		srcStart  uint64 // byte offset in old file
+		srcSize   uint64
+		dstStart  uint64 // byte offset in target file
+		dstSize   uint64
+	}
+	var moves []moveOp
+
+	// Collect skip placements from the initial scan that correspond to
+	// seed chunks into inPlaceOrder so they precede other sources in
+	// the step list.
+	skipSeen := make(map[*placement]bool)
+	for i, c := range p.idx.Chunks {
+		pl := p.placements[i]
+		if pl == nil || skipSeen[pl] {
+			continue
+		}
+		if _, ok := pl.source.(*skipInPlace); !ok {
+			continue
+		}
+		if _, ok := srcOf[c.ID]; !ok {
+			continue
+		}
+		skipSeen[pl] = true
+		p.inPlaceOrder = append(p.inPlaceOrder, pl)
+	}
+
+	for i, c := range p.idx.Chunks {
+		if p.placements[i] != nil {
+			continue // Already placed (e.g. skipInPlace from initial scan)
+		}
+
+		sources := srcOf[c.ID]
+		if len(sources) == 0 {
+			continue // Not in seed; will be filled by store or file seed later
+		}
+
+		// Use the first available copy as the move source.
+		src := sources[0]
+		moves = append(moves, moveOp{
+			targetIdx: i,
+			srcStart:  src.start,
+			srcSize:   src.size,
+			dstStart:  c.Start,
+			dstSize:   c.Size,
+		})
+	}
+
+	if len(moves) == 0 {
+		return
+	}
+
+	// Stage 3: Dependency graph — edge from i to j when move i's source
+	// overlaps move j's destination (i must read before j writes).
+	n := len(moves)
+	succ := make([][]int, n)
+	for i := range moves {
+		for j := range moves {
+			if i != j && overlaps(moves[i].srcStart, moves[i].srcSize, moves[j].dstStart, moves[j].dstSize) {
+				succ[i] = append(succ[i], j)
+			}
+		}
+	}
+
+	// Stage 4: Tarjan's SCC + linearization
+	sccs := tarjanSCC(n, succ)
+	slices.Reverse(sccs) // topological order
+
+	// Stable-sort independent SCCs by minimum target index so the
+	// output order is deterministic and follows the target layout.
+	slices.SortStableFunc(sccs, func(a, b []int) int {
+		minA := moves[a[0]].targetIdx
+		for _, i := range a[1:] {
+			if moves[i].targetIdx < minA {
+				minA = moves[i].targetIdx
+			}
+		}
+		minB := moves[b[0]].targetIdx
+		for _, i := range b[1:] {
+			if moves[i].targetIdx < minB {
+				minB = moves[i].targetIdx
+			}
+		}
+		return minA - minB
+	})
+
+	for _, scc := range sccs {
+		if len(scc) == 1 {
+			// Non-cyclic: single placement.
+			m := moves[scc[0]]
+			pl := &placement{source: &inPlaceCopy{
+				srcOffset: m.srcStart,
+				srcSize:   m.srcSize,
+				dstOffset: m.dstStart,
+				dstSize:   m.dstSize,
+			}}
+			p.placements[m.targetIdx] = pl
+			p.inPlaceOrder = append(p.inPlaceOrder, pl)
+			continue
+		}
+
+		// Cycle: pick the member with smallest srcSize as buffer-break.
+		bufIdx := scc[0]
+		for _, i := range scc[1:] {
+			if moves[i].srcSize < moves[bufIdx].srcSize {
+				bufIdx = i
+			}
+		}
+
+		// Remove bufIdx's outgoing edges and topologically sort the
+		// remaining cycle members.
+		localSucc := make([][]int, n)
+		localInDeg := make(map[int]int)
+		for _, i := range scc {
+			if i == bufIdx {
+				continue // exclude buffer-break from topo sort
+			}
+			localInDeg[i] = 0
+		}
+		for _, i := range scc {
+			if i == bufIdx {
+				continue
+			}
+			for _, j := range succ[i] {
+				// Only consider edges within this SCC (excluding bufIdx).
+				if _, ok := localInDeg[j]; ok {
+					localSucc[i] = append(localSucc[i], j)
+					localInDeg[j]++
+				}
+			}
+		}
+
+		// Kahn's algorithm for topological sort within the cycle.
+		var queue []int
+		for _, i := range scc {
+			if i == bufIdx {
+				continue
+			}
+			if localInDeg[i] == 0 {
+				queue = append(queue, i)
+			}
+		}
+		var order []int
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			order = append(order, cur)
+			for _, j := range localSucc[cur] {
+				localInDeg[j]--
+				if localInDeg[j] == 0 {
+					queue = append(queue, j)
+				}
+			}
+		}
+
+		// Build the inPlaceCopy sources. The first element in order
+		// gets preBuffers pointing to the buffer-break target. The
+		// buffer-break target writes from writeBuf.
+		bufMove := moves[bufIdx]
+		bufCopy := &inPlaceCopy{
+			srcOffset: bufMove.srcStart,
+			srcSize:   bufMove.srcSize,
+			dstOffset: bufMove.dstStart,
+			dstSize:   bufMove.dstSize,
+		}
+
+		// Create placements in order, with the first one pre-buffering
+		// the cycle-break target.
+		var prevIdx int
+		for k, i := range order {
+			m := moves[i]
+			ipc := &inPlaceCopy{
+				srcOffset: m.srcStart,
+				srcSize:   m.srcSize,
+				dstOffset: m.dstStart,
+				dstSize:   m.dstSize,
+			}
+			if k == 0 {
+				ipc.preBuffers = []*inPlaceCopy{bufCopy}
+			}
+			pl := &placement{source: ipc}
+			p.placements[m.targetIdx] = pl
+			p.inPlaceOrder = append(p.inPlaceOrder, pl)
+
+			// Record ordering dependencies between consecutive cycle members.
+			if k > 0 {
+				p.inPlaceDeps = append(p.inPlaceDeps, inPlaceDep{
+					from: moves[prevIdx].targetIdx,
+					to:   m.targetIdx,
+				})
+			}
+			prevIdx = i
+		}
+
+		// The buffer-break target is placed last and depends on the
+		// last member in order.
+		bufPl := &placement{source: bufCopy}
+		p.placements[bufMove.targetIdx] = bufPl
+		p.inPlaceOrder = append(p.inPlaceOrder, bufPl)
+		if len(order) > 0 {
+			p.inPlaceDeps = append(p.inPlaceDeps, inPlaceDep{
+				from: moves[order[len(order)-1]].targetIdx,
+				to:   bufMove.targetIdx,
+			})
+		}
+	}
+
+	// Stage 5: Populate inPlaceReads — for each move, find all target
+	// chunks whose byte range overlaps the move's source range and
+	// record the dependency so subsequent writes wait for the read.
+	// Only record dependencies for positions not yet placed (nil).
+	// Non-nil positions at this point are all in-place sources whose
+	// ordering is already handled by inPlaceDeps above.
+	for _, m := range moves {
+		pl := p.placements[m.targetIdx]
+		for j, c := range p.idx.Chunks {
+			if p.placements[j] != nil {
+				continue // in-place source ordering handled by inPlaceDeps
+			}
+			if overlaps(m.srcStart, m.srcSize, c.Start, c.Size) {
+				p.inPlaceReads[j] = pl
+			}
+		}
+	}
+}
+
+// overlaps returns true if byte ranges [aStart, aStart+aSize) and
+// [bStart, bStart+bSize) overlap.
+func overlaps(aStart, aSize, bStart, bSize uint64) bool {
+	if aSize == 0 || bSize == 0 {
+		return false
+	}
+	return aStart < bStart+bSize && bStart < aStart+aSize
+}
+
+// tarjanSCC finds all strongly connected components of a directed graph.
+// adj[v] lists the successors of node v. Returns SCCs in reverse
+// topological order (sinks first).
+func tarjanSCC(n int, adj [][]int) [][]int {
+	index := make([]int, n)
+	lowlink := make([]int, n)
+	onStack := make([]bool, n)
+	for i := range index {
+		index[i] = -1
+	}
+
+	var (
+		stack []int
+		sccs  [][]int
+		idx   int
+	)
+
+	var visit func(v int)
+	visit = func(v int) {
+		index[v] = idx
+		lowlink[v] = idx
+		idx++
+		stack = append(stack, v)
+		onStack[v] = true
+
+		for _, w := range adj[v] {
+			if index[w] == -1 {
+				visit(w)
+				lowlink[v] = min(lowlink[v], lowlink[w])
+			} else if onStack[w] {
+				lowlink[v] = min(lowlink[v], index[w])
+			}
+		}
+
+		if lowlink[v] == index[v] {
+			var scc []int
+			for {
+				w := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				onStack[w] = false
+				scc = append(scc, w)
+				if w == v {
+					break
+				}
+			}
+			sccs = append(sccs, scc)
+		}
+	}
+
+	for v := range n {
+		if index[v] == -1 {
+			visit(v)
+		}
+	}
+	return sccs
 }

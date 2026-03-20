@@ -255,7 +255,7 @@ func (s *fileSeedSource) Execute(f *os.File) (copied uint64, cloned uint64, err 
 	return s.segment.WriteInto(f, s.offset, s.length, blocksize, s.isBlank)
 }
 
-func (s *fileSeedSource) Seed() Seed { return s.seed }
+func (s *fileSeedSource) Seed() Seed   { return s.seed }
 func (s *fileSeedSource) File() string { return s.srcFile }
 
 func (s *fileSeedSource) Validate(file *os.File) error {
