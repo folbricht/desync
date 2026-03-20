@@ -58,7 +58,7 @@ func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, 
 		limit = 100
 	}
 	for _, p := range pos {
-		seedPos, n := s.maxMatchFrom(chunks[startPos:], p, limit)
+		seedPos, n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
 		if n > maxLen {
 			bestSeedPos = seedPos
 			maxLen = n
@@ -106,33 +106,6 @@ func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seed
 	}
 
 	return nil
-}
-
-// maxMatchFrom compares chunks from position 0 with seed chunks starting at p.
-// Returns (p, count) where p is the seed start and count is the number of
-// matching chunks. A "limit" value of zero means that there is no limit.
-func (s *FileSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) (int, int) {
-	if len(chunks) == 0 {
-		return 0, 0
-	}
-	var (
-		sp int
-		dp = p
-	)
-	for {
-		if limit != 0 && sp == limit {
-			break
-		}
-		if dp >= len(s.index.Chunks) || sp >= len(chunks) {
-			break
-		}
-		if chunks[sp].ID != s.index.Chunks[dp].ID {
-			break
-		}
-		dp++
-		sp++
-	}
-	return p, dp - p
 }
 
 type fileSeedSegment struct {
@@ -244,7 +217,6 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 type fileSeedSource struct {
 	segment SeedSegment
 	seed    Seed
-	srcFile string
 	offset  uint64
 	length  uint64
 	isBlank bool
@@ -256,12 +228,12 @@ func (s *fileSeedSource) Execute(f *os.File) (copied uint64, cloned uint64, err 
 }
 
 func (s *fileSeedSource) Seed() Seed   { return s.seed }
-func (s *fileSeedSource) File() string { return s.srcFile }
+func (s *fileSeedSource) File() string { return s.segment.FileName() }
 
 func (s *fileSeedSource) Validate(file *os.File) error {
 	return s.segment.Validate(file)
 }
 
 func (s *fileSeedSource) String() string {
-	return fmt.Sprintf("FileSeed(%s): Copy to [%d:%d]", s.srcFile, s.offset, s.offset+s.length)
+	return fmt.Sprintf("FileSeed(%s): Copy to [%d:%d]", s.segment.FileName(), s.offset, s.offset+s.length)
 }

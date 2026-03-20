@@ -21,6 +21,33 @@ type Seed interface {
 	RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error
 }
 
+// maxMatchFrom compares chunks starting at position 0 with seedChunks starting
+// at position p. Returns (p, count) where count is the number of consecutive
+// matching chunks. A limit of zero means no limit.
+func maxMatchFrom(chunks, seedChunks []IndexChunk, p, limit int) (int, int) {
+	if len(chunks) == 0 {
+		return 0, 0
+	}
+	var (
+		sp int
+		dp = p
+	)
+	for {
+		if limit != 0 && sp == limit {
+			break
+		}
+		if dp >= len(seedChunks) || sp >= len(chunks) {
+			break
+		}
+		if chunks[sp].ID != seedChunks[dp].ID {
+			break
+		}
+		dp++
+		sp++
+	}
+	return p, dp - p
+}
+
 // SeedSegment represents a matching range between a Seed and a file being
 // assembled from an Index. It's used to copy or reflink data from seeds into
 // a target file during an extract operation.
