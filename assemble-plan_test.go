@@ -484,6 +484,32 @@ func TestFileSeedValidation(t *testing.T) {
 		require.Equal(t, []Seed{seed}, seedErr.Seeds)
 	})
 
+	t.Run("invalid in-place seed skip", func(t *testing.T) {
+		// Create a file with two chunks where the first is already at the
+		// correct position (will be an inPlaceSeedSkip). After plan
+		// creation, corrupt the file and verify Validate catches it.
+		f := filepath.Join(t.TempDir(), "target")
+		err := os.WriteFile(f, append(data1, data2...), 0644)
+		require.NoError(t, err)
+
+		inPlace, err := NewInPlaceSeed(f, seedIndex)
+		require.NoError(t, err)
+
+		plan, err := NewPlan(f, targetIndex, nil,
+			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
+		require.NoError(t, err)
+		defer plan.Close()
+
+		// Corrupt the target file after the plan was created
+		require.NoError(t, os.WriteFile(f, make([]byte, 200), 0644))
+
+		err = plan.Validate()
+		require.Error(t, err)
+
+		var seedErr SeedInvalid
+		require.ErrorAs(t, err, &seedErr)
+	})
+
 	t.Run("null seed skipped", func(t *testing.T) {
 		// Create a null chunk index — data is all zeros
 		nullData := make([]byte, 100)

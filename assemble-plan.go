@@ -207,69 +207,25 @@ func (p *AssemblePlan) Validate() error {
 }
 
 func (p *AssemblePlan) generate() error {
-	// Mark chunks that are already correct in the target file so they can
-	// be skipped during assembly.
-	if !p.targetIsBlank {
-		f, err := os.Open(p.target)
-		if err == nil {
-			var g errgroup.Group
-			g.SetLimit(p.concurrency)
-			for i, chunk := range p.idx.Chunks {
-				g.Go(func() error {
-					b := make([]byte, chunk.Size)
-					if _, err := f.ReadAt(b, int64(chunk.Start)); err != nil {
-						return nil
-					}
-					if Digest.Sum(b) == chunk.ID {
-						p.placements[i] = &placement{source: &skipInPlace{
-							start: chunk.Start,
-							end:   chunk.Start + chunk.Size,
-						}}
-					}
-					return nil
-				})
-			}
-			g.Wait()
-			f.Close()
-
-			// Merge consecutive in-place chunks into a single placement
-			// so that Steps() produces one step per run instead of one
-			// per chunk. This works because Steps() deduplicates by
-			// pointer identity.
-			var run *placement
-			for i, pl := range p.placements {
-				if pl == nil {
-					run = nil
-					continue
-				}
-				if _, ok := pl.source.(*skipInPlace); !ok {
-					run = nil
-					continue
-				}
-				if run == nil {
-					run = pl
-					continue
-				}
-				// Extend the existing run and share the pointer
-				run.source.(*skipInPlace).end = p.idx.Chunks[i].Start + p.idx.Chunks[i].Size
-				p.placements[i] = run
-			}
+	// Find the in-place seed, if any. There can only be one.
+	var inPlaceSeed *InPlaceSeed
+	for _, seed := range p.seeds {
+		if ips, ok := seed.(*InPlaceSeed); ok {
+			inPlaceSeed = ips
+			break
 		}
 	}
 
-	// If we have an in-place seed, use it to find matches in the file
-	// before anything gets overwritten by subsequent steps. We schedule
-	// steps that re-arrange chunks that already exist in other places in
-	// the target file before they get overwritten by subsequent steps like
-	// copying from other seeds or the store.
-	for _, seed := range p.seeds {
-		inPlaceSeed, ok := seed.(*InPlaceSeed)
-		if !ok {
-			continue
+	// When the target file already exists, mark chunks that are already
+	// correct so they can be skipped during assembly. If we have an
+	// in-place seed, its index tells us what's already in place without
+	// any file I/O. Otherwise fall back to reading and hashing each chunk.
+	if !p.targetIsBlank {
+		if inPlaceSeed != nil {
+			p.generateInPlace(inPlaceSeed)
+		} else {
+			p.generateSkips()
 		}
-
-		p.generateInPlace(inPlaceSeed)
-		break // There can only be one in-place seed
 	}
 
 	// Find all matches in file itself as they're written. As it's
@@ -479,9 +435,64 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 	return steps
 }
 
-// generateInPlace processes an in-place seed to find chunks that exist at
-// different offsets in the file and creates placements that rearrange them.
-// It handles dependency cycles using Tarjan's SCC algorithm.
+// generateSkips reads the target file and marks chunks that are already in
+// the correct position so they can be skipped during assembly. Consecutive
+// matching chunks are merged into a single placement for efficiency.
+func (p *AssemblePlan) generateSkips() {
+	f, err := os.Open(p.target)
+	if err != nil {
+		return
+	}
+
+	var g errgroup.Group
+	g.SetLimit(p.concurrency)
+	for i, chunk := range p.idx.Chunks {
+		g.Go(func() error {
+			b := make([]byte, chunk.Size)
+			if _, err := f.ReadAt(b, int64(chunk.Start)); err != nil {
+				return nil
+			}
+			if Digest.Sum(b) == chunk.ID {
+				p.placements[i] = &placement{source: &skipInPlace{
+					start: chunk.Start,
+					end:   chunk.Start + chunk.Size,
+				}}
+			}
+			return nil
+		})
+	}
+	g.Wait()
+	f.Close()
+
+	// Merge consecutive in-place chunks into a single placement
+	// so that Steps() produces one step per run instead of one
+	// per chunk. This works because Steps() deduplicates by
+	// pointer identity.
+	var run *placement
+	for i, pl := range p.placements {
+		if pl == nil {
+			run = nil
+			continue
+		}
+		if _, ok := pl.source.(*skipInPlace); !ok {
+			run = nil
+			continue
+		}
+		if run == nil {
+			run = pl
+			continue
+		}
+		// Extend the existing run and share the pointer
+		run.source.(*skipInPlace).end = p.idx.Chunks[i].Start + p.idx.Chunks[i].Size
+		p.placements[i] = run
+	}
+}
+
+// generateInPlace processes an in-place seed to classify each target chunk.
+// Chunks already at the correct position get skipInPlace placements (detected
+// by comparing the seed and target indexes, with no file I/O). Chunks that
+// exist at different offsets get inPlaceCopy placements, with dependency
+// cycles resolved using Tarjan's SCC algorithm.
 func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	// Stage 1: Source mapping — index every chunk in the seed by its
 	// ChunkID, recording all byte ranges where it appears.
@@ -501,28 +512,34 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	}
 	var moves []moveOp
 
-	// Collect skip placements from the initial scan that correspond to
-	// seed chunks into inPlaceOrder so they precede other sources in
-	// the step list.
-	skipSeen := make(map[*placement]bool)
+	// Create inPlaceSeedSkip placements for chunks that are already at
+	// the correct position. A chunk is "in place" when its ChunkID
+	// appears in the seed index at the same byte offset and size as in
+	// the target index. This is a pure index comparison — no file I/O.
+	// Unlike skipInPlace (created by generateSkips after hashing),
+	// these carry validation info so Validate() can verify the data.
 	for i, c := range p.idx.Chunks {
-		pl := p.placements[i]
-		if pl == nil || skipSeen[pl] {
+		sources, ok := srcOf[c.ID]
+		if !ok {
 			continue
 		}
-		if _, ok := pl.source.(*skipInPlace); !ok {
-			continue
+		for _, src := range sources {
+			if src.start == c.Start && src.size == c.Size {
+				pl := &placement{source: &inPlaceSeedSkip{
+					chunk: c,
+					seed:  seed,
+					file:  p.target,
+				}}
+				p.placements[i] = pl
+				p.inPlaceOrder = append(p.inPlaceOrder, pl)
+				break
+			}
 		}
-		if _, ok := srcOf[c.ID]; !ok {
-			continue
-		}
-		skipSeen[pl] = true
-		p.inPlaceOrder = append(p.inPlaceOrder, pl)
 	}
 
 	for i, c := range p.idx.Chunks {
 		if p.placements[i] != nil {
-			continue // Already placed (e.g. skipInPlace from initial scan)
+			continue // Already placed (skipInPlace or other)
 		}
 
 		sources := srcOf[c.ID]
