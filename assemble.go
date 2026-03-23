@@ -212,9 +212,7 @@ retry:
 					switch step.source.(type) {
 					case *copyFromStore:
 						stats.incChunksFromStore()
-					case *skipInPlace:
-						stats.addChunksInPlace(uint64(step.numChunks))
-					case *inPlaceCopy:
+					case *skipInPlace, *inPlaceSeedSkip, *inPlaceCopy:
 						stats.addChunksInPlace(uint64(step.numChunks))
 					case *fileSeedSource, *selfSeedSegment:
 						stats.addChunksFromSeed(uint64(step.numChunks))
