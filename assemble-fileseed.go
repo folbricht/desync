@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
+	"sort"
 )
 
 // FileSeed is used to copy or clone blocks from an existing index+blob during
@@ -15,18 +15,15 @@ type FileSeed struct {
 	index      Index
 	pos        map[ChunkID][]int
 	canReflink bool
-	isInvalid  bool
-	mu         sync.RWMutex
 }
 
 // NewIndexSeed initializes a new seed that uses an existing index and its blob
-func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error) {
+func NewFileSeed(dstFile string, srcFile string, index Index) (*FileSeed, error) {
 	s := FileSeed{
 		srcFile:    srcFile,
 		pos:        make(map[ChunkID][]int),
 		index:      index,
 		canReflink: CanClone(dstFile, srcFile),
-		isInvalid:  false,
 	}
 	for i, c := range s.index.Chunks {
 		s.pos[c.ID] = append(s.pos[c.ID], i)
@@ -34,29 +31,24 @@ func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error
 	return &s, nil
 }
 
-// LongestMatchWith returns the longest sequence of chunks anywhere in Source
-// that match `chunks` starting at chunks[0], limiting the maximum number of chunks
-// if reflinks are not supported. If there is no match, it returns a length of zero
-// and a nil SeedSegment.
-func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
-	s.mu.RLock()
-	isInvalid := s.isInvalid
-	s.mu.RUnlock()
-
-	// isInvalid can be concurrently read or written. Use a mutex to avoid a race
-	if len(chunks) == 0 || len(s.index.Chunks) == 0 || isInvalid {
-		return 0, nil
+// LongestMatchFrom returns the longest sequence of chunks anywhere in the seed
+// that match chunks starting at chunks[startPos]. It returns the byte offset
+// and byte length of the match in the seed, plus the chunk offset and chunk
+// length. Returns (0, 0, 0, 0) if there is no match.
+func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, uint64, int, int) {
+	if startPos >= len(chunks) || len(s.index.Chunks) == 0 {
+		return 0, 0, 0, 0
 	}
-	pos, ok := s.pos[chunks[0].ID]
+	pos, ok := s.pos[chunks[startPos].ID]
 	if !ok {
-		return 0, nil
+		return 0, 0, 0, 0
 	}
-	// From every position of chunks[0] in the source, find a slice of
-	// matching chunks. Then return the longest of those slices.
+	// From every position of chunks[startPos] in the source, find a run of
+	// matching chunks. Then return the longest of those runs.
 	var (
-		match []IndexChunk
-		max   int
-		limit int
+		bestSeedPos int
+		maxLen      int
+		limit       int
 	)
 	if !s.canReflink {
 		// Limit the maximum number of chunks, in a single sequence, to avoid
@@ -66,16 +58,37 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 		limit = 100
 	}
 	for _, p := range pos {
-		m := s.maxMatchFrom(chunks, p, limit)
-		if len(m) > max {
-			match = m
-			max = len(m)
+		seedPos, n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
+		if n > maxLen {
+			bestSeedPos = seedPos
+			maxLen = n
 		}
-		if limit != 0 && limit == max {
+		if limit != 0 && limit == maxLen {
 			break
 		}
 	}
-	return max, newFileSeedSegment(s.srcFile, match, s.canReflink)
+	if maxLen == 0 {
+		return 0, 0, 0, 0
+	}
+	byteOffset := s.index.Chunks[bestSeedPos].Start
+	last := s.index.Chunks[bestSeedPos+maxLen-1]
+	byteLength := last.Start + last.Size - byteOffset
+	return byteOffset, byteLength, bestSeedPos, maxLen
+}
+
+// GetSegment constructs a SeedSegment for a matched range identified by its
+// byte offset and size in the seed.
+func (s *FileSeed) GetSegment(offset, size uint64) SeedSegment {
+	i := sort.Search(len(s.index.Chunks), func(j int) bool {
+		return s.index.Chunks[j].Start >= offset
+	})
+	var covered uint64
+	end := i
+	for end < len(s.index.Chunks) && covered < size {
+		covered += s.index.Chunks[end].Size
+		end++
+	}
+	return newFileSeedSegment(s.srcFile, s.index.Chunks[i:end], s.canReflink)
 }
 
 func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
@@ -87,51 +100,12 @@ func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seed
 	}
 
 	s.index = index
-	s.SetInvalid(false)
 	s.pos = make(map[ChunkID][]int, len(s.index.Chunks))
 	for i, c := range s.index.Chunks {
 		s.pos[c.ID] = append(s.pos[c.ID], i)
 	}
 
 	return nil
-}
-
-func (s *FileSeed) SetInvalid(value bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.isInvalid = value
-}
-
-func (s *FileSeed) IsInvalid() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.isInvalid
-}
-
-// Returns a slice of chunks from the seed. Compares chunks from position 0
-// with seed chunks starting at p. A "limit" value of zero means that there is no limit.
-func (s *FileSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) []IndexChunk {
-	if len(chunks) == 0 {
-		return nil
-	}
-	var (
-		sp int
-		dp = p
-	)
-	for {
-		if limit != 0 && sp == limit {
-			break
-		}
-		if dp >= len(s.index.Chunks) || sp >= len(chunks) {
-			break
-		}
-		if chunks[sp].ID != s.index.Chunks[dp].ID {
-			break
-		}
-		dp++
-		sp++
-	}
-	return s.index.Chunks[p:dp]
 }
 
 type fileSeedSegment struct {
@@ -238,4 +212,28 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 	copied += c2
 	// close the aligned blocks
 	return copied, alignLength, CloneRange(dst, src, srcAlignStart, alignLength, dstAlignStart)
+}
+
+type fileSeedSource struct {
+	segment SeedSegment
+	seed    Seed
+	offset  uint64
+	length  uint64
+	isBlank bool
+}
+
+func (s *fileSeedSource) Execute(f *os.File) (copied uint64, cloned uint64, err error) {
+	blocksize := blocksizeOfFile(f.Name())
+	return s.segment.WriteInto(f, s.offset, s.length, blocksize, s.isBlank)
+}
+
+func (s *fileSeedSource) Seed() Seed   { return s.seed }
+func (s *fileSeedSource) File() string { return s.segment.FileName() }
+
+func (s *fileSeedSource) Validate(file *os.File) error {
+	return s.segment.Validate(file)
+}
+
+func (s *fileSeedSource) String() string {
+	return fmt.Sprintf("FileSeed(%s): Copy to [%d:%d]", s.segment.FileName(), s.offset, s.offset+s.length)
 }
