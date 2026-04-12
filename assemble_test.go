@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/sha256"
 	"io"
 	"os"
 	"path/filepath"
@@ -399,6 +400,81 @@ func join(slices ...[]byte) []byte {
 		out = append(out, b...)
 	}
 	return out
+}
+
+// TestAssembleOver100NullChunks verifies that assembly produces a correct file
+// when the index contains >100 consecutive null chunks. This reproduces a bug
+// where nullChunkSeed.LongestMatchWith capped matches at 100 on non-reflink
+// filesystems, causing overflow null chunks to fall through to writeChunk
+// where the isBlank optimization silently skipped adjacent non-null data.
+func TestAssembleOver100NullChunks(t *testing.T) {
+	// Build an input file: random data | >100 max-size null chunks | random data.
+	// The null region must exceed 100 * ChunkSizeMaxDefault to trigger the bug.
+	randBlock := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(randBlock)
+
+	nullBlock := make([]byte, 110*ChunkSizeMaxDefault) // 110 consecutive null chunks
+
+	var input []byte
+	input = append(input, randBlock...)
+	input = append(input, nullBlock...)
+	input = append(input, randBlock...)
+
+	// Write the input to a temp file
+	inFile, err := os.CreateTemp("", "nullchunk-input-*")
+	require.NoError(t, err)
+	defer os.Remove(inFile.Name())
+	_, err = inFile.Write(input)
+	require.NoError(t, err)
+	inFile.Close()
+
+	// Record the SHA-256 of the original
+	expectedSum := sha256.Sum256(input)
+
+	// Chunk the file to produce an index
+	index, _, err := IndexFromFile(
+		context.Background(),
+		inFile.Name(),
+		10,
+		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		NewProgressBar(""),
+	)
+	require.NoError(t, err)
+
+	// Verify the index actually contains >100 consecutive null chunks
+	nullID := NewNullChunk(ChunkSizeMaxDefault).ID
+	maxRun := 0
+	run := 0
+	for _, c := range index.Chunks {
+		if c.ID == nullID {
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	require.Greater(t, maxRun, 100, "test input must produce >100 consecutive null chunks")
+
+	// Chop the file into a local store
+	store := t.TempDir()
+	s, err := NewLocalStore(store, StoreOptions{})
+	require.NoError(t, err)
+	require.NoError(t, ChopFile(context.Background(), inFile.Name(), index.Chunks, s, 10, NewProgressBar("")))
+
+	// Assemble into a new (non-existing) file — isBlank=true path
+	outFile := filepath.Join(t.TempDir(), "output")
+	_, err = AssembleFile(context.Background(), outFile, index, s, nil,
+		AssembleOptions{10, InvalidSeedActionBailOut},
+	)
+	require.NoError(t, err)
+
+	// Compare SHA-256
+	assembled, err := os.ReadFile(outFile)
+	require.NoError(t, err)
+	actualSum := sha256.Sum256(assembled)
+	require.Equal(t, expectedSum, actualSum, "SHA-256 of assembled file must match original")
 }
 
 func readCaibxFile(t *testing.T, indexLocation string) (idx Index) {

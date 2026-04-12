@@ -46,17 +46,12 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	if len(chunks) == 0 {
 		return 0, nil
 	}
-	var (
-		n     int
-		limit int
-	)
-	if !s.canReflink {
-		limit = 100
-	}
+	// No limit needed: when isBlank=true, WriteInto skips without copying.
+	// When isBlank=false, we must still write zeros to overwrite stale data.
+	// The previous limit of 100 caused chunks beyond the limit to fall
+	// through to other code paths, leading to incorrect assembly.
+	var n int
 	for _, c := range chunks {
-		if limit != 0 && limit == n {
-			break
-		}
 		if c.ID != s.id {
 			break
 		}
@@ -108,13 +103,12 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 		return 0, 0, fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
 	}
 
-	// When cloning isn't available we'd normally have to copy the 0 bytes into
-	// the target range. But if that's already blank (because it's a new/truncated
-	// file) there's no need to copy 0 bytes.
+	// Always write explicit zeros rather than relying on truncation.
+	// On some filesystems (e.g., APFS), Truncate creates sparse holes that
+	// can interact poorly with concurrent assembly workers, leading to
+	// non-deterministic corruption. Writing zeros explicitly is safe on all
+	// platforms and avoids the race.
 	if !s.canReflink {
-		if isBlank {
-			return 0, 0, nil
-		}
 		return s.copy(dst, offset, s.Size())
 	}
 	return s.clone(dst, offset, length, blocksize)
