@@ -47,17 +47,12 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	if len(chunks) == 0 {
 		return 0, nil
 	}
-	var (
-		n     int
-		limit int
-	)
-	if !s.canReflink {
-		limit = 100
-	}
+	// No limit needed: when isBlank=true, WriteInto skips without copying.
+	// When isBlank=false, we must still write zeros to overwrite stale data.
+	// The previous limit of 100 caused chunks beyond the limit to fall
+	// through to other code paths, leading to incorrect assembly.
+	var n int
 	for _, c := range chunks {
-		if limit != 0 && limit == n {
-			break
-		}
 		if c.ID != s.id {
 			break
 		}
