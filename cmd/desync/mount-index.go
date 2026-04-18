@@ -50,7 +50,7 @@ and caches in a JSON file. The config can then be reloaded by sending a SIGHUP w
 needing to restart the server. This can be done under load as well.
 `,
 		Example: `  desync mount-index -s http://192.168.1.1/ file.caibx /mnt/blob
-  desync mount-index -s /path/to/store -x /var/tmp/blob.cor blob.caibx /mnt/blob
+  desync mount-index -s /path/to/store --cor-file /var/tmp/blob.cor blob.caibx /mnt/blob
 `,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -41,7 +41,7 @@ file with --ignore-chunks <file>.`,
 	flags := cmd.Flags()
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "target store")
-	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "index(s) to ignore chunks from")
+	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "indexes to ignore chunks from")
 	flags.StringSliceVarP(&opt.ignoreChunks, "ignore-chunks", "", nil, "ignore chunks from text file")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd

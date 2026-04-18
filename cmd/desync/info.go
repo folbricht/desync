@@ -35,7 +35,7 @@ information will be shown, like the size of compressed chunks not in the seed no
 If one or more seed indexes are provided, the number of chunks available
 in the seeds are also shown. Use '-' to read the index from STDIN.`,
 		Example: `  desync info -s /path/to/local --format=json file.caibx
-desync info --seed http://192.168.1.1/rootfs2.caibx --chunks-info chunks.json --format=json rootfs.caibx`,
+  desync info --seed http://192.168.1.1/rootfs2.caibx --chunks-info chunks.json --format=json rootfs.caibx`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInfo(ctx, opt, args)

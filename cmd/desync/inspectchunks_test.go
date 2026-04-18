@@ -38,7 +38,7 @@ func TestInspectChunksCommand(t *testing.T) {
 			err = json.Unmarshal(be, &exp)
 			require.NoError(t, err)
 
-			cmd := newinspectChunksCommand(context.Background())
+			cmd := newInspectChunksCommand(context.Background())
 			cmd.SetArgs(test.args)
 			b := new(bytes.Buffer)
 

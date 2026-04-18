@@ -35,11 +35,11 @@ func newExtractCommand(ctx context.Context) *cobra.Command {
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
-Multiple optional seed indexes can be given with -seed. The matching blob should
+Multiple optional seed indexes can be given with --seed. The matching blob should
 have the same name as the index file without the .caibx extension. Instead, if the
 matching blob data is in another location, or with a different name, you can explicitly
 set the path by writing the index file path, followed by a colon and the data path.
-If several seed files and indexes are available, the -seed-dir option can be used
+If several seed files and indexes are available, the --seed-dir option can be used
 to automatically select all .caibx files in a directory as seeds. Use '-' to read
 the index from STDIN. If a seed is invalid, by default the extract operation will be
 aborted. With --skip-invalid-seeds, the invalid seeds will be discarded and the
