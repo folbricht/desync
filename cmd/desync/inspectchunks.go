@@ -14,7 +14,7 @@ type inspectChunksOptions struct {
 	store string
 }
 
-func newinspectChunksCommand(ctx context.Context) *cobra.Command {
+func newInspectChunksCommand(ctx context.Context) *cobra.Command {
 	var opt inspectChunksOptions
 
 	cmd := &cobra.Command{
@@ -24,7 +24,7 @@ func newinspectChunksCommand(ctx context.Context) *cobra.Command {
 By using the '--store' option to provide a local store, the generated JSON will include, if
 available, the chunks compressed size info from that particular store.`,
 		Example: `  desync inspect-chunks file.caibx
-desync inspect-chunks --store /mnt/store file.caibx inspect_result.json`,
+  desync inspect-chunks --store /mnt/store file.caibx inspect_result.json`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInspectChunks(ctx, opt, args)

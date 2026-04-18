@@ -25,7 +25,7 @@ func newUntarCommand(ctx context.Context) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "untar <catar|index> <target>",
-		Short: "Extract directory tree from a catar archive or index",
+		Short: "Extract a directory tree from a catar archive or index",
 		Long: `Extracts a directory tree from a catar file or an index. Use '-' to read the
 index from STDIN.
 
