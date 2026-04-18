@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 
@@ -66,7 +67,8 @@ func (h HTTPHandler) get(id ChunkID, w http.ResponseWriter) {
 func (h HTTPHandler) head(id ChunkID, w http.ResponseWriter) {
 	hasChunk, err := h.s.HasChunk(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Fprintf(os.Stderr, "failed to check chunk %s: %s\n", id, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if hasChunk {
@@ -85,16 +87,16 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 	// The upstream store needs to support writing as well
 	s, ok := h.s.(WriteStore)
 	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "upstream chunk store '%s' does not support writing\n", h.s)
+		fmt.Fprintf(os.Stderr, "upstream chunk store '%s' does not support writing\n", h.s)
+		http.Error(w, "upstream chunk store does not support writing", http.StatusBadRequest)
 		return
 	}
 
 	// Read the raw chunk data into memory
 	b := new(bytes.Buffer)
 	if _, err := io.Copy(b, r.Body); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, err)
+		fmt.Fprintf(os.Stderr, "failed to read chunk %s from client: %s\n", id, err)
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
 
@@ -107,7 +109,8 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 
 	// Store it upstream
 	if err := s.StoreChunk(chunk); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Fprintf(os.Stderr, "failed to store chunk %s: %s\n", id, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
