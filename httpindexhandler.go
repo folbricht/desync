@@ -2,6 +2,7 @@ package desync
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,6 +21,10 @@ func NewHTTPIndexHandler(s IndexStore, writable bool, auth string) http.Handler 
 }
 
 func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.authorization != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte(h.authorization)) != 1 {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	indexName := path.Base(r.URL.Path)
 
 	switch r.Method {
