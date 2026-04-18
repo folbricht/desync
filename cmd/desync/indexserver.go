@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/folbricht/desync"
 	"github.com/spf13/cobra"
@@ -138,9 +139,11 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 	for _, addr := range addresses {
 		go func(a string) {
 			server := &http.Server{
-				Addr:      a,
-				TLSConfig: tlsConfig,
-				ErrorLog:  log.New(stderr, "", log.LstdFlags),
+				Addr:              a,
+				TLSConfig:         tlsConfig,
+				ErrorLog:          log.New(stderr, "", log.LstdFlags),
+				ReadHeaderTimeout: 30 * time.Second,
+				IdleTimeout:       120 * time.Second,
 			}
 			var err error
 			if opt.key == "" {
