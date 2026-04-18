@@ -87,6 +87,14 @@ func (o cmdServerOptions) validate() error {
 	if (o.key == "") != (o.cert == "") {
 		return errors.New("--key and --cert options need to be provided together")
 	}
+	if o.key == "" {
+		if o.mutualTLS {
+			return errors.New("--mutual-tls requires --cert and --key (TLS must be enabled)")
+		}
+		if o.clientCA != "" {
+			return errors.New("--client-ca requires --cert and --key (TLS must be enabled)")
+		}
+	}
 	return nil
 }
 
