@@ -2,6 +2,7 @@ package desync
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,7 +32,7 @@ func NewHTTPHandler(s Store, writable, skipVerifyWrite bool, converters Converte
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.authorization != "" && r.Header.Get("Authorization") != h.authorization {
+	if h.authorization != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte(h.authorization)) != 1 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
