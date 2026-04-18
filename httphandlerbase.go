@@ -24,20 +24,17 @@ func (h HTTPHandlerBase) get(id string, b []byte, err error, w http.ResponseWrit
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "%s %s not found", h.handlerType, id)
 	default:
-		w.WriteHeader(http.StatusInternalServerError)
-		msg := fmt.Sprintf("failed to retrieve %s %s:%s", h.handlerType, id, err)
-		fmt.Fprintln(w, msg)
-		fmt.Fprintln(os.Stderr, msg)
+		fmt.Fprintf(os.Stderr, "failed to retrieve %s %s: %s\n", h.handlerType, id, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }
 
 func (h HTTPHandlerBase) validateWritable(storeName string, w http.ResponseWriter, r *http.Request) error {
 	// Make sure writing was enabled for this server
 	if !h.writable {
-		w.WriteHeader(http.StatusBadRequest)
-		msg := fmt.Sprintf("writing to upstream %s store '%s' is not enabled", h.handlerType, storeName)
-		fmt.Fprintln(w, msg)
-		return errors.New(msg)
+		msg := fmt.Sprintf("writing to upstream %s store is not enabled", h.handlerType)
+		http.Error(w, msg, http.StatusBadRequest)
+		return errors.Errorf("writing to upstream %s store '%s' is not enabled", h.handlerType, storeName)
 	}
 	return nil
 }

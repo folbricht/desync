@@ -44,17 +44,18 @@ func (h HTTPIndexHandler) get(indexName string, w http.ResponseWriter) {
 	idx, err := h.s.GetIndex(indexName)
 	if err != nil {
 		if os.IsNotExist(err) {
-			w.WriteHeader(http.StatusNotFound)
-		} else {
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "index not found", http.StatusNotFound)
+			return
 		}
-		fmt.Fprintln(w, err)
+		fmt.Fprintf(os.Stderr, "failed to retrieve index %s: %s\n", indexName, err)
+		http.Error(w, "failed to retrieve index", http.StatusBadRequest)
 		return
 	}
 	b := new(bytes.Buffer)
 	_, err = idx.WriteTo(b)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Fprintf(os.Stderr, "failed to serialize index %s: %s\n", indexName, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	h.HTTPHandlerBase.get(indexName, b.Bytes(), err, w)
@@ -78,8 +79,8 @@ func (h HTTPIndexHandler) put(indexName string, w http.ResponseWriter, r *http.R
 	// The upstream store needs to support writing as well
 	s, ok := h.s.(IndexWriteStore)
 	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "upstream index store '%s' does not support writing\n", h.s)
+		fmt.Fprintf(os.Stderr, "upstream index store '%s' does not support writing\n", h.s)
+		http.Error(w, "upstream index store does not support writing", http.StatusBadRequest)
 		return
 	}
 
@@ -92,8 +93,8 @@ func (h HTTPIndexHandler) put(indexName string, w http.ResponseWriter, r *http.R
 
 	// Store it upstream
 	if err := s.StoreIndex(indexName, idx); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, err)
+		fmt.Fprintf(os.Stderr, "failed to store index %s: %s\n", indexName, err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
