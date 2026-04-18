@@ -99,6 +99,33 @@ func TestErrorRetryOptions(t *testing.T) {
 	}
 }
 
+func TestServerOptionsValidate(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		opt     cmdServerOptions
+		wantErr string
+	}{
+		{"no TLS, no mTLS", cmdServerOptions{}, ""},
+		{"TLS only", cmdServerOptions{cert: "c", key: "k"}, ""},
+		{"TLS with mutualTLS", cmdServerOptions{cert: "c", key: "k", mutualTLS: true}, ""},
+		{"TLS with clientCA", cmdServerOptions{cert: "c", key: "k", clientCA: "ca"}, ""},
+		{"key without cert", cmdServerOptions{key: "k"}, "--key and --cert"},
+		{"cert without key", cmdServerOptions{cert: "c"}, "--key and --cert"},
+		{"mutualTLS without TLS", cmdServerOptions{mutualTLS: true}, "--mutual-tls requires"},
+		{"clientCA without TLS", cmdServerOptions{clientCA: "ca"}, "--client-ca requires"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.opt.validate()
+			if test.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.wantErr)
+		})
+	}
+}
+
 func TestStringOptions(t *testing.T) {
 	for _, test := range []struct {
 		name                string
