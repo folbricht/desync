@@ -108,11 +108,12 @@ func TestServerOptionsValidate(t *testing.T) {
 		{"no TLS, no mTLS", cmdServerOptions{}, ""},
 		{"TLS only", cmdServerOptions{cert: "c", key: "k"}, ""},
 		{"TLS with mutualTLS", cmdServerOptions{cert: "c", key: "k", mutualTLS: true}, ""},
-		{"TLS with clientCA", cmdServerOptions{cert: "c", key: "k", clientCA: "ca"}, ""},
+		{"TLS with mutualTLS and clientCA", cmdServerOptions{cert: "c", key: "k", mutualTLS: true, clientCA: "ca"}, ""},
 		{"key without cert", cmdServerOptions{key: "k"}, "--key and --cert"},
 		{"cert without key", cmdServerOptions{cert: "c"}, "--key and --cert"},
 		{"mutualTLS without TLS", cmdServerOptions{mutualTLS: true}, "--mutual-tls requires"},
-		{"clientCA without TLS", cmdServerOptions{clientCA: "ca"}, "--client-ca requires"},
+		{"clientCA without TLS", cmdServerOptions{clientCA: "ca"}, "--client-ca requires --cert"},
+		{"clientCA without mutualTLS", cmdServerOptions{cert: "c", key: "k", clientCA: "ca"}, "--client-ca requires --mutual-tls"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.opt.validate()
