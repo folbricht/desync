@@ -2,9 +2,13 @@ package desync
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"os"
+	"slices"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // InvalidSeedAction represents the action that we will take if a seed
@@ -25,61 +29,6 @@ type AssembleOptions struct {
 	InvalidSeedAction InvalidSeedAction
 }
 
-// writeChunk tries to write a chunk by looking at the self seed, if it is already existing in the
-// destination file or by taking it from the store. The in-place check runs first to avoid unnecessary
-// writes. If the target already has the correct data, no write is performed.
-func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Store, stats *ExtractStats, isBlank bool) error {
-	// If we operate on an existing file there's a good chance we already
-	// have the data written for this chunk. Let's read it from disk and
-	// compare to what is expected. This is checked first to avoid rewriting
-	// data that is already correct, even for chunks available in the selfSeed.
-	if !isBlank {
-		b := make([]byte, c.Size)
-		if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
-			return err
-		}
-		sum := Digest.Sum(b)
-		if sum == c.ID {
-			// Record we kept this chunk in the file (when using in-place extract)
-			stats.incChunksInPlace()
-			return nil
-		}
-	}
-
-	// If we already took this chunk from the store we can reuse it by looking
-	// into the selfSeed.
-	if segment := ss.getChunk(c.ID); segment != nil {
-		copied, cloned, err := segment.WriteInto(f, c.Start, c.Size, blocksize, isBlank)
-		if err != nil {
-			return err
-		}
-		stats.addBytesCopied(copied)
-		stats.addBytesCloned(cloned)
-		return nil
-	}
-
-	// Record this chunk having been pulled from the store
-	stats.incChunksFromStore()
-	// Pull the (compressed) chunk from the store
-	chunk, err := s.GetChunk(c.ID)
-	if err != nil {
-		return err
-	}
-	b, err := chunk.Data()
-	if err != nil {
-		return err
-	}
-	// Might as well verify the chunk size while we're at it
-	if c.Size != uint64(len(b)) {
-		return fmt.Errorf("unexpected size for chunk %s", c.ID.String())
-	}
-	// Write the decompressed chunk into the file at the right position
-	if _, err = f.WriteAt(b, int64(c.Start)); err != nil {
-		return err
-	}
-	return nil
-}
-
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
 // goroutines, creating one filehandle for the file "name" per goroutine
 // and writes to the file simultaneously. If progress is provided, it'll be
@@ -89,18 +38,11 @@ func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Stor
 // differ from the expected content. This can be used to complete partly
 // written files.
 func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []Seed, options AssembleOptions) (*ExtractStats, error) {
-	type Job struct {
-		segment IndexSegment
-		source  SeedSegment
-	}
 	var (
-		attempt     = 1
-		in          = make(chan Job)
 		isBlank     bool
 		isBlkDevice bool
-		pb          ProgressBar
+		attempt     = 1
 	)
-	g, ctx := errgroup.WithContext(ctx)
 
 	// Initialize stats to be gathered during extraction
 	stats := &ExtractStats{
@@ -126,12 +68,25 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		isBlank = true
 	}
 
+	// Find the in-place seed size (if any) to decide truncation strategy.
+	var inPlaceSeedSize int64
+	for _, seed := range seeds {
+		if ips, ok := seed.(*InPlaceSeed); ok {
+			inPlaceSeedSize = ips.index.Length()
+			break
+		}
+	}
+
 	// Truncate the output file to the full expected size. Not only does this
 	// confirm there's enough disk space, but it allows for an optimization
-	// when dealing with the Null Chunk
+	// when dealing with the Null Chunk. If the in-place seed is larger than
+	// the target, defer truncation until after assembly so in-place reads
+	// can access the tail data.
 	if !isBlkDevice {
-		if err := os.Truncate(name, idx.Length()); err != nil {
-			return stats, err
+		if inPlaceSeedSize <= idx.Length() {
+			if err := os.Truncate(name, idx.Length()); err != nil {
+				return stats, err
+			}
 		}
 	}
 
@@ -147,138 +102,186 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	defer ns.close()
 	seeds = append([]Seed{ns}, seeds...)
 
-	// Start a self-seed which will become usable once chunks are written contiguously
-	// beginning at position 0. There is no need to add this to the seeds list because
-	// when we create a plan it will be empty.
-	ss, err := newSelfSeed(name, idx)
-	if err != nil {
-		return stats, err
-	}
-
 	// Record the total number of seeds and blocksize in the stats
 	stats.Seeds = len(seeds)
 	stats.Blocksize = blocksize
 
-	// Start the workers, each having its own filehandle to write concurrently
-	for i := 0; i < options.N; i++ {
-		f, err := os.OpenFile(name, os.O_RDWR, 0666)
-		if err != nil {
-			return stats, fmt.Errorf("unable to open file %s, %s", name, err)
-		}
-		defer f.Close()
-		g.Go(func() error {
-			for job := range in {
-				pb.Add(job.segment.lengthChunks())
-				if job.source != nil {
-					// If we have a seedSegment we expect 1 or more chunks between
-					// the start and the end of this segment.
-					stats.addChunksFromSeed(uint64(job.segment.lengthChunks()))
-					offset := job.segment.start()
-					length := job.segment.lengthBytes()
-					copied, cloned, err := job.source.WriteInto(f, offset, length, blocksize, isBlank)
-					if err != nil {
-						return err
-					}
-
-					// Validate that the written chunks are exactly what we were expecting.
-					// Because the seed might point to a RW location, if the data changed
-					// while we were extracting an index, we might end up writing to the
-					// destination some unexpected values.
-					for _, c := range job.segment.chunks() {
-						b := make([]byte, c.Size)
-						if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
-							return err
-						}
-						sum := Digest.Sum(b)
-						if sum != c.ID {
-							if options.InvalidSeedAction == InvalidSeedActionRegenerate {
-								// Try harder before giving up and aborting
-								Log.WithField("ID", c.ID.String()).Info("The seed may have changed during processing, trying to take the chunk from the self seed or the store")
-								if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
-									return err
-								}
-							} else {
-								return fmt.Errorf("written data in %s doesn't match its expected hash value, seed may have changed during processing", name)
-							}
-						}
-					}
-
-					stats.addBytesCopied(copied)
-					stats.addBytesCloned(cloned)
-					// Record this segment's been written in the self-seed to make it
-					// available going forward
-					ss.add(job.segment)
-					continue
-				}
-
-				// If we don't have a seedSegment we expect an IndexSegment with just
-				// a single chunk, that we can take from either the selfSeed, from the
-				// destination file, or from the store.
-				if len(job.segment.chunks()) != 1 {
-					panic("Received an unexpected segment that doesn't contain just a single chunk")
-				}
-				c := job.segment.chunks()[0]
-
-				if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
-					return err
-				}
-
-				// Record this chunk's been written in the self-seed.
-				// Even if we already confirmed that this chunk is present in the
-				// self-seed, we still need to record it as being written, otherwise
-				// the self-seed position pointer doesn't advance as we expect.
-				ss.add(job.segment)
-			}
-			return nil
-		})
+	// Create the plan
+retry:
+	plan, err := NewPlan(name, idx, s,
+		PlanWithConcurrency(options.N),
+		PlanWithSeeds(seeds),
+		PlanWithTargetIsBlank(isBlank),
+	)
+	if err != nil {
+		return stats, err
 	}
 
-	// Let the sequencer break up the index into segments, create and validate a plan,
-	// feed the workers, and stop if there are any errors
-	seq := NewSeedSequencer(idx, seeds...)
-	plan := seq.Plan()
-	for {
-		validatingPrefix := fmt.Sprintf("Attempt %d: Validating ", attempt)
-		if err := plan.Validate(ctx, options.N, NewProgressBar(validatingPrefix)); err != nil {
-			// This plan has at least one invalid seed
+	// Validate the seed indexes provided and potentially regenerate them
+	if err := plan.Validate(); err != nil {
+		// Close the invalid plan
+		plan.Close()
+
+		var seedError SeedInvalid
+		if errors.As(err, &seedError) {
+
 			switch options.InvalidSeedAction {
 			case InvalidSeedActionBailOut:
 				return stats, err
 			case InvalidSeedActionRegenerate:
-				Log.WithError(err).Info("Unable to use one of the chosen seeds, regenerating it")
-				if err := seq.RegenerateInvalidSeeds(ctx, options.N, attempt); err != nil {
-					return stats, err
+				Log.WithError(err).Info("Unable to use one or more seeds, regenerating them")
+				for i, s := range seedError.Seeds {
+					if err := s.RegenerateIndex(ctx, options.N, attempt, i+1); err != nil {
+						return stats, err
+					}
 				}
+				attempt++
+				goto retry
 			case InvalidSeedActionSkip:
-				// Recreate the plan. This time the seed marked as invalid will be skipped
-				Log.WithError(err).Info("Unable to use one of the chosen seeds, skipping it")
+				Log.WithError(err).Infof("Unable to use one or more seeds, skipping them")
+				seeds = slices.DeleteFunc(seeds, func(s Seed) bool {
+					return slices.Contains(seedError.Seeds, s)
+				})
+				goto retry
 			default:
 				panic("Unhandled InvalidSeedAction")
 			}
-
-			attempt += 1
-			seq.Rewind()
-			plan = seq.Plan()
-			continue
 		}
-		// Found a valid plan
-		break
+		return stats, err
+	}
+	defer plan.Close()
+
+	// Generate the plan steps necessary to build the target
+	steps := plan.Steps()
+	if len(steps) == 0 {
+		return stats, nil
 	}
 
-	pb = NewProgressBar(fmt.Sprintf("Attempt %d: Assembling ", attempt))
+	// Split the steps into those that are independent and those that
+	// require other steps to complete first.
+	var (
+		ready   []*PlanStep
+		delayed = make(stepSet)
+	)
+	for _, step := range steps {
+		if step.ready() {
+			ready = append(ready, step)
+		} else {
+			delayed.add(step)
+		}
+	}
+
+	// Set up progress bar
+	pb := NewProgressBar(fmt.Sprintf("Attempt %d: Assembling ", attempt))
 	pb.SetTotal(len(idx.Chunks))
 	pb.Start()
 	defer pb.Finish()
 
-loop:
-	for _, segment := range plan {
-		select {
-		case <-ctx.Done():
-			break loop
-		case in <- Job{segment.indexSegment, segment.source}:
+	// Create two channels, one for steps that can run and one for those
+	// that are complete.
+	var (
+		inProgress = make(chan *PlanStep, len(steps))
+		completed  = make(chan *PlanStep, options.N)
+	)
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(options.N)
+
+	// Bring up the workers
+	for range options.N {
+		g.Go(func() error {
+			f, err := os.OpenFile(name, os.O_RDWR, 0666)
+			if err != nil {
+				return fmt.Errorf("unable to open file %s, %s", name, err)
+			}
+			defer f.Close()
+			for {
+				select {
+				case step, ok := <-inProgress:
+					if !ok {
+						return nil
+					}
+					copied, cloned, err := step.source.Execute(f)
+					if err != nil {
+						return err
+					}
+					// Update byte-level stats
+					stats.addBytesCopied(copied)
+					stats.addBytesCloned(cloned)
+					// Update chunk-level stats based on source type
+					switch step.source.(type) {
+					case *copyFromStore:
+						stats.incChunksFromStore()
+					case *skipInPlace, *inPlaceSeedSkip, *inPlaceCopy:
+						stats.addChunksInPlace(uint64(step.numChunks))
+					case *fileSeedSource, *selfSeedSegment:
+						stats.addChunksFromSeed(uint64(step.numChunks))
+					}
+					select {
+					case completed <- step:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		})
+	}
+
+	// Populate all steps that are ready to be executed
+	for _, step := range ready {
+		inProgress <- step
+	}
+
+	// Start the dispatch goroutine which runs the plan. This should be
+	// outside the errgroup as it'll only be stopped once the workers are
+	// done.
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for step := range completed {
+			pb.Add(step.numChunks)
+
+			// Go through all the steps that are blocked by this
+			// one and remove the dependency. If all deps have been
+			// removed, send them for processing and remove them
+			// from the ready list.
+			for b := range step.dependents.Each() {
+				b.dependencies.remove(step)
+				if b.ready() {
+					delayed.remove(b)
+					inProgress <- b
+				}
+			}
+
+			// If there are no more delayed steps, close the work queue.
+			if delayed.len() == 0 {
+				close(inProgress)
+				break
+			}
+		}
+
+		// Drain the completed queue, updating the progress bar for any
+		// steps that finished after the work queue was closed.
+		for step := range completed {
+			pb.Add(step.numChunks)
+		}
+	})
+
+	// Wait for the workers to complete
+	err = g.Wait()
+
+	// Stop the dispatch goroutine
+	close(completed)
+	wg.Wait()
+
+	// If the in-place seed was larger than the target, truncate now that
+	// all in-place reads are complete.
+	if err == nil && inPlaceSeedSize > idx.Length() && !isBlkDevice {
+		if err := os.Truncate(name, idx.Length()); err != nil {
+			return stats, err
 		}
 	}
-	close(in)
 
-	return stats, g.Wait()
+	return stats, err
 }
