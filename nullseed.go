@@ -42,9 +42,9 @@ func (s *nullChunkSeed) close() error {
 	return nil
 }
 
-func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
-	if len(chunks) == 0 {
-		return 0, nil
+func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, int) {
+	if startPos >= len(chunks) {
+		return 0, 0
 	}
 	var (
 		n     int
@@ -53,7 +53,7 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	if !s.canReflink {
 		limit = 100
 	}
-	for _, c := range chunks {
+	for _, c := range chunks[startPos:] {
 		if limit != 0 && limit == n {
 			break
 		}
@@ -62,12 +62,12 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 		}
 		n++
 	}
-	if n == 0 {
-		return 0, nil
-	}
-	return n, &nullChunkSection{
-		from:       chunks[0].Start,
-		to:         chunks[n-1].Start + chunks[n-1].Size,
+	return 0, n
+}
+
+func (s *nullChunkSeed) GetSegment(offset, size uint64) SeedSegment {
+	return &nullChunkSection{
+		size:       size,
 		blockfile:  s.blockfile,
 		canReflink: s.canReflink,
 	}
@@ -77,17 +77,8 @@ func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int, attempt int,
 	panic("A nullseed can't be regenerated")
 }
 
-func (s *nullChunkSeed) SetInvalid(value bool) {
-	panic("A nullseed is never expected to be invalid")
-}
-
-func (s *nullChunkSeed) IsInvalid() bool {
-	// A nullseed is never expected to be invalid
-	return false
-}
-
 type nullChunkSection struct {
-	from, to   uint64
+	size       uint64
 	blockfile  *os.File
 	canReflink bool
 }
@@ -101,7 +92,7 @@ func (s *nullChunkSection) FileName() string {
 	return ""
 }
 
-func (s *nullChunkSection) Size() uint64 { return s.to - s.from }
+func (s *nullChunkSection) Size() uint64 { return s.size }
 
 func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) (uint64, uint64, error) {
 	if length != s.Size() {
