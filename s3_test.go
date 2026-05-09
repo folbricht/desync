@@ -47,7 +47,16 @@ func response(request *http.Request, headers http.Header, statusCode int, body s
 	}
 }
 
-func sendObject(conn *net.TCPConn, request *http.Request, filePath string, sendRst bool) error {
+// s3ErrMode describes how the fake S3 server should mishandle an object request.
+type s3ErrMode int
+
+const (
+	s3ErrNone        s3ErrMode = iota // serve the object normally
+	s3ErrRST                          // send half the body, then force a TCP RST (transport error)
+	s3ErrCorruptBody                  // serve a complete, well-formed response whose body is truncated
+)
+
+func sendObject(conn *net.TCPConn, request *http.Request, filePath string, mode s3ErrMode) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -70,19 +79,10 @@ func sendObject(conn *net.TCPConn, request *http.Request, filePath string, sendR
 	headers := http.Header{}
 	headers.Add("Last-Modified", stat.ModTime().Format(http.TimeFormat))
 	headers.Add("Content-Type", "application/octet-stream")
-	headers.Add("Content-Length", strconv.FormatInt(stat.Size(), 10))
 
-	if !sendRst {
-		resp := http.Response{
-			StatusCode: 200,
-			ProtoMajor: 1,
-			ProtoMinor: 0,
-			Request:    request,
-			Body:       file,
-			Header:     headers,
-		}
-		resp.Write(conn)
-	} else {
+	switch mode {
+	case s3ErrRST:
+		headers.Add("Content-Length", strconv.FormatInt(stat.Size(), 10))
 		if _, err := io.WriteString(conn, "HTTP/1.0 200 OK\r\n"); err != nil {
 			return err
 		}
@@ -103,11 +103,41 @@ func sendObject(conn *net.TCPConn, request *http.Request, filePath string, sendR
 		if err := conn.Close(); err != nil {
 			return err
 		}
+	case s3ErrCorruptBody:
+		// Serve a complete, well-formed HTTP response whose Content-Length matches
+		// the bytes actually written, but only write the first half of the file. The
+		// client reads it cleanly (no transport error), but the truncated chunk data
+		// fails to decompress/validate - the scenario reported in issue #334.
+		half := stat.Size() / 2
+		headers.Add("Content-Length", strconv.FormatInt(half, 10))
+		if _, err := io.WriteString(conn, "HTTP/1.0 200 OK\r\n"); err != nil {
+			return err
+		}
+		if err := headers.Write(conn); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(conn, "\r\n"); err != nil {
+			return err
+		}
+		if _, err := io.CopyN(conn, file, half); err != nil {
+			return err
+		}
+	default:
+		headers.Add("Content-Length", strconv.FormatInt(stat.Size(), 10))
+		resp := http.Response{
+			StatusCode: 200,
+			ProtoMajor: 1,
+			ProtoMinor: 0,
+			Request:    request,
+			Body:       file,
+			Header:     headers,
+		}
+		resp.Write(conn)
 	}
 	return nil
 }
 
-func handleGetObjectRequest(conn *net.TCPConn, bucket, store string, errorTimes *int, errorTimesLimit int) error {
+func handleGetObjectRequest(conn *net.TCPConn, bucket, store string, errorMode s3ErrMode, errorTimes *int, errorTimesLimit int) error {
 	defer conn.Close()
 	objectGetMatcher := regexp.MustCompile(`^/` + bucket + `/(.+)$`)
 
@@ -119,7 +149,11 @@ func handleGetObjectRequest(conn *net.TCPConn, bucket, store string, errorTimes 
 
 	matches := objectGetMatcher.FindStringSubmatch(request.URL.Path)
 	if matches != nil {
-		err = sendObject(conn, request, store+"/"+matches[1], *errorTimes < errorTimesLimit)
+		mode := s3ErrNone
+		if *errorTimes < errorTimesLimit {
+			mode = errorMode
+		}
+		err = sendObject(conn, request, store+"/"+matches[1], mode)
 		(*errorTimes)++
 	} else {
 		resp := response(request, http.Header{}, 400, "")
@@ -128,9 +162,10 @@ func handleGetObjectRequest(conn *net.TCPConn, bucket, store string, errorTimes 
 	return err
 }
 
-// Run S3 server that can respond objects from `store`
-// if `errorTimesLimit` > 0 server will send RST packet `errorTimesLimit` times after sending half of file
-func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bucket, store string, errorTimesLimit int) net.Listener {
+// Run S3 server that can respond objects from `store`. The first `errorTimesLimit`
+// object requests are mishandled according to `errorMode` (e.g. truncated body or
+// forced TCP reset); subsequent requests are served normally.
+func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bucket, store string, errorMode s3ErrMode, errorTimesLimit int) net.Listener {
 	var errorTimes int
 	// using localhost + resolver let us work on hosts that support only ipv6 or only ipv4
 	ip, err := net.DefaultResolver.LookupIP(ctx, "ip", "localhost")
@@ -161,7 +196,7 @@ func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bu
 				}
 				return err
 			}
-			err = handleGetObjectRequest(conn, bucket, store, &errorTimes, errorTimesLimit)
+			err = handleGetObjectRequest(conn, bucket, store, errorMode, &errorTimes, errorTimesLimit)
 			if err != nil {
 				return err
 			}
@@ -184,7 +219,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", 0)
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrNone, 0)
 
 		group.Go(func() error {
 			defer cancel()
@@ -224,7 +259,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrRST, 1)
 
 		group.Go(func() error {
 			defer cancel()
@@ -262,7 +297,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrRST, 1)
 
 		group.Go(func() error {
 			defer cancel()
@@ -280,6 +315,97 @@ func TestS3StoreGetChunk(t *testing.T) {
 				}
 				if chunk.ID() != chunkId {
 					c <- fmt.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
+				}
+				c <- nil
+			}()
+			select {
+			case <-gCtx.Done():
+				return nil
+			case err = <-c:
+				return err
+			}
+		})
+
+		if err := group.Wait(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("corrupt_body_fail", func(t *testing.T) {
+		// Server returns a complete, well-formed response with a truncated body, so
+		// the chunk data fails to decompress/validate (issue #334). With no retries
+		// configured GetChunk() must return that error - and it must carry the
+		// underlying decode failure, not the bogus "hash 0000..." mismatch.
+		ctx, cancel := context.WithCancel(context.Background())
+		group, gCtx := errgroup.WithContext(ctx)
+
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrCorruptBody, 1)
+
+		group.Go(func() error {
+			defer cancel()
+			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
+			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
+			if err != nil {
+				return err
+			}
+
+			c := make(chan error)
+			go func() {
+				_, err := store.GetChunk(chunkId)
+				if err == nil {
+					c <- errors.New("expected GetChunk to fail on truncated chunk body")
+					return
+				}
+				var ci ChunkInvalid
+				if !errors.As(err, &ci) {
+					c <- fmt.Errorf("expected ChunkInvalid, got %T: %v", err, err)
+					return
+				}
+				if ci.Err == nil {
+					c <- fmt.Errorf("expected ChunkInvalid to carry the underlying decode error, got %v", err)
+					return
+				}
+				c <- nil
+			}()
+			select {
+			case <-gCtx.Done():
+				return nil
+			case err = <-c:
+				return err
+			}
+		})
+
+		if err := group.Wait(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("corrupt_body_recover", func(t *testing.T) {
+		// Same truncated-body scenario, but with retries enabled GetChunk() should
+		// retry the validation failure and succeed once a full response is served.
+		ctx, cancel := context.WithCancel(context.Background())
+		group, gCtx := errgroup.WithContext(ctx)
+
+		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrCorruptBody, 1)
+
+		group.Go(func() error {
+			defer cancel()
+			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
+			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{ErrorRetry: 1}, minio.BucketLookupAuto)
+			if err != nil {
+				return err
+			}
+
+			c := make(chan error)
+			go func() {
+				chunk, err := store.GetChunk(chunkId)
+				if err != nil {
+					c <- err
+					return
+				}
+				if chunk.ID() != chunkId {
+					c <- fmt.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
+					return
 				}
 				c <- nil
 			}()

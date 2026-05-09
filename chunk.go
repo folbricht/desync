@@ -33,8 +33,10 @@ func NewChunkWithID(id ChunkID, b []byte, skipVerify bool) (*Chunk, error) {
 		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
 	}
-	sum := c.ID()
-	if sum != id {
+	if _, err := c.Data(); err != nil {
+		return nil, ChunkInvalid{ID: id, Err: err}
+	}
+	if sum := c.ID(); sum != id { // ID() reuses the now-cached plain data
 		return nil, ChunkInvalid{ID: id, Sum: sum}
 	}
 	return c, nil
@@ -49,8 +51,10 @@ func NewChunkFromStorage(id ChunkID, b []byte, modifiers Converters, skipVerify 
 		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
 	}
-	sum := c.ID()
-	if sum != id {
+	if _, err := c.Data(); err != nil { // e.g. failed to decompress (truncated/corrupt storage data)
+		return nil, ChunkInvalid{ID: id, Err: err}
+	}
+	if sum := c.ID(); sum != id { // ID() reuses the now-cached plain data
 		return nil, ChunkInvalid{ID: id, Sum: sum}
 	}
 	return c, nil
