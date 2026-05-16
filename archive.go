@@ -70,6 +70,36 @@ func NewArchiveDecoder(r io.Reader) ArchiveDecoder {
 	return ArchiveDecoder{d: NewFormatDecoder(r), dir: "."}
 }
 
+// safeComponent validates a single path component as it appears in a catar
+// FormatFilename element. casync filenames are always a single, non-empty
+// path component. Anything else (empty, ".", "..", containing a path
+// separator, or absolute) is rejected so that a crafted archive cannot place
+// or traverse entries outside the extraction root - this catches the
+// embedded-slash trick (e.g. "evil/passwd") regardless of the writer in use.
+func safeComponent(name string) error {
+	switch name {
+	case "", ".", "..":
+		return InvalidFormat{Msg: fmt.Sprintf("invalid filename %q in archive", name)}
+	}
+	if strings.ContainsRune(name, '/') || strings.ContainsRune(name, '\\') {
+		return InvalidFormat{Msg: fmt.Sprintf("filename %q contains a path separator", name)}
+	}
+	if path.IsAbs(name) || filepath.IsAbs(name) {
+		return InvalidFormat{Msg: fmt.Sprintf("absolute filename %q in archive", name)}
+	}
+	return nil
+}
+
+// confined reports whether p, the cumulative path of an archive entry, stays
+// within the archive root (".").
+func confined(p string) bool {
+	if path.IsAbs(p) {
+		return false
+	}
+	c := path.Clean(p)
+	return c == "." || (c != ".." && !strings.HasPrefix(c, "../"))
+}
+
 // Next returns a node from an archive, or nil if the end is reached. If NodeFile
 // is returned, the caller should read the file body before calling Next() again
 // as that invalidates the reader.
@@ -143,6 +173,9 @@ loop:
 				a.last = c
 				break loop
 			}
+			if err := safeComponent(d.Name); err != nil {
+				return nil, err
+			}
 			name = d.Name
 		case FormatGoodbye: // This will effectively be a "cd .."
 			if entry != nil {
@@ -161,6 +194,9 @@ loop:
 	// If it doesn't have a payload or is a device/symlink, it must be a directory
 	if payload == nil && device == nil && symlink == nil {
 		a.dir = path.Join(a.dir, name)
+		if !confined(a.dir) {
+			return nil, InvalidFormat{Msg: fmt.Sprintf("entry %q escapes the archive root", a.dir)}
+		}
 		return NodeDirectory{
 			Name:   a.dir,
 			UID:    entry.UID,
@@ -171,10 +207,15 @@ loop:
 		}, nil
 	}
 
+	p := path.Join(a.dir, name)
+	if !confined(p) {
+		return nil, InvalidFormat{Msg: fmt.Sprintf("entry %q escapes the archive root", p)}
+	}
+
 	// Regular file
 	if payload != nil {
 		return NodeFile{
-			Name:   path.Join(a.dir, name),
+			Name:   p,
 			UID:    entry.UID,
 			GID:    entry.GID,
 			Mode:   entry.Mode,
@@ -188,7 +229,7 @@ loop:
 	// Device
 	if device != nil {
 		return NodeDevice{
-			Name:   path.Join(a.dir, name),
+			Name:   p,
 			UID:    entry.UID,
 			GID:    entry.GID,
 			Mode:   entry.Mode,
@@ -202,7 +243,7 @@ loop:
 	// Symlink
 	if symlink != nil {
 		return NodeSymlink{
-			Name:   path.Join(a.dir, name),
+			Name:   p,
 			UID:    entry.UID,
 			GID:    entry.GID,
 			Mode:   entry.Mode,

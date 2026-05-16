@@ -71,7 +71,9 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 	)
 	switch opt.outFormat {
 	case "disk": // Local filesystem
-		fs = desync.NewLocalFS(target, opt.LocalFSOptions)
+		lfs := desync.NewLocalFS(target, opt.LocalFSOptions)
+		defer lfs.Close()
+		fs = lfs
 	case "gnu-tar": // GNU tar, either file or STDOUT
 		var w *os.File
 		if target == "-" {
