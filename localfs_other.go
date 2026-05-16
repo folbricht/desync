@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/pkg/xattr"
-	"golang.org/x/sys/unix"
 )
 
 // NewLocalFS initializes a new instance of a local filesystem that
@@ -142,18 +141,10 @@ func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 		return fmt.Errorf("%s: %w", n.Name, err)
 	}
 
-	// os.Root has no Mknod, so open the (confined) parent directory and
-	// create the node relative to its fd. r.Open refuses to traverse any
-	// symlink that would escape the root, and the base name has no path
-	// separators, so this cannot escape Root.
-	df, err := r.Open(path.Dir(n.Name))
-	if err != nil {
-		return fmt.Errorf("%s: %w", n.Name, err)
-	}
-	mknodErr := unix.Mknodat(int(df.Fd()), path.Base(n.Name), FilemodeToStatMode(n.Mode)|0666, int(mkdev(n.Major, n.Minor)))
-	df.Close()
-	if mknodErr != nil {
-		return fmt.Errorf("mknod %s: %w", n.Name, mknodErr)
+	// os.Root has no Mknod. createDeviceNode is implemented per platform but
+	// always confines the operation to the extraction root.
+	if err := fs.createDeviceNode(r, n); err != nil {
+		return fmt.Errorf("mknod %s: %w", n.Name, err)
 	}
 
 	if !fs.opts.NoSameOwner {
