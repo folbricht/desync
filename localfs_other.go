@@ -4,6 +4,7 @@
 package desync
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -11,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/pkg/xattr"
+	"golang.org/x/sys/unix"
 )
 
 // NewLocalFS initializes a new instance of a local filesystem that
@@ -25,26 +26,61 @@ func NewLocalFS(root string, opts LocalFSOptions) *LocalFS {
 	}
 }
 
+// setXattrs applies extended attributes to a regular file or directory using
+// an fd opened through the root handle, so that no symlink in the path can be
+// followed.
+func setXattrs(r *os.Root, name string, xattrs Xattrs) error {
+	if len(xattrs) == 0 {
+		return nil
+	}
+	f, err := r.Open(name)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	defer f.Close()
+	for key, value := range xattrs {
+		if err := xattr.FSet(f, key, []byte(value)); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// setXattrsNoFollow applies extended attributes to a symlink or device node.
+// There is no fd-based equivalent for these, so a path under the resolved real
+// root is used. All intermediate components were created by us through the
+// root handle and are therefore confined to it.
+func (fs *LocalFS) setXattrsNoFollow(name string, xattrs Xattrs) error {
+	if len(xattrs) == 0 {
+		return nil
+	}
+	dst := filepath.Join(fs.rootReal, name)
+	for key, value := range xattrs {
+		if err := xattr.LSet(dst, key, []byte(value)); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 func (fs *LocalFS) SetDirPermissions(n NodeDirectory) error {
-	dst := filepath.Join(fs.Root, n.Name)
+	r, err := fs.writeRoot()
+	if err != nil {
+		return err
+	}
 
 	// The dir exists now, fix the UID/GID if needed
 	if !fs.opts.NoSameOwner {
-		if err := os.Chown(dst, n.UID, n.GID); err != nil {
-			return err
+		if err := r.Chown(n.Name, n.UID, n.GID); err != nil {
+			return fmt.Errorf("%s: %w", n.Name, err)
 		}
-
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
+		if err := setXattrs(r, n.Name, n.Xattrs); err != nil {
+			return err
 		}
 	}
 	if !fs.opts.NoSamePermissions {
-		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
-			return err
+		if err := r.Chmod(n.Name, n.Mode); err != nil {
+			return fmt.Errorf("%s: %w", n.Name, err)
 		}
 	}
 
@@ -52,24 +88,22 @@ func (fs *LocalFS) SetDirPermissions(n NodeDirectory) error {
 }
 
 func (fs *LocalFS) SetFilePermissions(n NodeFile) error {
-	dst := filepath.Join(fs.Root, n.Name)
+	r, err := fs.writeRoot()
+	if err != nil {
+		return err
+	}
 
 	if !fs.opts.NoSameOwner {
-		if err := os.Chown(dst, n.UID, n.GID); err != nil {
-			return err
+		if err := r.Chown(n.Name, n.UID, n.GID); err != nil {
+			return fmt.Errorf("%s: %w", n.Name, err)
 		}
-
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
+		if err := setXattrs(r, n.Name, n.Xattrs); err != nil {
+			return err
 		}
 	}
 	if !fs.opts.NoSamePermissions {
-		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
-			return err
+		if err := r.Chmod(n.Name, n.Mode); err != nil {
+			return fmt.Errorf("%s: %w", n.Name, err)
 		}
 	}
 
@@ -77,23 +111,21 @@ func (fs *LocalFS) SetFilePermissions(n NodeFile) error {
 }
 
 func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
-	dst := filepath.Join(fs.Root, n.Name)
+	r, err := fs.writeRoot()
+	if err != nil {
+		return err
+	}
 
 	// TODO: On Linux, the permissions of the link don't matter so we don't
 	// set them here. But they do matter somewhat on Mac, so should probably
 	// add some Mac-specific logic for that here.
 	// fchmodat() with flag AT_SYMLINK_NOFOLLOW
 	if !fs.opts.NoSameOwner {
-		if err := os.Lchown(dst, n.UID, n.GID); err != nil {
-			return err
+		if err := r.Lchown(n.Name, n.UID, n.GID); err != nil {
+			return fmt.Errorf("%s: %w", n.Name, err)
 		}
-
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
+		if err := fs.setXattrsNoFollow(n.Name, n.Xattrs); err != nil {
+			return err
 		}
 	}
 
@@ -101,36 +133,46 @@ func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
 }
 
 func (fs *LocalFS) CreateDevice(n NodeDevice) error {
-	dst := filepath.Join(fs.Root, n.Name)
-
-	if err := syscall.Unlink(dst); err != nil && !os.IsNotExist(err) {
+	r, err := fs.writeRoot()
+	if err != nil {
 		return err
 	}
-	if err := syscall.Mknod(dst, FilemodeToStatMode(n.Mode)|0666, int(mkdev(n.Major, n.Minor))); err != nil {
-		return errors.Wrapf(err, "mknod %s", dst)
-	}
-	if !fs.opts.NoSameOwner {
-		if err := os.Chown(dst, n.UID, n.GID); err != nil {
-			return err
-		}
 
-		if n.Xattrs != nil {
-			for key, value := range n.Xattrs {
-				if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-					return err
-				}
-			}
+	if err := r.Remove(n.Name); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("%s: %w", n.Name, err)
+	}
+
+	// os.Root has no Mknod, so open the (confined) parent directory and
+	// create the node relative to its fd. r.Open refuses to traverse any
+	// symlink that would escape the root, and the base name has no path
+	// separators, so this cannot escape Root.
+	df, err := r.Open(path.Dir(n.Name))
+	if err != nil {
+		return fmt.Errorf("%s: %w", n.Name, err)
+	}
+	mknodErr := unix.Mknodat(int(df.Fd()), path.Base(n.Name), FilemodeToStatMode(n.Mode)|0666, int(mkdev(n.Major, n.Minor)))
+	df.Close()
+	if mknodErr != nil {
+		return fmt.Errorf("mknod %s: %w", n.Name, mknodErr)
+	}
+
+	if !fs.opts.NoSameOwner {
+		if err := r.Chown(n.Name, n.UID, n.GID); err != nil {
+			return fmt.Errorf("%s: %w", n.Name, err)
+		}
+		if err := fs.setXattrsNoFollow(n.Name, n.Xattrs); err != nil {
+			return err
 		}
 	}
 	if !fs.opts.NoSamePermissions {
-		if err := syscall.Chmod(dst, FilemodeToStatMode(n.Mode)); err != nil {
-			return errors.Wrapf(err, "chmod %s", dst)
+		if err := r.Chmod(n.Name, n.Mode); err != nil {
+			return fmt.Errorf("chmod %s: %w", n.Name, err)
 		}
 	}
 	if n.MTime == time.Unix(0, 0) {
 		return nil
 	}
-	return os.Chtimes(dst, n.MTime, n.MTime)
+	return r.Chtimes(n.Name, n.MTime, n.MTime)
 }
 
 func mkdev(major, minor uint64) uint64 {
