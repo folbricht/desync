@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/folbricht/tempfile"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParallelChunking(t *testing.T) {
@@ -79,6 +80,54 @@ func TestParallelChunking(t *testing.T) {
 							t.Fatal("chunks from parallel splitter don't match single stream chunks")
 						}
 					}
+				})
+			}
+		})
+	}
+}
+
+// TestIndexFromFileStats exercises the parallel chunker's early-EOF/straggler
+// path (null-heavy inputs, multiple workers) and asserts the returned
+// ChunkingStats. It guards the data race where IndexFromFile copied stats by
+// value while worker goroutines were still atomically updating them: with the
+// join in place the counters must be complete and deterministic for every
+// worker count. Run under -race to catch a regression of the join.
+func TestIndexFromFileStats(t *testing.T) {
+	null := make([]byte, 4*ChunkSizeMaxDefault)
+	rnd := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(rnd)
+
+	tests := map[string][][]byte{
+		"trailing null":   {rnd, rnd, null, null, null, null},
+		"middle null":     {rnd, null, null, null, null, rnd},
+		"spread out null": {rnd, null, null, null, rnd, null, null, null, rnd},
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			f, err := tempfile.New("", "")
+			require.NoError(t, err)
+			defer os.Remove(f.Name())
+			_, err = f.Write(join(input...))
+			require.NoError(t, err)
+			f.Close()
+
+			for n := 2; n <= 8; n++ {
+				t.Run(fmt.Sprintf("n=%d", n), func(t *testing.T) {
+					index, stats, err := IndexFromFile(
+						context.Background(),
+						f.Name(),
+						n,
+						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+						NewProgressBar(""),
+					)
+					require.NoError(t, err)
+					require.Equal(t, uint64(len(index.Chunks)), stats.ChunksAccepted,
+						"ChunksAccepted should equal len(index.Chunks)")
+					require.GreaterOrEqual(t, stats.ChunksProduced, stats.ChunksAccepted,
+						"ChunksProduced should be >= ChunksAccepted")
+					require.NotZero(t, stats.ChunksProduced,
+						"workers should have produced chunks")
 				})
 			}
 		})
