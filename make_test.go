@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/folbricht/tempfile"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParallelChunking(t *testing.T) {
@@ -105,13 +106,10 @@ func TestIndexFromFileStats(t *testing.T) {
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
 			f, err := tempfile.New("", "")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer os.Remove(f.Name())
-			if _, err := f.Write(join(input...)); err != nil {
-				t.Fatal(err)
-			}
+			_, err = f.Write(join(input...))
+			require.NoError(t, err)
 			f.Close()
 
 			for n := 2; n <= 8; n++ {
@@ -123,20 +121,13 @@ func TestIndexFromFileStats(t *testing.T) {
 						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 						NewProgressBar(""),
 					)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if stats.ChunksAccepted != uint64(len(index.Chunks)) {
-						t.Fatalf("ChunksAccepted=%d, want %d (len(index.Chunks))",
-							stats.ChunksAccepted, len(index.Chunks))
-					}
-					if stats.ChunksProduced < stats.ChunksAccepted {
-						t.Fatalf("ChunksProduced=%d < ChunksAccepted=%d",
-							stats.ChunksProduced, stats.ChunksAccepted)
-					}
-					if stats.ChunksProduced == 0 {
-						t.Fatal("ChunksProduced=0, expected the workers to produce chunks")
-					}
+					require.NoError(t, err)
+					require.Equal(t, uint64(len(index.Chunks)), stats.ChunksAccepted,
+						"ChunksAccepted should equal len(index.Chunks)")
+					require.GreaterOrEqual(t, stats.ChunksProduced, stats.ChunksAccepted,
+						"ChunksProduced should be >= ChunksAccepted")
+					require.NotZero(t, stats.ChunksProduced,
+						"workers should have produced chunks")
 				})
 			}
 		})
