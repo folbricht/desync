@@ -26,6 +26,10 @@ func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	indexName := path.Base(r.URL.Path)
+	if !validIndexName(indexName) {
+		http.Error(w, "invalid index name", http.StatusBadRequest)
+		return
+	}
 
 	switch r.Method {
 	case "GET":
