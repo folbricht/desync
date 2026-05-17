@@ -3,12 +3,34 @@ package desync
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// flakyStore wraps a Store and injects a fixed number of transient failures
+// for a specific chunk before delegating to the underlying store.
+type flakyStore struct {
+	Store
+	mu        sync.Mutex
+	failID    ChunkID
+	failsLeft int
+}
+
+func (s *flakyStore) GetChunk(id ChunkID) (*Chunk, error) {
+	s.mu.Lock()
+	if id == s.failID && s.failsLeft > 0 {
+		s.failsLeft--
+		s.mu.Unlock()
+		return nil, errors.New("injected transient failure")
+	}
+	s.mu.Unlock()
+	return s.Store.GetChunk(id)
+}
 
 func TestLoaderChunkRange(t *testing.T) {
 	idx := Index{
@@ -103,4 +125,66 @@ func TestSparseFileRead(t *testing.T) {
 	blobHash := sha256.Sum256(b)
 	sparseHash := sha256.Sum256(whole)
 	require.Equal(t, blobHash, sparseHash)
+}
+
+// TestSparseFileRetryAfterFailedLoad ensures that a transient fetch failure
+// for a chunk does not permanently poison its region of the sparse file. The
+// failed load must surface an error, and a subsequent read must retry and
+// return the real chunk data rather than the zeroed (never-written) region.
+func TestSparseFileRetryAfterFailedLoad(t *testing.T) {
+	sparseFile, err := os.CreateTemp("", "")
+	require.NoError(t, err)
+	defer os.Remove(sparseFile.Name())
+
+	s, err := NewLocalStore("testdata/blob1.store", StoreOptions{})
+	require.NoError(t, err)
+	defer s.Close()
+
+	indexFile, err := os.Open("testdata/blob1.caibx")
+	require.NoError(t, err)
+	defer indexFile.Close()
+	index, err := IndexFromReader(indexFile)
+	require.NoError(t, err)
+
+	b, err := os.ReadFile("testdata/blob1")
+	require.NoError(t, err)
+
+	// Pick the first chunk that actually needs fetching from the store. Null
+	// chunks are served from the truncated sparse file and never hit GetChunk.
+	nullChunk := NewNullChunk(index.Index.ChunkSizeMax)
+	var target IndexChunk
+	found := false
+	for _, c := range index.Chunks {
+		if c.ID != nullChunk.ID {
+			target = c
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected at least one non-null chunk")
+
+	// Store that fails the first GetChunk for the target chunk, then works.
+	flaky := &flakyStore{Store: s, failID: target.ID, failsLeft: 1}
+
+	sparse, err := NewSparseFile(sparseFile.Name(), index, flaky, SparseFileOptions{})
+	require.NoError(t, err)
+	h, err := sparse.Open()
+	require.NoError(t, err)
+	defer h.Close()
+
+	buf := make([]byte, target.Size)
+
+	// First read of the target chunk's range must surface the transient error.
+	_, err = h.ReadAt(buf, int64(target.Start))
+	require.Error(t, err)
+
+	// The retry must actually load the chunk and return real data, not the
+	// zeroed sparse-file region.
+	_, err = h.ReadAt(buf, int64(target.Start))
+	require.NoError(t, err)
+
+	expected := make([]byte, target.Size)
+	_, err = bytes.NewReader(b).ReadAt(expected, int64(target.Start))
+	require.NoError(t, err)
+	require.Equal(t, expected, buf)
 }

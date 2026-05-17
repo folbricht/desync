@@ -149,7 +149,7 @@ func (h *SparseFileHandle) Close() error {
 
 type sparseIndexChunk struct {
 	IndexChunk
-	once sync.Once
+	mu sync.Mutex
 }
 
 // Loader for sparse files
@@ -229,36 +229,48 @@ func (l *sparseFileLoader) loadRange(start, length int64) error {
 }
 
 func (l *sparseFileLoader) loadChunk(i int) error {
-	var loadErr error
-	l.chunks[i].once.Do(func() {
-		c, err := l.s.GetChunk(l.chunks[i].ID)
-		if err != nil {
-			loadErr = err
-			return
-		}
-		b, err := c.Data()
-		if err != nil {
-			loadErr = err
-			return
-		}
+	c := l.chunks[i]
 
-		f, err := os.OpenFile(l.name, os.O_RDWR, 0666)
-		if err != nil {
-			loadErr = err
-			return
-		}
-		defer f.Close()
+	// Serialize loads of the same chunk so concurrent reads don't fetch it
+	// twice or race on the write to the sparse file. Different chunks still
+	// load in parallel.
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-		if _, err := f.WriteAt(b, int64(l.chunks[i].Start)); err != nil {
-			loadErr = err
-			return
-		}
+	// Already loaded by an earlier successful call? The done bitmap is the
+	// authoritative record of what has actually been written to the sparse
+	// file. A failed load never sets it, so this stays false and the load
+	// is retried until it succeeds.
+	l.mu.RLock()
+	loaded := l.done.Get(i)
+	l.mu.RUnlock()
+	if loaded {
+		return nil
+	}
 
-		l.mu.Lock()
-		l.done.Set(i, true)
-		l.mu.Unlock()
-	})
-	return loadErr
+	chunk, err := l.s.GetChunk(c.ID)
+	if err != nil {
+		return err
+	}
+	b, err := chunk.Data()
+	if err != nil {
+		return err
+	}
+
+	f, err := os.OpenFile(l.name, os.O_RDWR, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := f.WriteAt(b, int64(c.Start)); err != nil {
+		return err
+	}
+
+	l.mu.Lock()
+	l.done.Set(i, true)
+	l.mu.Unlock()
+	return nil
 }
 
 // writeState saves the current internal state about which chunks have
