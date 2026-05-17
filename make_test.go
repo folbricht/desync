@@ -84,3 +84,61 @@ func TestParallelChunking(t *testing.T) {
 		})
 	}
 }
+
+// TestIndexFromFileStats exercises the parallel chunker's early-EOF/straggler
+// path (null-heavy inputs, multiple workers) and asserts the returned
+// ChunkingStats. It guards the data race where IndexFromFile copied stats by
+// value while worker goroutines were still atomically updating them: with the
+// join in place the counters must be complete and deterministic for every
+// worker count. Run under -race to catch a regression of the join.
+func TestIndexFromFileStats(t *testing.T) {
+	null := make([]byte, 4*ChunkSizeMaxDefault)
+	rnd := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(rnd)
+
+	tests := map[string][][]byte{
+		"trailing null":   {rnd, rnd, null, null, null, null},
+		"middle null":     {rnd, null, null, null, null, rnd},
+		"spread out null": {rnd, null, null, null, rnd, null, null, null, rnd},
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			f, err := tempfile.New("", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.Remove(f.Name())
+			if _, err := f.Write(join(input...)); err != nil {
+				t.Fatal(err)
+			}
+			f.Close()
+
+			for n := 2; n <= 8; n++ {
+				t.Run(fmt.Sprintf("n=%d", n), func(t *testing.T) {
+					index, stats, err := IndexFromFile(
+						context.Background(),
+						f.Name(),
+						n,
+						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+						NewProgressBar(""),
+					)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if stats.ChunksAccepted != uint64(len(index.Chunks)) {
+						t.Fatalf("ChunksAccepted=%d, want %d (len(index.Chunks))",
+							stats.ChunksAccepted, len(index.Chunks))
+					}
+					if stats.ChunksProduced < stats.ChunksAccepted {
+						t.Fatalf("ChunksProduced=%d < ChunksAccepted=%d",
+							stats.ChunksProduced, stats.ChunksAccepted)
+					}
+					if stats.ChunksProduced == 0 {
+						t.Fatal("ChunksProduced=0, expected the workers to produce chunks")
+					}
+				})
+			}
+		})
+	}
+}
