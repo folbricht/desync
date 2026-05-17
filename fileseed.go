@@ -197,10 +197,10 @@ func (s *fileSeedSegment) Validate(file *os.File) error {
 // Performs a plain copy of everything in the seed to the target, not cloning
 // of blocks.
 func (s *fileSeedSegment) copy(dst, src *os.File, srcOffset, length, dstOffset uint64) (uint64, uint64, error) {
-	if _, err := dst.Seek(int64(dstOffset), os.SEEK_SET); err != nil {
+	if _, err := dst.Seek(int64(dstOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
-	if _, err := src.Seek(int64(srcOffset), os.SEEK_SET); err != nil {
+	if _, err := src.Seek(int64(srcOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
 
