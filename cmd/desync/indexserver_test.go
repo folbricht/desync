@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +68,50 @@ func TestIndexServerWriteCommand(t *testing.T) {
 	require.NoError(t, err)
 	resp.Body.Close()
 	require.Equal(t, http.StatusUnsupportedMediaType, resp.StatusCode)
+}
+
+// TestIndexServerPathTraversal ensures the index server rejects index names
+// derived from request paths that contain path separators. A backslash is a
+// path separator on Windows but not on POSIX; path.Base (forward-slash only)
+// leaves it intact, so without validation a payload like
+// "/..%5C..%5Cevil.caibx" would escape the store directory on a Windows host.
+// The handler-level check rejects "/" and "\" regardless of host OS, so this
+// test asserts a flat 400 (and that nothing is written outside the store) on
+// all platforms.
+func TestIndexServerPathTraversal(t *testing.T) {
+	base := t.TempDir()
+	store := filepath.Join(base, "store")
+	require.NoError(t, os.Mkdir(store, 0755))
+
+	// Sentinel path one level above the store that must never be created.
+	target := filepath.Join(base, "evil.caibx")
+
+	addr, cancel := startIndexServer(t, "-s", store, "-w")
+	defer cancel()
+
+	traversalURL := fmt.Sprintf("http://%s/..%%5C..%%5Cevil.caibx", addr)
+
+	// PUT must be rejected with 400 and must not truncate/create a file
+	// outside the store directory.
+	req, _ := http.NewRequest("PUT", traversalURL, strings.NewReader("not-a-real-index"))
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoFileExists(t, target)
+
+	// GET and HEAD must also return a flat 400, leaking no file-existence
+	// information (no 404-vs-400 oracle).
+	resp, err = http.Get(traversalURL)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	req, _ = http.NewRequest("HEAD", traversalURL, nil)
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func startIndexServer(t *testing.T, args ...string) (string, context.CancelFunc) {
