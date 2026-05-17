@@ -3,9 +3,9 @@ package desync
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha512"
 	"fmt"
-	"math/rand"
 	"os"
 	"testing"
 
