@@ -6,8 +6,9 @@ import (
 	"context"
 	"io"
 	"os"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGnuTarWrite(t *testing.T) {
@@ -43,12 +44,8 @@ func TestGnuTarWrite(t *testing.T) {
 func TestTarXattrHelpers(t *testing.T) {
 	// Empty/nil input must yield a nil map so the header stays in its
 	// original (non-PAX) format.
-	if r := xattrsToPAXRecords(nil); r != nil {
-		t.Fatalf("expected nil for nil xattrs, got %v", r)
-	}
-	if r := xattrsToPAXRecords(Xattrs{}); r != nil {
-		t.Fatalf("expected nil for empty xattrs, got %v", r)
-	}
+	require.Nil(t, xattrsToPAXRecords(nil), "expected nil for nil xattrs")
+	require.Nil(t, xattrsToPAXRecords(Xattrs{}), "expected nil for empty xattrs")
 
 	// Keys must get the SCHILY.xattr. prefix archive/tar uses internally.
 	in := Xattrs{"user.comment": "hello", "security.selinux": "ctx"}
@@ -57,22 +54,15 @@ func TestTarXattrHelpers(t *testing.T) {
 		"SCHILY.xattr.user.comment":     "hello",
 		"SCHILY.xattr.security.selinux": "ctx",
 	}
-	if !reflect.DeepEqual(rec, want) {
-		t.Fatalf("xattrsToPAXRecords = %v, want %v", rec, want)
-	}
+	require.Equal(t, want, rec)
 
 	// Reverse must strip the prefix and ignore unrelated PAX records.
 	rec["mtime"] = "12345"
 	rec["path"] = "some/file"
-	if got := paxRecordsToXattrs(rec); !reflect.DeepEqual(got, map[string]string(in)) {
-		t.Fatalf("paxRecordsToXattrs = %v, want %v", got, in)
-	}
-	if x := paxRecordsToXattrs(map[string]string{"mtime": "1"}); x != nil {
-		t.Fatalf("expected nil when no SCHILY records present, got %v", x)
-	}
-	if x := paxRecordsToXattrs(nil); x != nil {
-		t.Fatalf("expected nil for nil records, got %v", x)
-	}
+	require.Equal(t, map[string]string(in), paxRecordsToXattrs(rec))
+	require.Nil(t, paxRecordsToXattrs(map[string]string{"mtime": "1"}),
+		"expected nil when no SCHILY records present")
+	require.Nil(t, paxRecordsToXattrs(nil), "expected nil for nil records")
 }
 
 func TestTarXattrsRoundTrip(t *testing.T) {
@@ -84,51 +74,33 @@ func TestTarXattrsRoundTrip(t *testing.T) {
 	// actually exercised.
 	var buf bytes.Buffer
 	w := NewTarWriter(&buf)
-	if err := w.CreateDevice(NodeDevice{
+	require.NoError(t, w.CreateDevice(NodeDevice{
 		Name: "dev0", Mode: 0644, Major: 1, Minor: 3, Xattrs: xattrs,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.CreateDevice(NodeDevice{
+	}))
+	require.NoError(t, w.CreateDevice(NodeDevice{
 		Name: "dev1", Mode: 0644, Major: 1, Minor: 4,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, w.Close())
 
 	// On the wire the xattrs must be SCHILY.xattr.<name> PAX records,
 	// exactly as the deprecated Header.Xattrs field produced them.
 	sr := gnutar.NewReader(bytes.NewReader(buf.Bytes()))
 	h, err := sr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for k, v := range xattrs {
-		if got := h.PAXRecords["SCHILY.xattr."+k]; got != v {
-			t.Fatalf("PAX record SCHILY.xattr.%s = %q, want %q", k, got, v)
-		}
+		require.Equal(t, v, h.PAXRecords["SCHILY.xattr."+k],
+			"PAX record SCHILY.xattr.%s", k)
 	}
 
 	// Reading back through TarReader must reconstruct the xattr map, and a
 	// node without xattrs must yield a nil map (unchanged behavior).
 	rd := NewTarReader(bytes.NewReader(buf.Bytes()), TarReaderOptions{})
 	f0, err := rd.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(f0.Xattrs, map[string]string(xattrs)) {
-		t.Fatalf("round-tripped xattrs = %v, want %v", f0.Xattrs, xattrs)
-	}
+	require.NoError(t, err)
+	require.Equal(t, map[string]string(xattrs), f0.Xattrs)
 	f1, err := rd.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f1.Xattrs != nil {
-		t.Fatalf("expected nil xattrs for node without any, got %v", f1.Xattrs)
-	}
-	if _, err := rd.Next(); err != io.EOF {
-		t.Fatalf("expected io.EOF, got %v", err)
-	}
+	require.NoError(t, err)
+	require.Nil(t, f1.Xattrs, "expected nil xattrs for node without any")
+	_, err = rd.Next()
+	require.ErrorIs(t, err, io.EOF)
 }
