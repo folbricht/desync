@@ -114,6 +114,29 @@ func TestIndexServerPathTraversal(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
+// TestIndexServerHead confirms HEAD accurately reflects index existence: an
+// existing index returns 200 OK, a missing one returns 404 Not Found. This
+// guards against the response inversion that previously made HEAD-before-PUT
+// clients clobber existing indexes.
+func TestIndexServerHead(t *testing.T) {
+	addr, cancel := startIndexServer(t, "-s", "testdata")
+	defer cancel()
+
+	// Existing index -> 200 OK
+	req, _ := http.NewRequest("HEAD", fmt.Sprintf("http://%s/blob1.caibx", addr), nil)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Missing index -> 404 Not Found
+	req, _ = http.NewRequest("HEAD", fmt.Sprintf("http://%s/does-not-exist.caibx", addr), nil)
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
 func startIndexServer(t *testing.T, args ...string) (string, context.CancelFunc) {
 	// Find a free local port to be used to run the index server on
 	l, err := net.Listen("tcp", "127.0.0.1:0")
