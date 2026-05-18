@@ -196,3 +196,71 @@ func TestStringOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestTrustInsecureOption(t *testing.T) {
+	for _, test := range []struct {
+		name                   string
+		args                   []string
+		cfgFileContent         []byte
+		trustInsecureStoreHit  bool
+		trustInsecureStoreMiss bool
+	}{
+		{"Config enables trust-insecure, no CLI flag",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"trust-insecure": true}}}`),
+			true, false,
+		},
+		{"Config enables trust-insecure, CLI explicitly disables it",
+			[]string{"--trust-insecure=false"},
+			[]byte(`{"store-options": {"/store/*/":{"trust-insecure": true}}}`),
+			false, false,
+		},
+		{"Config without trust-insecure, CLI enables it",
+			[]string{"--trust-insecure"},
+			[]byte(`{"store-options": {"/store/*/":{"uncompressed": true}}}`),
+			true, true,
+		},
+		{"Config without trust-insecure, no CLI flag",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"uncompressed": true}}}`),
+			false, false,
+		},
+		{"Config disables trust-insecure, CLI enables it",
+			[]string{"--trust-insecure"},
+			[]byte(`{"store-options": {"/store/*/":{"trust-insecure": false}}}`),
+			true, true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f, err := os.CreateTemp("", "desync-options")
+			require.NoError(t, err)
+			defer os.Remove(f.Name())
+			_, err = f.Write(test.cfgFileContent)
+			require.NoError(t, err)
+
+			// Set the global config file name
+			cfgFile = f.Name()
+
+			initConfig()
+
+			var cmdOpt cmdStoreOptions
+
+			cmd := newTestOptionsCommand(&cmdOpt)
+			cmd.SetArgs(test.args)
+
+			// Execute the mock command, to load the options provided in the launch arguments
+			_, err = cmd.ExecuteC()
+			require.NoError(t, err)
+
+			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
+			require.NoError(t, err)
+			opt := cmdOpt.MergedWith(configOptions)
+			require.Equal(t, test.trustInsecureStoreHit, opt.TrustInsecure)
+
+			configOptions, err = cfg.GetStoreOptionsFor("/missingStore")
+			require.NoError(t, err)
+			opt = cmdOpt.MergedWith(configOptions)
+			require.Equal(t, test.trustInsecureStoreMiss, opt.TrustInsecure)
+		})
+	}
+}

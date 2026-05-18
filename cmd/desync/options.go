@@ -41,7 +41,7 @@ func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions
 		opt.SkipVerify = true
 	}
 	if o.FlagSet.Lookup("trust-insecure").Changed {
-		opt.TrustInsecure = true
+		opt.TrustInsecure = o.trustInsecure
 	}
 	if o.FlagSet.Lookup("error-retry").Changed {
 		opt.ErrorRetry = o.errorRetry
