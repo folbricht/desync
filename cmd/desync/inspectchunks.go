@@ -79,6 +79,14 @@ func runInspectChunks(ctx context.Context, opt inspectChunksOptions, args []stri
 		var ok bool
 		s, ok = sr.(desync.LocalStore)
 
+		// On Windows, storeFromLocation wraps local stores in a
+		// WriteDedupQueue, so unwrap it to reach the LocalStore.
+		if !ok {
+			if q, isQueue := sr.(*desync.WriteDedupQueue); isQueue {
+				s, ok = q.S.(desync.LocalStore)
+			}
+		}
+
 		if !ok {
 			return fmt.Errorf("'%s' is not a local store", opt.store)
 		}

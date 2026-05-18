@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -19,10 +20,12 @@ func locationMatch(pattern, loc string) bool {
 	// See if we have a URL, Windows drive letters come out as single-letter
 	// scheme, so we need more here.
 	if len(l.Scheme) > 1 {
-		// URL paths should only use / as separator, remove the trailing one, if any
+		// URL paths only use / as separator, so match with path.Match
+		// rather than filepath.Match, whose separator is OS-dependent
+		// (\ on Windows). Remove the trailing /, if any.
 		trimmedLoc := strings.TrimSuffix(loc, "/")
 		trimmedPattern := strings.TrimSuffix(pattern, "/")
-		m, _ := filepath.Match(trimmedPattern, trimmedLoc)
+		m, _ := path.Match(trimmedPattern, trimmedLoc)
 		return m
 	}
 
