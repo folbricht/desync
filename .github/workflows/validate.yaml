@@ -16,6 +16,7 @@ jobs:
     name: Validate on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
 
@@ -26,7 +27,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - run: go test
+      - run: go test ./...
       - run: go build ./cmd/desync
 
       - name: Race detector
