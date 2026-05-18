@@ -95,6 +95,9 @@ func (o cmdServerOptions) validate() error {
 			return errors.New("--client-ca requires --cert and --key (TLS must be enabled)")
 		}
 	}
+	if o.mutualTLS && o.clientCA == "" {
+		return errors.New("--mutual-tls requires --client-ca (otherwise any certificate trusted by the system CA pool would be accepted)")
+	}
 	if o.clientCA != "" && !o.mutualTLS {
 		return errors.New("--client-ca requires --mutual-tls (otherwise client certificates are not verified)")
 	}

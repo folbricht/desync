@@ -107,11 +107,11 @@ func TestServerOptionsValidate(t *testing.T) {
 	}{
 		{"no TLS, no mTLS", cmdServerOptions{}, ""},
 		{"TLS only", cmdServerOptions{cert: "c", key: "k"}, ""},
-		{"TLS with mutualTLS", cmdServerOptions{cert: "c", key: "k", mutualTLS: true}, ""},
 		{"TLS with mutualTLS and clientCA", cmdServerOptions{cert: "c", key: "k", mutualTLS: true, clientCA: "ca"}, ""},
 		{"key without cert", cmdServerOptions{key: "k"}, "--key and --cert"},
 		{"cert without key", cmdServerOptions{cert: "c"}, "--key and --cert"},
-		{"mutualTLS without TLS", cmdServerOptions{mutualTLS: true}, "--mutual-tls requires"},
+		{"mutualTLS without TLS", cmdServerOptions{mutualTLS: true}, "--mutual-tls requires --cert and --key"},
+		{"mutualTLS without clientCA", cmdServerOptions{cert: "c", key: "k", mutualTLS: true}, "--mutual-tls requires --client-ca"},
 		{"clientCA without TLS", cmdServerOptions{clientCA: "ca"}, "--client-ca requires --cert"},
 		{"clientCA without mutualTLS", cmdServerOptions{cert: "c", key: "k", clientCA: "ca"}, "--client-ca requires --mutual-tls"},
 	} {

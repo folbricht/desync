@@ -403,8 +403,8 @@ Not all options apply to all commands.
 | `--store-file <file>` | Read store arguments from a JSON file; supports SIGHUP reload. Applies to `chunk-server` and `mount-index`. |
 | `--key <file>` | Key file in PEM format for HTTPS `chunk-server` and `index-server`. Requires `--cert`. |
 | `--cert <file>` | Certificate file in PEM format for HTTPS `chunk-server` and `index-server`. Requires `--key`. |
-| `--mutual-tls` | Require a valid client certificate. Applies to `chunk-server` and `index-server`. |
-| `--client-ca <file>` | Acceptable client certificate or CA for mutual TLS. |
+| `--mutual-tls` | Require a valid client certificate, verified against `--client-ca` (which is mandatory when this is set). Applies to `chunk-server` and `index-server`. |
+| `--client-ca <file>` | Acceptable client certificate or CA for mutual TLS. Required when `--mutual-tls` is set; otherwise client certs would be verified against the system trust store. |
 | `--authorization <value>` | Expected value of the Authorization header in client requests. |
 | `--log <file>` | Request log file, or `-` for STDOUT. Applies to `chunk-server` and `index-server`. |
 
