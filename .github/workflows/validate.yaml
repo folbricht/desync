@@ -2,14 +2,27 @@
 name: Validate
 
 on:
+  # Post-merge validation only. Feature branches are validated by their
+  # pull_request run, so a branch push with an open PR no longer triggers
+  # a duplicate (previously cancelled) push run.
   push:
-    # Always run when there are new commits
     branches:
-      - '**'
-  # Always run when there are pull requests
+      - master
+  # All pull requests.
   pull_request:
     branches:
       - '**'
+
+# Least-privilege token; the validate workflow only needs to read the repo.
+permissions:
+  contents: read
+
+# A push and its pull_request both trigger this workflow on the same
+# branch. Group them so only one full matrix runs, and cancel runs that
+# are superseded by a newer commit on the same branch/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,13 +35,13 @@ jobs:
 
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - run: go test ./...
-      - run: go build ./cmd/desync
+      - run: go build -o cmd/desync/ ./cmd/desync
 
       - name: Race detector
         if: runner.os == 'Linux'
