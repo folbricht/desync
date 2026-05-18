@@ -120,6 +120,12 @@ func runIndexServer(ctx context.Context, opt indexServerOptions, args []string) 
 func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error {
 	tlsConfig := &tls.Config{}
 	if opt.mutualTLS {
+		// Defense-in-depth: validate() already rejects this combination, but
+		// without an explicit client CA, crypto/tls falls back to the system
+		// trust store and would accept any publicly-trusted client cert.
+		if opt.clientCA == "" {
+			return errors.New("--mutual-tls requires --client-ca")
+		}
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 	if opt.clientCA != "" {
