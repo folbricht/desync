@@ -2,11 +2,13 @@
 name: Validate
 
 on:
+  # Post-merge validation only. Feature branches are validated by their
+  # pull_request run, so a branch push with an open PR no longer triggers
+  # a duplicate (previously cancelled) push run.
   push:
-    # Always run when there are new commits
     branches:
-      - '**'
-  # Always run when there are pull requests
+      - master
+  # All pull requests.
   pull_request:
     branches:
       - '**'
