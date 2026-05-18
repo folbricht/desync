@@ -19,7 +19,7 @@ permissions:
 # branch. Group them so only one full matrix runs, and cancel runs that
 # are superseded by a newer commit on the same branch/PR.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
