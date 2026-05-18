@@ -59,13 +59,18 @@ func TestLocationEquality(t *testing.T) {
 	// Equal paths
 	require.True(t, locationMatch("/path", "/path/../path"))
 	require.True(t, locationMatch("//path", "//path"))
-	require.True(t, locationMatch("//path", "/path"))
 	require.True(t, locationMatch("./path", "./path"))
 	require.True(t, locationMatch("path", "path/"))
 	require.True(t, locationMatch("path/..", "."))
 	if runtime.GOOS == "windows" {
 		require.True(t, locationMatch("c:\\path\\to\\somewhere", "c:\\path\\to\\somewhere\\"))
 		require.True(t, locationMatch("/path/to/somewhere", "\\path\\to\\somewhere\\"))
+	} else {
+		// On Windows a leading // is a UNC path root, so //path and
+		// /path are legitimately different. This equality only holds
+		// under POSIX path semantics, which locationMatch intentionally
+		// applies per-OS for local (non-URL) paths.
+		require.True(t, locationMatch("//path", "/path"))
 	}
 
 	// Equal paths with globs
