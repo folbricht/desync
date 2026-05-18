@@ -92,11 +92,17 @@ func (fs MtreeFS) CreateDevice(n NodeDevice) error {
 // printable ASCII characters must be encoded as a backslash followed by three octal digits.
 // When reading mtree files, any appearance of a backslash followed by three octal digits should
 // be converted into the corresponding character.
+//
+// The space character is also escaped even though it is printable ASCII. mtree(5) lines are
+// space-delimited keyword=value pairs following the filename, so an unescaped space in an
+// untrusted entry name would let it inject keywords (e.g. "ignore", "optional", "nochange")
+// that suppress integrity checks. This matches the escaped set used by libarchive and BSD
+// mtree (non-printable, '\', ' ', '\t', '#'); tab and other control bytes are covered by c < 32.
 func mtreeFilename(s string) string {
 	var b strings.Builder
 	for _, c := range []byte(s) {
 		switch {
-		case c == '\\' || c == '#' || c < 32 || c > 126:
+		case c == '\\' || c == '#' || c == ' ' || c < 32 || c > 126:
 			b.WriteString(fmt.Sprintf("\\%03o", c))
 		default:
 			b.WriteByte(c)
