@@ -52,8 +52,13 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, erro
 	if location.User != nil {
 		host = location.User.Username() + "@" + location.Host
 	}
+	// Reject destinations that ssh would parse as command-line options.
+	if err := validateSSHHost(host); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := exec.CommandContext(ctx, sshCmd, host, "-s", "sftp")
+	// "--" terminates option parsing so the destination can't be read as a flag.
+	c := exec.CommandContext(ctx, sshCmd, "-s", "--", host, "sftp")
 	c.Stderr = os.Stderr
 	r, err := c.StdoutPipe()
 	if err != nil {

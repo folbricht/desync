@@ -88,8 +88,15 @@ func StartProtocol(u *url.URL) (*Protocol, error) {
 	if u.User != nil {
 		host = u.User.Username() + "@" + u.Host
 	}
+	// Reject destinations that ssh would parse as command-line options.
+	if err := validateSSHHost(host); err != nil {
+		return nil, err
+	}
 
-	c := exec.Command(sshCmd, host, fmt.Sprintf("%s pull - - - '%s'", remoteCmd, path))
+	// "--" terminates ssh's option parsing so the destination can't be read as a
+	// flag, and the path is shell-quoted so it can't break out of the remote
+	// command string.
+	c := exec.Command(sshCmd, "--", host, fmt.Sprintf("%s pull - - - %s", remoteCmd, shellQuote(path)))
 	c.Stderr = os.Stderr
 	r, err := c.StdoutPipe()
 	if err != nil {
