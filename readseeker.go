@@ -94,17 +94,25 @@ func (ip *IndexPos) loadChunk() error {
 	// is being loaded
 	if ip.curChunkID == ip.nullChunk.ID {
 		ip.curChunk = ip.nullChunk.Data
-		return nil
+	} else {
+		chunk, err := ip.Store.GetChunk(ip.curChunkID)
+		if err != nil {
+			return err
+		}
+		b, err := chunk.Data()
+		if err != nil {
+			return err
+		}
+		ip.curChunk = b
 	}
-	chunk, err := ip.Store.GetChunk(ip.curChunkID)
-	if err != nil {
-		return err
+	// The read path assumes len(curChunk) matches the size the index declares
+	// for this chunk. A mismatch means a corrupt or malicious index; without
+	// this check Read() can slice curChunk out of bounds (panic) or spin in a
+	// zero-progress loop. AssembleFile performs the same check.
+	if uint64(len(ip.curChunk)) != ip.Index.Chunks[ip.curChunkIdx].Size {
+		ip.curChunk = nil
+		return fmt.Errorf("unexpected size for chunk %s", ip.curChunkID.String())
 	}
-	b, err := chunk.Data()
-	if err != nil {
-		return err
-	}
-	ip.curChunk = b
 	return nil
 }
 
