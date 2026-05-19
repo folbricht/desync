@@ -12,21 +12,28 @@ import (
 
 type pruneOptions struct {
 	cmdStoreOptions
-	store string
-	yes   bool
+	store        string
+	yes          bool
+	ignoreChunks []string
 }
 
 func newPruneCommand(ctx context.Context) *cobra.Command {
 	var opt pruneOptions
 
 	cmd := &cobra.Command{
-		Use:   "prune <index> [<file>..]",
+		Use:   "prune [<index> ...]",
 		Short: "Remove unreferenced chunks from a store",
 		Long: `Read chunk IDs in from index files and delete any chunks from a store
 that are not referenced in the provided index files. Use '-' to read a single index
-from STDIN.`,
+from STDIN. Alternatively, chunk IDs can be provided in a text file with
+--ignore-chunks <file>.`,
 		Example: `  desync prune -s /path/to/local --yes file.caibx`,
-		Args:    cobra.MinimumNArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && len(opt.ignoreChunks) == 0 {
+				return errors.New("required at least one index file or --ignore-chunks argument")
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPrune(ctx, opt, args)
 		},
@@ -35,6 +42,7 @@ from STDIN.`,
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store")
 	flags.BoolVarP(&opt.yes, "yes", "y", false, "do not ask for confirmation")
+	flags.StringSliceVarP(&opt.ignoreChunks, "ignore-chunks", "", nil, "additional chunk IDs to keep from text file(s)")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
@@ -75,6 +83,17 @@ func runPrune(ctx context.Context, opt pruneOptions, args []string) error {
 		}
 		for _, c := range c.Chunks {
 			ids[c.ID] = struct{}{}
+		}
+	}
+
+	// Read chunk IDs from text files
+	for _, f := range opt.ignoreChunks {
+		chunkIDs, err := readChunkIDFile(f)
+		if err != nil {
+			return err
+		}
+		for _, id := range chunkIDs {
+			ids[id] = struct{}{}
 		}
 	}
 
