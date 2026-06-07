@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -16,7 +15,7 @@ type nullChunkSeed struct {
 }
 
 func newNullChunkSeed(dstFile string, blocksize uint64, max uint64) (*nullChunkSeed, error) {
-	blockfile, err := ioutil.TempFile(filepath.Dir(dstFile), ".tmp-block")
+	blockfile, err := os.CreateTemp(filepath.Dir(dstFile), ".tmp-block")
 	if err != nil {
 		return nil, err
 	}
@@ -47,12 +46,17 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	if len(chunks) == 0 {
 		return 0, nil
 	}
-	// No limit needed: when isBlank=true, WriteInto skips without copying.
-	// When isBlank=false, we must still write zeros to overwrite stale data.
-	// The previous limit of 100 caused chunks beyond the limit to fall
-	// through to other code paths, leading to incorrect assembly.
-	var n int
+	var (
+		n     int
+		limit int
+	)
+	if !s.canReflink {
+		limit = 100
+	}
 	for _, c := range chunks {
+		if limit != 0 && limit == n {
+			break
+		}
 		if c.ID != s.id {
 			break
 		}
@@ -104,7 +108,7 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 		return 0, 0, fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
 	}
 
-	// When cloning isn'a available we'd normally have to copy the 0 bytes into
+	// When cloning isn't available we'd normally have to copy the 0 bytes into
 	// the target range. But if that's already blank (because it's a new/truncated
 	// file) there's no need to copy 0 bytes.
 	if !s.canReflink {
@@ -117,7 +121,7 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 }
 
 func (s *nullChunkSection) copy(dst *os.File, offset, length uint64) (uint64, uint64, error) {
-	if _, err := dst.Seek(int64(offset), os.SEEK_SET); err != nil {
+	if _, err := dst.Seek(int64(offset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
 	// Copy using a fixed buffer. Using io.Copy() with a LimitReader will make it

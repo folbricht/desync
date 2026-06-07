@@ -3,24 +3,11 @@
 package desync
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"syscall"
-	"unsafe"
-)
 
-type fstore_t struct {
-	Flags      uint32
-	Posmode    int32
-	Offset     int64
-	Length     int64
-	Bytesalloc int64
-}
-
-const (
-	fAllocateAll = 0x00000004
-	fPeofPosmode = 3
-	fPreallocate = 42
+	"golang.org/x/sys/unix"
 )
 
 // preallocateFile physically allocates disk blocks and sets the file size.
@@ -35,18 +22,29 @@ func preallocateFile(name string, size int64) error {
 	}
 	defer f.Close()
 
-	store := fstore_t{
-		Flags:   fAllocateAll,
-		Posmode: fPeofPosmode,
-		Offset:  0,
-		Length:  size,
+	info, err := f.Stat()
+	if err != nil {
+		return err
 	}
-	_, _, errno := syscall.Syscall(syscall.SYS_FCNTL,
-		uintptr(f.Fd()),
-		uintptr(fPreallocate),
-		uintptr(unsafe.Pointer(&store)))
-	if errno != 0 {
-		return fmt.Errorf("F_PREALLOCATE: %w", errno)
+
+	// F_PREALLOCATE with F_PEOFPOSMODE allocates relative to the current
+	// end of file, so only request the difference. Nothing to allocate if
+	// the file is already large enough or no growth is needed.
+	if extra := size - info.Size(); extra > 0 {
+		store := unix.Fstore_t{
+			Flags:   unix.F_ALLOCATEALL,
+			Posmode: unix.F_PEOFPOSMODE,
+			Offset:  0,
+			Length:  extra,
+		}
+		if err := unix.FcntlFstore(f.Fd(), unix.F_PREALLOCATE, &store); err != nil {
+			// Not all filesystems support F_PREALLOCATE (e.g. SMB or FUSE
+			// mounts). The sparse-hole issue is specific to APFS, so fall
+			// back to a plain truncate there.
+			if !errors.Is(err, unix.ENOTSUP) {
+				return fmt.Errorf("F_PREALLOCATE %s: %w", name, err)
+			}
+		}
 	}
 
 	return f.Truncate(size)
