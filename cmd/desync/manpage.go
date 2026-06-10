@@ -17,6 +17,7 @@ func newManpageCommand(ctx context.Context, root *cobra.Command) *cobra.Command 
 	cmd := &cobra.Command{
 		Use:     "manpage <output-directory>",
 		Short:   "Generate manpages for desync",
+		Long:    `Generates man pages for desync and all of its commands into the given directory.`,
 		Example: `  desync manpage /tmp/man`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

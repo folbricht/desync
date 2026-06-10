@@ -51,8 +51,10 @@ This command supports the --store-file option which can be used to define the st
 and caches in a JSON file. The config can then be reloaded by sending a SIGHUP without
 needing to restart the server. This can be done under load as well.
 `,
-		Example: `  desync chunk-server -s sftp://192.168.1.1/store -c /path/to/cache -l :8080`,
-		Args:    cobra.NoArgs,
+		Example: `  desync chunk-server -s sftp://192.168.1.1/store -c /path/to/cache -l :8080
+  desync chunk-server -s /path/to/store -w -l :8080
+  desync chunk-server -s /path/to/store --cert cert.pem --key key.pem -l :8443`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runChunkServer(ctx, opt, args)
 		},
@@ -62,7 +64,7 @@ needing to restart the server. This can be done under load as well.
 	flags.StringVar(&opt.storeFile, "store-file", "", "read store arguments from a file, supports reload on SIGHUP")
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "upstream source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
-	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
+	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address(es), can be repeated")
 	flags.BoolVarP(&opt.writable, "writable", "w", false, "support writing")
 	flags.BoolVar(&opt.writable, "writeable", false, "support writing")
 	_ = flags.MarkDeprecated("writeable", "use --writable instead")

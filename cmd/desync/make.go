@@ -28,8 +28,9 @@ func newMakeCommand(ctx context.Context) *cobra.Command {
 provided with -s, such as a local directory or S3 store, it splits the input
 file according to the index and stores the chunks. Use '-' to write the index
 to STDOUT.`,
-		Example: `  desync make -s /path/to/local file.caibx largefile.bin`,
-		Args:    cobra.ExactArgs(2),
+		Example: `  desync make -s /path/to/local file.caibx largefile.bin
+  desync make -m 8:32:128 - largefile.bin > file.caibx`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMake(ctx, opt, args)
 		},

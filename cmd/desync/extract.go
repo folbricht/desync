@@ -32,22 +32,26 @@ func newExtractCommand(ctx context.Context) *cobra.Command {
 		Use:   "extract <index> <output>",
 		Short: "Read an index and build a blob from it",
 		Long: `Reads an index and builds a blob reading chunks from one or more chunk stores.
+Use '-' to read the index from STDIN.
+
 When using -k, the blob will be extracted in-place utilizing existing data and
 the target file will not be deleted on error. This can be used to restart a
 failed prior extraction without having to retrieve completed chunks again.
-Multiple optional seed indexes can be given with --seed. The matching blob should
-have the same name as the index file without the .caibx extension. Instead, if the
-matching blob data is in another location, or with a different name, you can explicitly
-set the path by writing the index file path, followed by a colon and the data path.
-If several seed files and indexes are available, the --seed-dir option can be used
-to automatically select all .caibx files in a directory as seeds. Use '-' to read
-the index from STDIN. If a seed is invalid, by default the extract operation will be
-aborted. With --skip-invalid-seeds, the invalid seeds will be discarded and the
-extraction will continue without them. Otherwise with --regenerate-invalid-seeds,
-any invalid seed indexes will be regenerated, in memory, by using the
-available data, and neither data nor indexes will be changed on disk. Also, if the seed changes
-while processing, its invalid chunks will be taken from the self seed, or the store, instead
-of aborting.`,
+
+Multiple optional seed indexes can be given with --seed. The matching blob
+should have the same name as the index file without the .caibx extension. If
+the blob data is in another location, or has a different name, the path can be
+set explicitly by appending a colon and the data path to the index path, as in
+--seed <index>:<blob>. If several seed files and indexes are available, the
+--seed-dir option can be used to automatically select all .caibx files in a
+directory as seeds, expecting the matching blobs next to them.
+
+If a seed is invalid, the extract operation is aborted by default. With
+--skip-invalid-seeds, invalid seeds are discarded and the extraction continues
+without them. Alternatively, --regenerate-invalid-seeds regenerates invalid
+seed indexes in memory from the available data; neither data nor indexes are
+changed on disk. Also, if a seed changes while processing, its invalid chunks
+will be taken from the self seed, or the store, instead of aborting.`,
 		Example: `  desync extract -s http://192.168.1.1/ -c /path/to/local file.caibx largefile.bin
   desync extract -s /mnt/store -s /tmp/other/store file.tar.caibx file.tar
   desync extract -s /mnt/store --seed /mnt/v1.caibx v2.caibx v2.vmdk
@@ -62,8 +66,8 @@ of aborting.`,
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringSliceVar(&opt.seeds, "seed", nil, "seed indexes")
 	flags.StringSliceVar(&opt.seedDirs, "seed-dir", nil, "directory with seed index files")
-	flags.BoolVar(&opt.skipInvalidSeeds, "skip-invalid-seeds", false, "Skip seeds with invalid chunks")
-	flags.BoolVar(&opt.regenerateInvalidSeeds, "regenerate-invalid-seeds", false, "Regenerate seed indexes with invalid chunks")
+	flags.BoolVar(&opt.skipInvalidSeeds, "skip-invalid-seeds", false, "skip seeds with invalid chunks")
+	flags.BoolVar(&opt.regenerateInvalidSeeds, "regenerate-invalid-seeds", false, "regenerate seed indexes with invalid chunks")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")
 	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print extraction statistics to stdout when done")

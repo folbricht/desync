@@ -19,9 +19,11 @@ func newChunkCommand(ctx context.Context) *cobra.Command {
 	var opt chunkOptions
 
 	cmd := &cobra.Command{
-		Use:     "chunk <file>",
-		Short:   "Chunk input file and print chunk points plus chunk ID",
-		Long:    `Write start/length/hash pairs for each chunk a file would be split into.`,
+		Use:   "chunk <file>",
+		Short: "Chunk input file and print chunk boundaries and IDs",
+		Long: `Chunks the input file without storing anything, and prints a start/length/hash
+triple for each chunk the file would be split into. Useful to inspect or tune
+chunking parameters before running 'make'.`,
 		Example: `  desync chunk file.bin`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -30,7 +32,7 @@ func newChunkCommand(ctx context.Context) *cobra.Command {
 		SilenceUsage: true,
 	}
 	flags := cmd.Flags()
-	flags.Uint64VarP(&opt.startPos, "start", "S", 0, "starting position")
+	flags.Uint64VarP(&opt.startPos, "start", "S", 0, "starting position in bytes")
 	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	return cmd
 }
