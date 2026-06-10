@@ -22,10 +22,11 @@ func newCacheCommand(ctx context.Context) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cache <index> [<index>...]",
 		Short: "Read indexes and copy the referenced chunks",
-		Long: `Read chunk IDs from caibx or caidx files from one or more stores without
-writing to disk. Can be used (with -c) to populate a store with desired chunks
-either to be used as cache, or to populate a store with chunks referenced in an
-index file. Use '-' to read (a single) index from STDIN.
+		Long: `Read chunk IDs from one or more index files (caibx or caidx) and copy the
+referenced chunks from the source store(s) into the target store given with
+-c, without assembling any blob on disk. This can be used to pre-populate a
+cache, or to replicate the chunks referenced by indexes into another store.
+Use '-' to read (a single) index from STDIN.
 
 To exclude chunks that are known to exist in the target store already, use
 --ignore <index> which will skip any chunks from the given index. The same can
@@ -40,9 +41,9 @@ file with --ignore-chunks <file>.`,
 	}
 	flags := cmd.Flags()
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
-	flags.StringVarP(&opt.cache, "cache", "c", "", "target store")
-	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "indexes to ignore chunks from")
-	flags.StringSliceVarP(&opt.ignoreChunks, "ignore-chunks", "", nil, "ignore chunks from text file")
+	flags.StringVarP(&opt.cache, "cache", "c", "", "target store the chunks are copied to")
+	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "index(es) with chunks to be excluded")
+	flags.StringSliceVarP(&opt.ignoreChunks, "ignore-chunks", "", nil, "text file with chunk IDs to be excluded")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }

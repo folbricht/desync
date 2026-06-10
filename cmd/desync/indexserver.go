@@ -35,8 +35,9 @@ func newIndexServerCommand(ctx context.Context) *cobra.Command {
 reading from a single local store or proxying to a remote store.
 If --cert and --key are provided, the server will serve over HTTPS. The -w option
 enables writing to this store.`,
-		Example: `  desync index-server -s sftp://192.168.1.1/indexes -l :8080`,
-		Args:    cobra.NoArgs,
+		Example: `  desync index-server -s sftp://192.168.1.1/indexes -l :8080
+  desync index-server -s /path/to/indexes -w -l :8080`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runIndexServer(ctx, opt, args)
 		},
@@ -44,7 +45,7 @@ enables writing to this store.`,
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "upstream source index store")
-	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
+	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address(es), can be repeated")
 	flags.BoolVarP(&opt.writable, "writable", "w", false, "support writing")
 	flags.BoolVar(&opt.writable, "writeable", false, "support writing")
 	_ = flags.MarkDeprecated("writeable", "use --writable instead")

@@ -33,8 +33,9 @@ This is inherently slower than extract as while multiple chunks can be
 retrieved concurrently, writing to stdout cannot be parallelized.
 
 Use '-' to read the index from STDIN.`,
-		Example: `  desync cat -s http://192.168.1.1/ file.caibx | grep something`,
-		Args:    cobra.RangeArgs(1, 2),
+		Example: `  desync cat -s http://192.168.1.1/ file.caibx | grep something
+  desync cat -s /path/to/store -o 1048576 -l 4096 file.caibx slice.bin`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCat(ctx, opt, args)
 		},
@@ -44,7 +45,7 @@ Use '-' to read the index from STDIN.`,
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.IntVarP(&opt.offset, "offset", "o", 0, "offset in bytes to seek to before reading")
-	flags.IntVarP(&opt.length, "length", "l", 0, "number of bytes to read")
+	flags.IntVarP(&opt.length, "length", "l", 0, "number of bytes to read (0 reads to the end)")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }
