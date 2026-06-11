@@ -1,11 +1,13 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 const defaultErrorRetry = 3
@@ -65,14 +67,11 @@ func TestErrorRetryOptions(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := os.CreateTemp("", "desync-options")
-			require.NoError(t, err)
-			defer os.Remove(f.Name())
-			_, err = f.Write(test.cfgFileContent)
-			require.NoError(t, err)
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, test.cfgFileContent, 0644))
 
 			// Set the global config file name
-			cfgFile = f.Name()
+			cfgFile = f
 
 			initConfig()
 
@@ -82,7 +81,7 @@ func TestErrorRetryOptions(t *testing.T) {
 			cmd.SetArgs(test.args)
 
 			// Execute the mock command, to load the options provided in the launch arguments
-			_, err = cmd.ExecuteC()
+			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
@@ -161,14 +160,11 @@ func TestStringOptions(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := os.CreateTemp("", "desync-options")
-			require.NoError(t, err)
-			defer os.Remove(f.Name())
-			_, err = f.Write(test.cfgFileContent)
-			require.NoError(t, err)
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, test.cfgFileContent, 0644))
 
 			// Set the global config file name
-			cfgFile = f.Name()
+			cfgFile = f
 
 			initConfig()
 
@@ -178,7 +174,7 @@ func TestStringOptions(t *testing.T) {
 			cmd.SetArgs(test.args)
 
 			// Execute the mock command, to load the options provided in the launch arguments
-			_, err = cmd.ExecuteC()
+			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
@@ -232,14 +228,11 @@ func TestTrustInsecureOption(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := os.CreateTemp("", "desync-options")
-			require.NoError(t, err)
-			defer os.Remove(f.Name())
-			_, err = f.Write(test.cfgFileContent)
-			require.NoError(t, err)
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, test.cfgFileContent, 0644))
 
 			// Set the global config file name
-			cfgFile = f.Name()
+			cfgFile = f
 
 			initConfig()
 
@@ -249,7 +242,7 @@ func TestTrustInsecureOption(t *testing.T) {
 			cmd.SetArgs(test.args)
 
 			// Execute the mock command, to load the options provided in the launch arguments
-			_, err = cmd.ExecuteC()
+			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")

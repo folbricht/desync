@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,14 +10,11 @@ import (
 
 func TestConfigFile(t *testing.T) {
 	cfgFileContent := []byte(`{"store-options": {"/path/to/store/":{"uncompressed": true}}}`)
-	f, err := os.CreateTemp("", "")
-	require.NoError(t, err)
-	f.Close()
-	defer os.Remove(f.Name())
-	require.NoError(t, os.WriteFile(f.Name(), cfgFileContent, 0644))
+	f := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, os.WriteFile(f, cfgFileContent, 0644))
 
 	// Set the global config file name
-	cfgFile = f.Name()
+	cfgFile = f
 
 	// Call init, this should use the custom config file and global "cfg" should contain the
 	// values
@@ -35,14 +33,11 @@ func TestConfigFile(t *testing.T) {
 
 func TestConfigFileMultipleMatches(t *testing.T) {
 	cfgFileContent := []byte(`{"store-options": {"/path/to/store/":{"uncompressed": true}, "/path/to/store":{"uncompressed": false}}}`)
-	f, err := os.CreateTemp("", "")
-	require.NoError(t, err)
-	f.Close()
-	defer os.Remove(f.Name())
-	require.NoError(t, os.WriteFile(f.Name(), cfgFileContent, 0644))
+	f := filepath.Join(t.TempDir(), "config")
+	require.NoError(t, os.WriteFile(f, cfgFileContent, 0644))
 
 	// Set the global config file name
-	cfgFile = f.Name()
+	cfgFile = f
 
 	// Call init, this should use the custom config file and global "cfg" should contain the
 	// values
@@ -50,6 +45,6 @@ func TestConfigFileMultipleMatches(t *testing.T) {
 
 	// We expect this to fail because both "/path/to/store/" and "/path/to/store" matches the
 	// provided location
-	_, err = cfg.GetStoreOptionsFor("/path/to/store")
+	_, err := cfg.GetStoreOptionsFor("/path/to/store")
 	require.Error(t, err)
 }

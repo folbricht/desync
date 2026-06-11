@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -73,9 +74,7 @@ func TestLoaderChunkRange(t *testing.T) {
 
 func TestSparseFileRead(t *testing.T) {
 	// Sparse output file
-	sparseFile, err := os.CreateTemp("", "")
-	require.NoError(t, err)
-	defer os.Remove(sparseFile.Name())
+	sparseFile := filepath.Join(t.TempDir(), "sparse")
 
 	// Open the store
 	s, err := NewLocalStore("testdata/blob1.store", StoreOptions{})
@@ -94,7 +93,7 @@ func TestSparseFileRead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initialize the sparse file and open a handle
-	sparse, err := NewSparseFile(sparseFile.Name(), index, s, SparseFileOptions{})
+	sparse, err := NewSparseFile(sparseFile, index, s, SparseFileOptions{})
 	require.NoError(t, err)
 	h, err := sparse.Open()
 	require.NoError(t, err)
@@ -132,9 +131,7 @@ func TestSparseFileRead(t *testing.T) {
 // failed load must surface an error, and a subsequent read must retry and
 // return the real chunk data rather than the zeroed (never-written) region.
 func TestSparseFileRetryAfterFailedLoad(t *testing.T) {
-	sparseFile, err := os.CreateTemp("", "")
-	require.NoError(t, err)
-	defer os.Remove(sparseFile.Name())
+	sparseFile := filepath.Join(t.TempDir(), "sparse")
 
 	s, err := NewLocalStore("testdata/blob1.store", StoreOptions{})
 	require.NoError(t, err)
@@ -166,7 +163,7 @@ func TestSparseFileRetryAfterFailedLoad(t *testing.T) {
 	// Store that fails the first GetChunk for the target chunk, then works.
 	flaky := &flakyStore{Store: s, failID: target.ID, failsLeft: 1}
 
-	sparse, err := NewSparseFile(sparseFile.Name(), index, flaky, SparseFileOptions{})
+	sparse, err := NewSparseFile(sparseFile, index, flaky, SparseFileOptions{})
 	require.NoError(t, err)
 	h, err := sparse.Open()
 	require.NoError(t, err)
