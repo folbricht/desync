@@ -254,7 +254,6 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 		// range. ZFS for example requires alignment to its record size and
 		// refuses to clone data that hasn't been committed to disk yet. Fall
 		// back to copying the blocks.
-		Log.WithError(err).Info("Unable to clone blocks from seed, copying instead")
 		c3, _, err := s.copy(dst, src, srcAlignStart, alignLength, dstAlignStart)
 		return copied + c3, 0, err
 	}

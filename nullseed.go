@@ -165,7 +165,6 @@ func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64,
 			// every range. ZFS for example refuses to clone from the blockfile
 			// before it has been committed to disk. Fall back to writing zeros,
 			// or to doing nothing if the target range is still blank.
-			Log.WithError(err).Info("Unable to clone zero blocks, copying instead")
 			if isBlank {
 				return copied, cloned, nil
 			}
