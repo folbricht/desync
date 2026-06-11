@@ -219,6 +219,18 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 
 	srcAlignStart := (srcOffset/blocksize + 1) * blocksize
 	srcAlignEnd := (srcOffset + srcLength) / blocksize * blocksize
+
+	// If the range is too small to contain a full aligned block, there is
+	// nothing that can be cloned. Copy the whole range instead. This also
+	// guards against srcAlignEnd-srcAlignStart underflowing, and against
+	// calling CloneRange with a zero length, which FICLONERANGE interprets
+	// as "clone to the end of the source file". Filesystems with large
+	// blocks, like ZFS with the default 128k recordsize, hit this case
+	// frequently.
+	if srcAlignEnd <= srcAlignStart {
+		return s.copy(dst, src, srcOffset, srcLength, dstOffset)
+	}
+
 	dstAlignStart := (dstOffset/blocksize + 1) * blocksize
 	alignLength := srcAlignEnd - srcAlignStart
 	dstAlignEnd := dstAlignStart + alignLength
@@ -237,5 +249,14 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 	}
 	copied += c2
 	// close the aligned blocks
-	return copied, alignLength, CloneRange(dst, src, srcAlignStart, alignLength, dstAlignStart)
+	if err := cloneRange(dst, src, srcAlignStart, alignLength, dstAlignStart); err != nil {
+		// Not every filesystem that passes the CanClone probe can clone every
+		// range. ZFS for example requires alignment to its record size and
+		// refuses to clone data that hasn't been committed to disk yet. Fall
+		// back to copying the blocks.
+		Log.WithError(err).Info("Unable to clone blocks from seed, copying instead")
+		c3, _, err := s.copy(dst, src, srcAlignStart, alignLength, dstAlignStart)
+		return copied + c3, 0, err
+	}
+	return copied, alignLength, nil
 }
