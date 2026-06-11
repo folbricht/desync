@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPStoreURL(t *testing.T) {
@@ -32,13 +35,9 @@ func TestHTTPStoreURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = test.storePath
 			s, err := NewRemoteHTTPStore(u, StoreOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			s.GetChunk(chunkID)
-			if requestURI != test.serverPath {
-				t.Fatalf("got request uri '%s', want '%s'", requestURI, test.serverPath)
-			}
+			require.Equal(t, test.serverPath, requestURI)
 		})
 	}
 }
@@ -106,15 +105,17 @@ func TestHasChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
 			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			attemptCount = 0
 			hasChunk, err := s.HasChunk(test.chunkId)
-			if (hasChunk != test.hasChunk) || ((err != nil) != test.hasError) || (attemptCount != test.attemptCount) {
-				t.Errorf("expected hasChunk = %t / hasError = %t / attemptCount = %d, got %t / %t / %d", test.hasChunk, test.hasError, test.attemptCount, hasChunk, (err != nil), attemptCount)
+			assert.Equal(t, test.hasChunk, hasChunk)
+			if test.hasError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
+			assert.Equal(t, test.attemptCount, attemptCount)
 		})
 	}
 }
@@ -192,9 +193,7 @@ func TestGetChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
 			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			attemptCount = 0
 			content, err := s.GetChunk(test.chunkId)
@@ -203,9 +202,13 @@ func TestGetChunk(t *testing.T) {
 				uncompressedContent, _ := content.Data()
 				content_string = string(uncompressedContent)
 			}
-			if (content_string != test.content) || ((err != nil) != test.hasError) || (attemptCount != test.attemptCount) {
-				t.Errorf("expected content = \"%s\" / hasError = %t / attemptCount = %d, got \"%s\" / %t / %d", test.content, test.hasError, test.attemptCount, content_string, (err != nil), attemptCount)
+			assert.Equal(t, test.content, content_string)
+			if test.hasError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
+			assert.Equal(t, test.attemptCount, attemptCount)
 		})
 	}
 }
@@ -291,9 +294,7 @@ func TestPutChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
 			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			attemptCount = 0
 			writtenContent = nil
@@ -303,9 +304,13 @@ func TestPutChunk(t *testing.T) {
 			if writtenContent != nil {
 				writtenContentString = string(writtenContent)
 			}
-			if ((err != nil) != test.hasError) || (attemptCount != test.attemptCount) || (writtenContentString != test.writtenContent) {
-				t.Errorf("expected writtenContent = \"%s\" / hasError = %t / attemptCount = %d, got \"%s\" / %t / %d", test.writtenContent, test.hasError, test.attemptCount, writtenContentString, (err != nil), attemptCount)
+			assert.Equal(t, test.writtenContent, writtenContentString)
+			if test.hasError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
+			assert.Equal(t, test.attemptCount, attemptCount)
 		})
 	}
 }

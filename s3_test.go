@@ -17,6 +17,7 @@ import (
 
 	minio "github.com/minio/minio-go/v6"
 	"github.com/minio/minio-go/v6/pkg/credentials"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -134,17 +135,11 @@ func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bu
 	var errorTimes int
 	// using localhost + resolver let us work on hosts that support only ipv6 or only ipv4
 	ip, err := net.DefaultResolver.LookupIP(ctx, "ip", "localhost")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ip) < 1 {
-		t.Fatalf("cannot resolve localhost")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, ip, "cannot resolve localhost")
 
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip[0], Port: 0})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	group.Go(func() error {
 		<-ctx.Done()
@@ -172,9 +167,7 @@ func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bu
 
 func TestS3StoreGetChunk(t *testing.T) {
 	chunkId, err := ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	location := "vertucon-central"
 	bucket := "doomsdaydevices"
 	provider := MockCredProvider{}
@@ -213,9 +206,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 
 	t.Run("fail", func(t *testing.T) {
@@ -251,9 +242,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 
 	t.Run("recover", func(t *testing.T) {
@@ -291,8 +280,6 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 }

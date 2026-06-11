@@ -2,6 +2,8 @@ package desync
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeGCPrefix(t *testing.T) {
@@ -26,9 +28,7 @@ func TestNormalizeGCPrefix(t *testing.T) {
 
 			prefix := normalizeGCPrefix(test.path)
 
-			if prefix != test.expectedPrefix {
-				t.Fatalf("path '%s' should normalize into '%s' but was normalized into '%s'", test.path, test.expectedPrefix, prefix)
-			}
+			require.Equal(t, test.expectedPrefix, prefix)
 		})
 	}
 }

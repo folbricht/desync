@@ -5,35 +5,30 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSafeComponent(t *testing.T) {
 	valid := []string{"file", "dir1", "a.b", "..foo", "foo..", "name with space"}
 	for _, n := range valid {
-		if err := safeComponent(n); err != nil {
-			t.Errorf("safeComponent(%q) = %v, want nil", n, err)
-		}
+		assert.NoError(t, safeComponent(n), "safeComponent(%q)", n)
 	}
 	invalid := []string{"", ".", "..", "evil/passwd", "a/b", "/abs", `a\b`, `\abs`}
 	for _, n := range invalid {
-		if err := safeComponent(n); err == nil {
-			t.Errorf("safeComponent(%q) = nil, want error", n)
-		}
+		assert.Error(t, safeComponent(n), "safeComponent(%q)", n)
 	}
 }
 
 func TestConfined(t *testing.T) {
 	in := []string{".", "a", "a/b", "a/../b", "./a"}
 	for _, p := range in {
-		if !confined(p) {
-			t.Errorf("confined(%q) = false, want true", p)
-		}
+		assert.True(t, confined(p), "confined(%q)", p)
 	}
 	out := []string{"..", "../x", "a/../..", "/abs", "/"}
 	for _, p := range out {
-		if confined(p) {
-			t.Errorf("confined(%q) = true, want false", p)
-		}
+		assert.False(t, confined(p), "confined(%q)", p)
 	}
 }
 
@@ -52,35 +47,25 @@ func TestArchiveDecoderRejectsEmbeddedSlash(t *testing.T) {
 		Mode:         os.ModeDir | 0755,
 		MTime:        time.Unix(0, 0),
 	}
-	if _, err := enc.Encode(entry); err != nil {
-		t.Fatal(err)
-	}
+	_, err := enc.Encode(entry)
+	require.NoError(t, err)
 	name := "evil/passwd"
 	fn := FormatFilename{
 		FormatHeader: FormatHeader{Size: uint64(16 + len(name) + 1), Type: CaFormatFilename},
 		Name:         name,
 	}
-	if _, err := enc.Encode(fn); err != nil {
-		t.Fatal(err)
-	}
+	_, err = enc.Encode(fn)
+	require.NoError(t, err)
 
 	d := NewArchiveDecoder(&buf)
 
 	// First node is the (unnamed) root directory.
 	v, err := d.Next()
-	if err != nil {
-		t.Fatalf("decoding root: %v", err)
-	}
-	if _, ok := v.(NodeDirectory); !ok {
-		t.Fatalf("expected NodeDirectory, got %T", v)
-	}
+	require.NoError(t, err, "decoding root")
+	require.IsType(t, NodeDirectory{}, v)
 
 	// The embedded-slash filename must be rejected.
 	_, err = d.Next()
-	if err == nil {
-		t.Fatal("expected error for embedded-slash filename, got nil")
-	}
-	if _, ok := err.(InvalidFormat); !ok {
-		t.Fatalf("expected InvalidFormat, got %T: %v", err, err)
-	}
+	require.Error(t, err, "expected error for embedded-slash filename")
+	require.IsType(t, InvalidFormat{}, err)
 }

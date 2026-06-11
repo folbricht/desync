@@ -1,21 +1,15 @@
 package desync
 
 import (
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDedupQueueSimple(t *testing.T) {
-	// var requests int64
-	// store := &TestStore{
-	// 	GetChunkFunc: func(ChunkID) (*Chunk, error) {
-	// 		atomic.AddInt64(&requests, 1)
-	// 		return NewChunkFromUncompressed([]byte{0}), nil
-	// 	},
-	// }
 	exists := ChunkID{0}
 	notExists := ChunkID{1}
 	store := &TestStore{
@@ -27,31 +21,19 @@ func TestDedupQueueSimple(t *testing.T) {
 
 	// First compare we're getting the expected data in the positive case
 	bExpected, err := store.GetChunk(exists)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	bActual, err := q.GetChunk(exists)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(bActual, bExpected) {
-		t.Fatalf("got %v; want %v", bExpected, bActual)
-	}
+	require.NoError(t, err)
+	require.Equal(t, bExpected, bActual)
 
 	// Now make sure errors too are passed correctly
 	_, err = q.GetChunk(notExists)
-	if _, ok := err.(ChunkMissing); !ok {
-		t.Fatalf("got '%v'; want chunk missing error", err)
-	}
+	require.IsType(t, ChunkMissing{}, err)
 
 	// Check HasChunk() as well
 	hasChunk, err := q.HasChunk(exists)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hasChunk {
-		t.Fatalf("HasChunk() = false; want true")
-	}
+	require.NoError(t, err)
+	require.True(t, hasChunk)
 }
 
 func TestDedupQueueParallel(t *testing.T) {
@@ -85,7 +67,5 @@ func TestDedupQueueParallel(t *testing.T) {
 	wg.Wait()
 
 	// There should ideally be just one requests that was done on the upstream store
-	if requests > 1 {
-		t.Fatalf("%d requests to the store; want 1", requests)
-	}
+	require.LessOrEqual(t, requests, int64(1), "requests to the store")
 }

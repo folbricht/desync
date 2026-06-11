@@ -3,15 +3,14 @@ package desync
 import (
 	"os"
 	"path"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestArchiveDecoderTypes(t *testing.T) {
 	f, err := os.Open("testdata/flat.catar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	d := NewArchiveDecoder(f)
@@ -28,20 +27,14 @@ func TestArchiveDecoderTypes(t *testing.T) {
 
 	for _, exp := range expected {
 		v, err := d.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if reflect.TypeOf(exp) != reflect.TypeOf(v) {
-			t.Fatalf("expected %s, got %s", reflect.TypeOf(exp), reflect.TypeOf(v))
-		}
+		require.NoError(t, err)
+		require.IsType(t, exp, v)
 	}
 }
 
 func TestArchiveDecoderNesting(t *testing.T) {
 	f, err := os.Open("testdata/nested.catar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	d := NewArchiveDecoder(f)
@@ -67,30 +60,18 @@ func TestArchiveDecoderNesting(t *testing.T) {
 
 	for _, e := range expected {
 		v, err := d.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if reflect.TypeOf(e.Type) != reflect.TypeOf(v) {
-			t.Fatalf("expected %s, got %s", reflect.TypeOf(e.Type), reflect.TypeOf(v))
-		}
+		require.NoError(t, err)
+		require.IsType(t, e.Type, v)
 		if e.Type == nil {
 			break
 		}
 		switch val := v.(type) {
 		case NodeDirectory:
-			if val.Name != e.Name {
-				t.Fatalf("expected name '%s', got '%s'", e.Name, val.Name)
-			}
-			if val.UID != e.UID {
-				t.Fatalf("expected uid '%d', got '%d'", e.UID, val.UID)
-			}
+			require.Equal(t, e.Name, val.Name)
+			require.Equal(t, e.UID, val.UID)
 		case NodeFile:
-			if val.Name != e.Name {
-				t.Fatalf("expected name '%s', got '%s'", e.Name, val.Name)
-			}
-			if val.UID != e.UID {
-				t.Fatalf("expected uid '%d', got '%d'", e.UID, val.UID)
-			}
+			require.Equal(t, e.Name, val.Name)
+			require.Equal(t, e.UID, val.UID)
 		}
 	}
 }
