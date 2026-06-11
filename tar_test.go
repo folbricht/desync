@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestTar(t *testing.T) {
@@ -23,9 +24,7 @@ func TestTar(t *testing.T) {
 		"dir2/sub22",
 	}
 	for _, d := range dirs {
-		if err := os.MkdirAll(filepath.Join(base, d), 0755); err != nil {
-			t.Fatal()
-		}
+		require.NoError(t, os.MkdirAll(filepath.Join(base, d), 0755))
 	}
 
 	files := []string{
@@ -36,16 +35,12 @@ func TestTar(t *testing.T) {
 		os.WriteFile(filepath.Join(base, name), fmt.Appendf(nil, "filecontent%d", i), 0644)
 	}
 
-	if err := os.Symlink("dir1", filepath.Join(base, "symlink")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Symlink("dir1", filepath.Join(base, "symlink")))
 
 	// Encode it all into a buffer
 	fs := NewLocalFS(base, LocalFSOptions{})
 	b := new(bytes.Buffer)
-	if err := Tar(context.Background(), b, fs); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, Tar(context.Background(), b, fs))
 
 	// Decode it again
 	d := NewFormatDecoder(b)
@@ -86,11 +81,7 @@ func TestTar(t *testing.T) {
 
 	for _, exp := range expected {
 		v, err := d.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if reflect.TypeOf(exp) != reflect.TypeOf(v) {
-			t.Fatalf("expected %s, got %s", reflect.TypeOf(exp), reflect.TypeOf(v))
-		}
+		require.NoError(t, err)
+		require.IsType(t, exp, v)
 	}
 }

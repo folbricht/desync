@@ -5,21 +5,19 @@ import (
 	"context"
 	"encoding/binary"
 	"os"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIndexLoad(t *testing.T) {
 	f, err := os.Open("testdata/index.caibx")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	index, err := IndexFromReader(f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	type chunk struct {
 		chunk string
@@ -34,78 +32,52 @@ func TestIndexLoad(t *testing.T) {
 	for i := range expected {
 		id, _ := ChunkIDFromString(expected[i].chunk)
 		exp := IndexChunk{ID: id, Start: expected[i].start, Size: expected[i].size}
-		got := index.Chunks[i]
-		if !reflect.DeepEqual(exp, got) {
-			t.Fatalf("expected %v, got %v", exp, got)
-		}
+		require.Equal(t, exp, index.Chunks[i])
 	}
 }
 
 func TestIndexWrite(t *testing.T) {
 	in, err := os.ReadFile("testdata/index.caibx")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	idx, err := IndexFromReader(bytes.NewReader(in))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	out := new(bytes.Buffer)
 	n, err := idx.WriteTo(out)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// in/out should match
-	if !bytes.Equal(in, out.Bytes()) {
-		t.Fatalf("decoded/encoded don't match")
-	}
-	if n != int64(out.Len()) {
-		t.Fatalf("unexpected length")
-	}
+	require.Equal(t, in, out.Bytes(), "decoded/encoded don't match")
+	require.Equal(t, int64(out.Len()), n, "unexpected length")
 }
 
 func TestIndexChunking(t *testing.T) {
 	// Open the blob
 	f, err := os.Open("testdata/chunker.input")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	// Create a chunker
 	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Make a temp local store
 	dir := t.TempDir()
 	s, err := NewLocalStore(dir, StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Split up the blob into chunks and return the index
 	idx, err := ChunkStream(context.Background(), c, s, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Write the index and compare it to the expected one
 	b := new(bytes.Buffer)
-	if _, err = idx.WriteTo(b); err != nil {
-		t.Fatal(err)
-	}
+	_, err = idx.WriteTo(b)
+	require.NoError(t, err)
 	i, err := os.ReadFile("testdata/chunker.index")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(b.Bytes(), i) {
-		t.Fatal("index doesn't match expected")
-	}
+	require.NoError(t, err)
+	require.Equal(t, i, b.Bytes(), "index doesn't match expected")
 
 	// Make sure the local store contains all the expected chunks
 	expectedChunks := []string{
@@ -132,16 +104,10 @@ func TestIndexChunking(t *testing.T) {
 	}
 	for _, sid := range expectedChunks {
 		id, err := ChunkIDFromString(sid)
-		if err != nil {
-			t.Fatal(id)
-		}
+		require.NoError(t, err)
 		hasChunk, err := s.HasChunk(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !hasChunk {
-			t.Fatalf("store is missing chunk %s", id)
-		}
+		require.NoError(t, err)
+		require.True(t, hasChunk, "store is missing chunk %s", id)
 	}
 }
 
@@ -160,34 +126,21 @@ func TestChunkStreamIntegrity(t *testing.T) {
 	}
 
 	c, err := NewChunker(bytes.NewReader(data), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	dir := t.TempDir()
 	s, err := NewLocalStore(dir, StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	index, err := ChunkStream(context.Background(), c, s, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Verify every stored chunk: read it back, decompress, and check
 	// that its content hashes to the expected ChunkID. GetChunk with
 	// SkipVerify=false (the default) returns ChunkInvalid on mismatch.
-	var corrupted int
 	for i, chunk := range index.Chunks {
 		_, err := s.GetChunk(chunk.ID)
-		if err != nil {
-			corrupted++
-			t.Errorf("chunk %d (%s): %v", i, chunk.ID, err)
-		}
-	}
-	if corrupted > 0 {
-		t.Fatalf("%d of %d chunks are corrupted", corrupted, len(index.Chunks))
+		assert.NoError(t, err, "chunk %d (%s)", i, chunk.ID)
 	}
 }
 

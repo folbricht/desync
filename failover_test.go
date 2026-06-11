@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -15,9 +16,7 @@ func TestFailoverMissingChunk(t *testing.T) {
 	s := &TestStore{}
 	g := NewFailoverGroup(s)
 	_, err := g.GetChunk(ChunkID{0})
-	if _, ok := err.(ChunkMissing); !ok {
-		t.Fatalf("expected missing chunk error, got %T", err)
-	}
+	require.IsType(t, ChunkMissing{}, err)
 }
 
 func TestFailoverAllError(t *testing.T) {
@@ -26,9 +25,8 @@ func TestFailoverAllError(t *testing.T) {
 		GetChunkFunc: func(ChunkID) (*Chunk, error) { return nil, failed },
 	}
 	g := NewFailoverGroup(storeFail, storeFail)
-	if _, err := g.GetChunk(ChunkID{0}); err != failed {
-		t.Fatalf("expected error, got %T", err)
-	}
+	_, err := g.GetChunk(ChunkID{0})
+	require.ErrorIs(t, err, failed)
 }
 
 func TestFailoverSimple(t *testing.T) {
@@ -44,14 +42,11 @@ func TestFailoverSimple(t *testing.T) {
 	g := NewFailoverGroup(storeFail, storeFail, storeSucc)
 
 	// Request a chunk, should succeed
-	if _, err := g.GetChunk(ChunkID{0}); err != nil {
-		t.Fatal(err)
-	}
+	_, err := g.GetChunk(ChunkID{0})
+	require.NoError(t, err)
 
 	// Look inside the group to confirm we failed over to the last one
-	if g.active != 2 {
-		t.Fatalf("expected g.active=1, but got %d", g.active)
-	}
+	require.Equal(t, 2, g.active)
 }
 
 func TestFailoverMutliple(t *testing.T) {
@@ -116,8 +111,5 @@ func TestFailoverMutliple(t *testing.T) {
 		}
 	})
 
-	err := eg.Wait()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, eg.Wait())
 }

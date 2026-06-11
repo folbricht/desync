@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestLocalFS(root string) *LocalFS {
@@ -25,28 +28,19 @@ func TestLocalFSSymlinkWriteEscape(t *testing.T) {
 	outside := t.TempDir()
 	sentinel := filepath.Join(outside, "passwd")
 	const orig = "original-contents\n"
-	if err := os.WriteFile(sentinel, []byte(orig), 0644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(sentinel, []byte(orig), 0644))
 
 	fs := newTestLocalFS(root)
 	defer fs.Close()
 
-	if err := fs.CreateSymlink(NodeSymlink{Name: "evil", Target: outside}); err != nil {
-		t.Fatalf("CreateSymlink: %v", err)
-	}
+	require.NoError(t, fs.CreateSymlink(NodeSymlink{Name: "evil", Target: outside}))
 
-	if err := fs.CreateFile(NodeFile{Name: "evil/passwd", Data: strings.NewReader("PWNED")}); err == nil {
-		t.Fatal("CreateFile through escaping symlink succeeded, want error")
-	}
+	require.Error(t, fs.CreateFile(NodeFile{Name: "evil/passwd", Data: strings.NewReader("PWNED")}),
+		"CreateFile through escaping symlink succeeded, want error")
 
 	got, err := os.ReadFile(sentinel)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != orig {
-		t.Fatalf("file outside root was modified: got %q, want %q", got, orig)
-	}
+	require.NoError(t, err)
+	require.Equal(t, orig, string(got), "file outside root was modified")
 }
 
 // TestLocalFSLexicalEscape covers the plain ".." traversal at the LocalFS
@@ -56,15 +50,12 @@ func TestLocalFSLexicalEscape(t *testing.T) {
 	fs := newTestLocalFS(root)
 	defer fs.Close()
 
-	if err := fs.CreateFile(NodeFile{Name: "../escape", Data: strings.NewReader("x")}); err == nil {
-		t.Error("CreateFile(../escape) succeeded, want error")
-	}
-	if err := fs.CreateDir(NodeDirectory{Name: "../evildir"}); err == nil {
-		t.Error("CreateDir(../evildir) succeeded, want error")
-	}
-	if _, err := os.Lstat(filepath.Join(filepath.Dir(root), "escape")); !os.IsNotExist(err) {
-		t.Errorf("escape file created outside root: err=%v", err)
-	}
+	assert.Error(t, fs.CreateFile(NodeFile{Name: "../escape", Data: strings.NewReader("x")}),
+		"CreateFile(../escape) succeeded, want error")
+	assert.Error(t, fs.CreateDir(NodeDirectory{Name: "../evildir"}),
+		"CreateDir(../evildir) succeeded, want error")
+	_, err := os.Lstat(filepath.Join(filepath.Dir(root), "escape"))
+	assert.True(t, os.IsNotExist(err), "escape file created outside root: err=%v", err)
 }
 
 // TestLocalFSAbsoluteSymlinkTargetVerbatim confirms an absolute symlink target
@@ -75,23 +66,15 @@ func TestLocalFSAbsoluteSymlinkTargetVerbatim(t *testing.T) {
 	fs := newTestLocalFS(root)
 	defer fs.Close()
 
-	if err := fs.CreateSymlink(NodeSymlink{Name: "abs", Target: "/etc"}); err != nil {
-		t.Fatalf("CreateSymlink: %v", err)
-	}
+	require.NoError(t, fs.CreateSymlink(NodeSymlink{Name: "abs", Target: "/etc"}))
 	tgt, err := os.Readlink(filepath.Join(root, "abs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tgt != "/etc" {
-		t.Fatalf("symlink target = %q, want /etc (verbatim)", tgt)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "/etc", tgt, "symlink target should be created verbatim")
 
-	if err := fs.CreateFile(NodeFile{Name: "abs/desync-should-not-exist", Data: strings.NewReader("x")}); err == nil {
-		t.Fatal("write through absolute symlink succeeded, want error")
-	}
-	if _, err := os.Lstat("/etc/desync-should-not-exist"); !os.IsNotExist(err) {
-		t.Fatalf("file created under /etc: err=%v", err)
-	}
+	require.Error(t, fs.CreateFile(NodeFile{Name: "abs/desync-should-not-exist", Data: strings.NewReader("x")}),
+		"write through absolute symlink succeeded, want error")
+	_, err = os.Lstat("/etc/desync-should-not-exist")
+	require.True(t, os.IsNotExist(err), "file created under /etc: err=%v", err)
 }
 
 // TestLocalFSBenignRelativeSymlink is a regression guard: a relative symlink
@@ -102,20 +85,11 @@ func TestLocalFSBenignRelativeSymlink(t *testing.T) {
 	fs := newTestLocalFS(root)
 	defer fs.Close()
 
-	if err := fs.CreateDir(NodeDirectory{Name: "sub"}); err != nil {
-		t.Fatalf("CreateDir: %v", err)
-	}
-	if err := fs.CreateSymlink(NodeSymlink{Name: "link", Target: "sub"}); err != nil {
-		t.Fatalf("CreateSymlink: %v", err)
-	}
-	if err := fs.CreateFile(NodeFile{Name: "link/g", Data: strings.NewReader("hello")}); err != nil {
-		t.Fatalf("CreateFile through in-root symlink: %v", err)
-	}
+	require.NoError(t, fs.CreateDir(NodeDirectory{Name: "sub"}))
+	require.NoError(t, fs.CreateSymlink(NodeSymlink{Name: "link", Target: "sub"}))
+	require.NoError(t, fs.CreateFile(NodeFile{Name: "link/g", Data: strings.NewReader("hello")}),
+		"CreateFile through in-root symlink")
 	got, err := os.ReadFile(filepath.Join(root, "sub", "g"))
-	if err != nil {
-		t.Fatalf("expected file via in-root symlink: %v", err)
-	}
-	if string(got) != "hello" {
-		t.Fatalf("content = %q, want hello", got)
-	}
+	require.NoError(t, err, "expected file via in-root symlink")
+	require.Equal(t, "hello", string(got))
 }

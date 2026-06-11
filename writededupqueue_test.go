@@ -3,6 +3,8 @@ package desync
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test read access before write access to ensure a failing read doesn't
@@ -25,7 +27,5 @@ func TestWriteDedupQueueParallelReadWrite(t *testing.T) {
 	go q.GetChunk(c.ID())
 	<-sleeping
 
-	if err := q.StoreChunk(c); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, q.StoreChunk(c))
 }
