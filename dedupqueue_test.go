@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -37,35 +38,38 @@ func TestDedupQueueSimple(t *testing.T) {
 }
 
 func TestDedupQueueParallel(t *testing.T) {
-	// Make a store that counts the requests to it
-	var requests int64
-	store := &TestStore{
-		GetChunkFunc: func(ChunkID) (*Chunk, error) {
-			time.Sleep(time.Millisecond) // make it artificially slow to not complete too early
-			atomic.AddInt64(&requests, 1)
-			return NewChunk([]byte{0}), nil
-		},
-	}
-	q := NewDedupQueue(store)
+	synctest.Test(t, func(t *testing.T) {
+		// Make a store that counts the requests to it
+		var requests atomic.Int64
+		store := &TestStore{
+			GetChunkFunc: func(ChunkID) (*Chunk, error) {
+				// The fake clock only advances once all other goroutines are
+				// blocked, so this guarantees they all registered as waiters
+				// on this request before it completes
+				time.Sleep(time.Millisecond)
+				requests.Add(1)
+				return NewChunk([]byte{0}), nil
+			},
+		}
+		q := NewDedupQueue(store)
 
-	var (
-		wg    sync.WaitGroup
-		start = make(chan struct{})
-	)
+		var (
+			wg    sync.WaitGroup
+			start = make(chan struct{})
+		)
 
-	// Start several goroutines all asking for the same chunk from the store
-	for range 10 {
-		wg.Add(1)
-		go func() {
-			<-start
-			q.GetChunk(ChunkID{0})
-			wg.Done()
-		}()
-	}
+		// Start several goroutines all asking for the same chunk from the store
+		for range 10 {
+			wg.Go(func() {
+				<-start
+				q.GetChunk(ChunkID{0})
+			})
+		}
 
-	close(start)
-	wg.Wait()
+		close(start)
+		wg.Wait()
 
-	// There should ideally be just one requests that was done on the upstream store
-	require.LessOrEqual(t, requests, int64(1), "requests to the store")
+		// There should be just one request that was done on the upstream store
+		require.EqualValues(t, 1, requests.Load(), "requests to the store")
+	})
 }
