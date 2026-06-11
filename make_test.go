@@ -7,9 +7,9 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/folbricht/tempfile"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,16 +31,9 @@ func TestParallelChunking(t *testing.T) {
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Put the input data into a file for chunking
-			f, err := tempfile.New("", "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.Remove(f.Name())
+			f := filepath.Join(t.TempDir(), "input")
 			b := join(input...)
-			if _, err := f.Write(b); err != nil {
-				t.Fatal(err)
-			}
-			f.Close()
+			require.NoError(t, os.WriteFile(f, b, 0644))
 
 			// Chunk the file single stream first to use the results as reference for
 			// the parallel chunking
@@ -66,7 +59,7 @@ func TestParallelChunking(t *testing.T) {
 				t.Run(fmt.Sprintf("%s, n=%d", name, n), func(t *testing.T) {
 					index, _, err := IndexFromFile(
 						context.Background(),
-						f.Name(),
+						f,
 						n,
 						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 						NewProgressBar(""),
@@ -105,18 +98,14 @@ func TestIndexFromFileStats(t *testing.T) {
 
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
-			f, err := tempfile.New("", "")
-			require.NoError(t, err)
-			defer os.Remove(f.Name())
-			_, err = f.Write(join(input...))
-			require.NoError(t, err)
-			f.Close()
+			f := filepath.Join(t.TempDir(), "input")
+			require.NoError(t, os.WriteFile(f, join(input...), 0644))
 
 			for n := 2; n <= 8; n++ {
 				t.Run(fmt.Sprintf("n=%d", n), func(t *testing.T) {
 					index, stats, err := IndexFromFile(
 						context.Background(),
-						f.Name(),
+						f,
 						n,
 						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 						NewProgressBar(""),

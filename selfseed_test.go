@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -95,19 +96,16 @@ func TestSelfSeed(t *testing.T) {
 			sum := md5.Sum(b)
 
 			// Build a temp target file to extract into
-			dst, err := os.CreateTemp("", "dst")
-			require.NoError(t, err)
-			defer os.Remove(dst.Name())
-			defer dst.Close()
+			dst := filepath.Join(t.TempDir(), "dst")
 
 			// Extract the file
-			stats, err := AssembleFile(context.Background(), dst.Name(), idx, s, nil,
+			stats, err := AssembleFile(context.Background(), dst, idx, s, nil,
 				AssembleOptions{1, InvalidSeedActionBailOut},
 			)
 			require.NoError(t, err)
 
 			// Compare the checksums to that of the input data
-			b, err = os.ReadFile(dst.Name())
+			b, err = os.ReadFile(dst)
 			require.NoError(t, err)
 			require.Equal(t, sum, md5.Sum(b), "checksum of extracted file doesn't match expected")
 
