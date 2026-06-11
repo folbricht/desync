@@ -117,7 +117,7 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 		}
 		return s.copy(dst, offset, s.Size())
 	}
-	return s.clone(dst, offset, length, blocksize)
+	return s.clone(dst, offset, length, blocksize, isBlank)
 }
 
 func (s *nullChunkSection) copy(dst *os.File, offset, length uint64) (uint64, uint64, error) {
@@ -130,9 +130,20 @@ func (s *nullChunkSection) copy(dst *os.File, offset, length uint64) (uint64, ui
 	return uint64(copied), 0, err
 }
 
-func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64) (uint64, uint64, error) {
+func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64, isBlank bool) (uint64, uint64, error) {
 	dstAlignStart := (offset/blocksize + 1) * blocksize
 	dstAlignEnd := (offset + length) / blocksize * blocksize
+
+	// If the range is too small to contain a full aligned block, there is
+	// nothing that can be cloned, and the copies below would write outside
+	// the range. Write zeros over the whole range instead, or nothing if
+	// it's still blank.
+	if dstAlignEnd <= dstAlignStart {
+		if isBlank {
+			return 0, 0, nil
+		}
+		return s.copy(dst, offset, length)
+	}
 
 	// fill the area before the first aligned block
 	var copied, cloned uint64
@@ -149,8 +160,16 @@ func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64)
 	copied += c2
 
 	for blkOffset := dstAlignStart; blkOffset < dstAlignEnd; blkOffset += blocksize {
-		if err := CloneRange(dst, s.blockfile, 0, blocksize, blkOffset); err != nil {
-			return copied, cloned, err
+		if err := cloneRange(dst, s.blockfile, 0, blocksize, blkOffset); err != nil {
+			// Not every filesystem that passes the CanClone probe can clone
+			// every range. ZFS for example refuses to clone from the blockfile
+			// before it has been committed to disk. Fall back to writing zeros,
+			// or to doing nothing if the target range is still blank.
+			if isBlank {
+				return copied, cloned, nil
+			}
+			c3, _, err := s.copy(dst, blkOffset, dstAlignEnd-blkOffset)
+			return copied + c3, cloned, err
 		}
 		cloned += blocksize
 	}
