@@ -105,7 +105,7 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 	rc, err := s.client.Object(name).NewReader(ctx)
 
-	if err == storage.ErrObjectNotExist {
+	if errors.Is(err, storage.ErrObjectNotExist) {
 		log.Warning("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
 		return nil, ChunkMissing{ID: id}
 	} else if err != nil {
@@ -116,7 +116,7 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 	b, err := io.ReadAll(rc)
 
-	if err == storage.ErrObjectNotExist {
+	if errors.Is(err, storage.ErrObjectNotExist) {
 		log.Warning("Unable to read from object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
 		return nil, ChunkMissing{ID: id}
 	} else if err != nil {
@@ -184,7 +184,7 @@ func (s GCStore) HasChunk(id ChunkID) (bool, error) {
 
 	_, err := s.client.Object(name).Attrs(ctx)
 
-	if err == storage.ErrObjectNotExist {
+	if errors.Is(err, storage.ErrObjectNotExist) {
 		log.WithField("exists", false).Debug("Chunk does not exist in GCS bucket")
 		return false, nil
 	} else if err != nil {
