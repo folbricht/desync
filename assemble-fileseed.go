@@ -28,7 +28,7 @@ func NewFileSeed(dstFile string, srcFile string, index Index) (*FileSeed, error)
 // position of the match in the seed and the number of matching chunks, or
 // (0, 0) if there is no match.
 func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
-	return s.longestMatchFrom(chunks, startPos, s.canReflink, nil)
+	return s.longestMatchFrom(chunks, startPos, s.canReflink, 0, nil)
 }
 
 // GetSegment constructs a SeedSegment for n chunks starting at chunk position
@@ -92,7 +92,7 @@ func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint
 // and fails if they don't match.
 func (s *fileSeedSegment) Validate(file *os.File) error {
 	for _, c := range s.chunks {
-		if !chunkInPlace(file, c) {
+		if !chunkInPlace(file, c, nil) {
 			return fmt.Errorf("seed index for %s doesn't match its data", s.file)
 		}
 	}
@@ -100,16 +100,16 @@ func (s *fileSeedSegment) Validate(file *os.File) error {
 }
 
 type fileSeedSource struct {
-	segment SeedSegment
-	seed    Seed
-	offset  uint64
-	length  uint64
-	isBlank bool
+	segment   SeedSegment
+	seed      Seed
+	offset    uint64
+	length    uint64
+	blocksize uint64
+	isBlank   bool
 }
 
 func (s *fileSeedSource) Execute(f *os.File) (copied uint64, cloned uint64, err error) {
-	blocksize := blocksizeOfFile(f.Name())
-	return s.segment.WriteInto(f, s.offset, s.length, blocksize, s.isBlank)
+	return s.segment.WriteInto(f, s.offset, s.length, s.blocksize, s.isBlank)
 }
 
 func (s *fileSeedSource) Seed() Seed   { return s.seed }

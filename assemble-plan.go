@@ -39,6 +39,7 @@ type AssemblePlan struct {
 	store         Store
 	seeds         []Seed
 	targetIsBlank bool
+	blocksize     uint64
 
 	// Placements is an intermediate representation of the target index,
 	// capturing what source is used to populate each chunk. It mirrors the
@@ -100,6 +101,7 @@ func NewPlan(name string, idx Index, s Store, opts ...PlanOption) *AssemblePlan 
 	for _, opt := range opts {
 		opt(p)
 	}
+	p.blocksize = blocksizeOfFile(name)
 	p.selfSeed = newSelfSeed(p.target, p.idx)
 	p.generate()
 	return p
@@ -266,11 +268,12 @@ func (p *AssemblePlan) generate() {
 			size := p.claimRun(pl, i, n)
 
 			pl.source = &fileSeedSource{
-				segment: seed.GetSegment(match, size),
-				seed:    seed,
-				offset:  p.idx.Chunks[i].Start,
-				length:  chunkRangeLength(p.idx.Chunks[i : i+size]),
-				isBlank: p.targetIsBlank,
+				segment:   seed.GetSegment(match, size),
+				seed:      seed,
+				offset:    p.idx.Chunks[i].Start,
+				length:    chunkRangeLength(p.idx.Chunks[i : i+size]),
+				blocksize: p.blocksize,
+				isBlank:   p.targetIsBlank,
 			}
 
 			i += size - 1 // the loop's i++ moves past the claimed run
@@ -402,20 +405,27 @@ func (p *AssemblePlan) generateSkips() {
 		return
 	}
 
-	var g errgroup.Group
-	g.SetLimit(p.concurrency)
-	for i, chunk := range p.idx.Chunks {
-		g.Go(func() error {
-			if chunkInPlace(f, chunk) {
-				p.placements[i] = &placement{source: &skipInPlace{
-					start: chunk.Start,
-					end:   chunk.Start + chunk.Size,
-				}}
+	var wg sync.WaitGroup
+	work := make(chan int)
+	for range p.concurrency {
+		wg.Go(func() {
+			buf := make([]byte, p.idx.Index.ChunkSizeMax)
+			for i := range work {
+				chunk := p.idx.Chunks[i]
+				if chunkInPlace(f, chunk, buf) {
+					p.placements[i] = &placement{source: &skipInPlace{
+						start: chunk.Start,
+						end:   chunk.Start + chunk.Size,
+					}}
+				}
 			}
-			return nil
 		})
 	}
-	g.Wait()
+	for i := range p.idx.Chunks {
+		work <- i
+	}
+	close(work)
+	wg.Wait()
 	f.Close()
 
 	// Merge consecutive in-place chunks into a single placement
@@ -466,39 +476,38 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	}
 	var moves []moveOp
 
-	// Create inPlaceSeedSkip placements for chunks that are already at
-	// the correct position. A chunk is "in place" when its ChunkID
-	// appears in the seed index at the same byte offset and size as in
-	// the target index. This is a pure index comparison — no file I/O.
-	// Unlike skipInPlace (created by generateSkips after hashing),
-	// these carry validation info so Validate() can verify the data.
-	for i, c := range p.idx.Chunks {
-		sources, ok := srcOf[c.ID]
-		if !ok {
-			continue
-		}
-		for _, src := range sources {
-			if src.start == c.Start && src.size == c.Size {
-				pl := &placement{source: &inPlaceSeedSkip{
-					chunk: c,
-					seed:  seed,
-					file:  p.target,
-				}}
-				p.placements[i] = pl
-				p.inPlaceOrder = append(p.inPlaceOrder, pl)
-				break
-			}
-		}
-	}
-
+	// Chunks whose ChunkID appears in the seed index at the same byte
+	// offset and size as in the target index are already at the correct
+	// position; they get inPlaceSeedSkip placements. This is a pure index
+	// comparison — no file I/O. Unlike skipInPlace (created by
+	// generateSkips after hashing), these carry validation info so
+	// Validate() can verify the data. Chunks that exist in the seed at a
+	// different offset become move operations, sourced from their first
+	// location.
 	for i, c := range p.idx.Chunks {
 		if p.placements[i] != nil {
-			continue // Already placed (skipInPlace or other)
+			continue // Already placed
 		}
 
-		sources := srcOf[c.ID]
-		if len(sources) == 0 {
+		sources, ok := srcOf[c.ID]
+		if !ok {
 			continue // Not in seed; will be filled by store or file seed later
+		}
+
+		// Sources are recorded in ascending start order, so the offset
+		// check is a binary search.
+		j := sort.Search(len(sources), func(k int) bool {
+			return sources[k].start >= c.Start
+		})
+		if j < len(sources) && sources[j].start == c.Start && sources[j].size == c.Size {
+			pl := &placement{source: &inPlaceSeedSkip{
+				chunk: c,
+				seed:  seed,
+				file:  p.target,
+			}}
+			p.placements[i] = pl
+			p.inPlaceOrder = append(p.inPlaceOrder, pl)
+			continue
 		}
 
 		// Use the first available copy as the move source.

@@ -5,6 +5,12 @@ import (
 	"os"
 )
 
+// selfSeedMaxCandidates bounds the number of candidate positions the
+// self-seed examines per match. Without a bound, chunks that repeat many
+// times in the target make matching quadratic in the number of repetitions
+// when reflinks are available (where run lengths aren't limited either).
+const selfSeedMaxCandidates = 100
+
 // selfSeed matches chunks against the file being assembled itself. Chunks
 // that repeat in the target can be copied within the file once their first
 // occurrence has been written.
@@ -12,14 +18,23 @@ type selfSeed struct {
 	file string
 	seedIndex
 	canReflink bool
+	blocksize  uint64
 }
 
 func newSelfSeed(file string, index Index) *selfSeed {
-	return &selfSeed{
+	s := &selfSeed{
 		file:       file,
 		seedIndex:  newSeedIndex(index),
 		canReflink: CanClone(file, file),
+		blocksize:  blocksizeOfFile(file),
 	}
+	// Zero chunks are handled better by the null seed: writing zeros to a
+	// blank target is a no-op there, while a self-copy of zeros is real
+	// read/write I/O that also chains dependencies across the whole run.
+	// Remove the null chunk from the lookup so those positions fall through
+	// to the null seed.
+	delete(s.pos, NewNullChunk(index.Index.ChunkSizeMax).ID)
+	return s
 }
 
 // LongestMatchFrom returns the longest sequence of matching chunks after a
@@ -28,12 +43,14 @@ func newSelfSeed(file string, index Index) *selfSeed {
 // positions after startPos are considered, and matches are clamped so the
 // source and destination ranges can't overlap.
 func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
-	return s.longestMatchFrom(chunks, startPos, s.canReflink, func(p, n int) int {
+	return s.longestMatchFrom(chunks, startPos, s.canReflink, selfSeedMaxCandidates, func(p int) int {
 		if p <= startPos {
 			return 0
 		}
-		// Clamp to prevent source [p, p+n) overlapping destination [startPos, startPos+n)
-		return min(n, p-startPos)
+		// The source run [p, p+n) may not overlap the destination run
+		// [startPos, startPos+n), which limits a usable run to the distance
+		// between the two.
+		return p - startPos
 	})
 }
 
@@ -64,7 +81,7 @@ func (s *selfSeedSegment) Execute(f *os.File) (copied uint64, cloned uint64, err
 	}
 	defer src.Close()
 
-	blocksize := blocksizeOfFile(f.Name())
+	blocksize := s.seed.blocksize
 
 	// Use reflinks if supported and blocks are aligned
 	if s.seed.canReflink && s.srcOffset%blocksize == s.dstOffset%blocksize {

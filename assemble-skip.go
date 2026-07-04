@@ -41,7 +41,7 @@ func (s *inPlaceSeedSkip) Seed() Seed   { return s.seed }
 func (s *inPlaceSeedSkip) File() string { return s.file }
 
 func (s *inPlaceSeedSkip) Validate(file *os.File) error {
-	if !chunkInPlace(file, s.chunk) {
+	if !chunkInPlace(file, s.chunk, nil) {
 		return fmt.Errorf("in-place seed index for %s doesn't match its data", s.file)
 	}
 	return nil

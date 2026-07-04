@@ -51,10 +51,12 @@ func newSeedIndex(index Index) seedIndex {
 
 // longestMatchFrom finds, among the seed positions holding the same chunk as
 // chunks[startPos], the position with the longest run of consecutive matches.
-// clamp, if not nil, can shorten a candidate run based on its seed position;
-// returning 0 discards the candidate. Later candidates win ties. Returns the
-// winning position and run length, or (0, 0) if there is no match.
-func (s *seedIndex) longestMatchFrom(chunks []IndexChunk, startPos int, canReflink bool, clamp func(p, n int) int) (int, int) {
+// clamp, if not nil, returns the maximum run length allowed for a candidate
+// seed position; returning 0 discards the candidate. maxCandidates, when not
+// zero, bounds how many candidate positions are examined. Later candidates
+// win ties. Returns the winning position and run length, or (0, 0) if there
+// is no match.
+func (s *seedIndex) longestMatchFrom(chunks []IndexChunk, startPos int, canReflink bool, maxCandidates int, clamp func(p int) int) (int, int) {
 	if startPos >= len(chunks) || len(s.index.Chunks) == 0 {
 		return 0, 0
 	}
@@ -63,9 +65,10 @@ func (s *seedIndex) longestMatchFrom(chunks []IndexChunk, startPos int, canRefli
 		return 0, 0
 	}
 	var (
-		bestPos int
-		maxLen  int
-		limit   int
+		bestPos  int
+		maxLen   int
+		limit    int
+		examined int
 	)
 	if !canReflink {
 		// Limit the maximum number of chunks in a single sequence to avoid
@@ -74,15 +77,28 @@ func (s *seedIndex) longestMatchFrom(chunks []IndexChunk, startPos int, canRefli
 		limit = 100
 	}
 	for _, p := range pos {
-		n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
+		// Applying the clamp as a match limit also bounds the work done per
+		// candidate.
+		lim := limit
 		if clamp != nil {
-			n = clamp(p, n)
+			c := clamp(p)
+			if c == 0 {
+				continue
+			}
+			if lim == 0 || c < lim {
+				lim = c
+			}
 		}
+		n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, lim)
 		if n > 0 && n >= maxLen {
 			bestPos = p
 			maxLen = n
 		}
 		if limit != 0 && limit == maxLen {
+			break
+		}
+		examined++
+		if maxCandidates != 0 && examined == maxCandidates {
 			break
 		}
 	}
@@ -126,9 +142,13 @@ type SeedSegment interface {
 }
 
 // chunkInPlace reports whether f already contains the chunk's data at the
-// chunk's position.
-func chunkInPlace(f *os.File, c IndexChunk) bool {
-	b := make([]byte, c.Size)
+// chunk's position. buf is used for reading when it is large enough, which
+// allows callers checking many chunks to reuse one allocation; it can be nil.
+func chunkInPlace(f *os.File, c IndexChunk, buf []byte) bool {
+	if uint64(len(buf)) < c.Size {
+		buf = make([]byte, c.Size)
+	}
+	b := buf[:c.Size]
 	if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
 		return false
 	}
