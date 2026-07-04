@@ -50,6 +50,10 @@ func (s *inPlaceCopy) Execute(f *os.File) (copied uint64, cloned uint64, err err
 	return s.dstSize, 0, nil
 }
 
+func (s *inPlaceCopy) recordStats(stats *ExtractStats, numChunks int) {
+	stats.addChunksInPlace(uint64(numChunks))
+}
+
 func (s *inPlaceCopy) String() string {
 	return fmt.Sprintf("InPlace: Copy [%d:%d] to [%d:%d]",
 		s.srcOffset, s.srcOffset+s.srcSize,

@@ -19,9 +19,19 @@ func PlanWithConcurrency(n int) PlanOption {
 	}
 }
 
+// PlanWithSeeds sets the file seeds available to the plan. A seed reading
+// from the target file itself must be set with PlanWithInPlaceSeed instead.
 func PlanWithSeeds(seeds []Seed) PlanOption {
 	return func(p *AssemblePlan) {
 		p.seeds = seeds
+	}
+}
+
+// PlanWithInPlaceSeed sets the seed whose source is the target file itself.
+// It is used to skip or rearrange data already present in the target.
+func PlanWithInPlaceSeed(seed *InPlaceSeed) PlanOption {
+	return func(p *AssemblePlan) {
+		p.inPlaceSeed = seed
 	}
 }
 
@@ -38,6 +48,7 @@ type AssemblePlan struct {
 	target        string
 	store         Store
 	seeds         []Seed
+	inPlaceSeed   *InPlaceSeed
 	targetIsBlank bool
 	blocksize     uint64
 
@@ -72,6 +83,9 @@ type inPlaceDep struct{ from, to int }
 type assembleSource interface {
 	fmt.Stringer
 	Execute(f *os.File) (copied uint64, cloned uint64, err error)
+	// recordStats adds the step's chunk accounting to stats. numChunks is
+	// the number of index chunks the step covers.
+	recordStats(stats *ExtractStats, numChunks int)
 }
 
 type assembleSeedSource interface {
@@ -79,6 +93,9 @@ type assembleSeedSource interface {
 	Seed() Seed
 	File() string
 	Validate(file *os.File) error
+	// needsValidation reports whether the source is backed by a file whose
+	// content must be checked against the seed index.
+	needsValidation() bool
 }
 
 type placement struct {
@@ -137,7 +154,7 @@ func (p *AssemblePlan) Validate() error {
 		seen[pl] = struct{}{}
 
 		fs, ok := pl.source.(assembleSeedSource)
-		if !ok || fs.File() == "" {
+		if !ok || !fs.needsValidation() {
 			continue
 		}
 
@@ -193,22 +210,13 @@ func (p *AssemblePlan) Validate() error {
 }
 
 func (p *AssemblePlan) generate() {
-	// Find the in-place seed, if any. There can only be one.
-	var inPlaceSeed *InPlaceSeed
-	for _, seed := range p.seeds {
-		if ips, ok := seed.(*InPlaceSeed); ok {
-			inPlaceSeed = ips
-			break
-		}
-	}
-
 	// When the target file already exists, mark chunks that are already
 	// correct so they can be skipped during assembly. If we have an
 	// in-place seed, its index tells us what's already in place without
 	// any file I/O. Otherwise fall back to reading and hashing each chunk.
 	if !p.targetIsBlank {
-		if inPlaceSeed != nil {
-			p.generateInPlace(inPlaceSeed)
+		if p.inPlaceSeed != nil {
+			p.generateInPlace(p.inPlaceSeed)
 		} else {
 			p.generateSkips()
 		}
@@ -247,10 +255,6 @@ func (p *AssemblePlan) generate() {
 
 	// Check file seeds for matches in unfilled positions.
 	for _, seed := range p.seeds {
-		if _, ok := seed.(*InPlaceSeed); ok { // Skip the in-place seed, it's already handled
-			continue
-		}
-
 		for i := 0; i < len(p.idx.Chunks); i++ {
 			if p.placements[i] != nil {
 				continue
@@ -334,8 +338,7 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 		linked[pl] = struct{}{}
 
 		for i := pl.dependsOnStart; i < pl.dependsOnStart+pl.dependsOnSize; i++ {
-			stepsPerPlacement[pl].addDependency(stepsPerPlacement[p.placements[i]])
-			stepsPerPlacement[p.placements[i]].addDependent(stepsPerPlacement[pl])
+			link(stepsPerPlacement[p.placements[i]], stepsPerPlacement[pl])
 		}
 	}
 
@@ -353,8 +356,7 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 		ipStep := stepsPerPlacement[inPlaceRead]
 		step := stepsPerPlacement[target]
 		if step != ipStep {
-			step.addDependency(ipStep)
-			ipStep.addDependent(step)
+			link(ipStep, step)
 		}
 	}
 
@@ -365,8 +367,7 @@ func (p *AssemblePlan) Steps() []*PlanStep {
 		from := stepsPerPlacement[p.placements[dep.from]]
 		to := stepsPerPlacement[p.placements[dep.to]]
 		if from != to {
-			to.addDependency(from)
-			from.addDependent(to)
+			link(from, to)
 		}
 	}
 
@@ -561,32 +562,18 @@ func (p *AssemblePlan) generateInPlace(seed *InPlaceSeed) {
 	sccs := tarjanSCC(n, succ)
 	slices.Reverse(sccs) // topological order
 
-	// Pre-compute minimum target index per SCC for deterministic sorting.
-	sccMin := make([]int, len(sccs))
-	for si, scc := range sccs {
-		m := moves[scc[0]].targetIdx
-		for _, i := range scc[1:] {
-			if moves[i].targetIdx < m {
-				m = moves[i].targetIdx
-			}
-		}
-		sccMin[si] = m
-	}
-
 	// Stable-sort independent SCCs by minimum target index so the
 	// output order is deterministic and follows the target layout.
-	indices := make([]int, len(sccs))
-	for i := range indices {
-		indices[i] = i
+	minTarget := func(scc []int) int {
+		m := moves[scc[0]].targetIdx
+		for _, i := range scc[1:] {
+			m = min(m, moves[i].targetIdx)
+		}
+		return m
 	}
-	slices.SortStableFunc(indices, func(a, b int) int {
-		return sccMin[a] - sccMin[b]
+	slices.SortStableFunc(sccs, func(a, b []int) int {
+		return minTarget(a) - minTarget(b)
 	})
-	sorted := make([][]int, len(sccs))
-	for i, idx := range indices {
-		sorted[i] = sccs[idx]
-	}
-	sccs = sorted
 
 	for _, scc := range sccs {
 		if len(scc) == 1 {

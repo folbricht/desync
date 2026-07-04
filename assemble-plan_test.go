@@ -311,7 +311,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		require.NoError(t, err)
 
 		got := planSteps(t, f, buildIndex(B, A),
-			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
+			PlanWithInPlaceSeed(inPlace), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [0:200] to [150:350]",
 			"InPlace: Copy [200:350] to [0:150]",
@@ -329,7 +329,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		require.NoError(t, err)
 
 		got := planSteps(t, f, buildIndex(B, A, D, C),
-			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
+			PlanWithInPlaceSeed(inPlace), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [0:200] to [150:350]",
 			"InPlace: Copy [200:350] to [0:150]",
@@ -348,7 +348,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		require.NoError(t, err)
 
 		got := planSteps(t, f, buildIndex(B, A, E),
-			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
+			PlanWithInPlaceSeed(inPlace), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [0:200] to [150:350]",
 			"InPlace: Copy [200:350] to [0:150]",
@@ -367,7 +367,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		require.NoError(t, err)
 
 		got := planSteps(t, f, buildIndex(A, C, B),
-			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
+			PlanWithInPlaceSeed(inPlace), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Skip [0:200]",
 			"InPlace: Copy [200:350] to [300:450]",
@@ -390,7 +390,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		require.NoError(t, err)
 
 		got := planSteps(t, f, buildIndex(A, F, B),
-			PlanWithSeeds([]Seed{inPlaceSeed, fileSeed}), PlanWithTargetIsBlank(false))
+			PlanWithInPlaceSeed(inPlaceSeed), PlanWithSeeds([]Seed{fileSeed}), PlanWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Skip [0:200]",
 			"InPlace: Copy [200:350] to [320:470]",
@@ -482,7 +482,7 @@ func TestFileSeedValidation(t *testing.T) {
 		require.NoError(t, err)
 
 		plan := NewPlan(f, targetIndex, nil,
-			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
+			PlanWithInPlaceSeed(inPlace), PlanWithTargetIsBlank(false))
 
 		// Corrupt the target file after the plan was created
 		require.NoError(t, os.WriteFile(f, make([]byte, 200), 0644))

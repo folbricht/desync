@@ -15,6 +15,10 @@ func (s *skipInPlace) Execute(f *os.File) (copied uint64, cloned uint64, err err
 	return 0, 0, nil
 }
 
+func (s *skipInPlace) recordStats(stats *ExtractStats, numChunks int) {
+	stats.addChunksInPlace(uint64(numChunks))
+}
+
 func (s *skipInPlace) String() string {
 	return fmt.Sprintf("InPlace: Skip [%d:%d]", s.start, s.end)
 }
@@ -33,12 +37,17 @@ func (s *inPlaceSeedSkip) Execute(f *os.File) (uint64, uint64, error) {
 	return 0, 0, nil
 }
 
+func (s *inPlaceSeedSkip) recordStats(stats *ExtractStats, numChunks int) {
+	stats.addChunksInPlace(uint64(numChunks))
+}
+
 func (s *inPlaceSeedSkip) String() string {
 	return fmt.Sprintf("InPlace: Skip [%d:%d]", s.chunk.Start, s.chunk.Start+s.chunk.Size)
 }
 
-func (s *inPlaceSeedSkip) Seed() Seed   { return s.seed }
-func (s *inPlaceSeedSkip) File() string { return s.file }
+func (s *inPlaceSeedSkip) Seed() Seed            { return s.seed }
+func (s *inPlaceSeedSkip) File() string          { return s.file }
+func (s *inPlaceSeedSkip) needsValidation() bool { return true }
 
 func (s *inPlaceSeedSkip) Validate(file *os.File) error {
 	if !chunkInPlace(file, s.chunk, nil) {

@@ -90,6 +90,10 @@ func (s *selfSeedSegment) Execute(f *os.File) (copied uint64, cloned uint64, err
 	return copyRange(f, src, s.srcOffset, s.size, s.dstOffset)
 }
 
+func (s *selfSeedSegment) recordStats(stats *ExtractStats, numChunks int) {
+	stats.addChunksFromSeed(uint64(numChunks))
+}
+
 func (s *selfSeedSegment) String() string {
 	return fmt.Sprintf("SelfSeed: Copy [%d:%d] to [%d:%d]",
 		s.srcOffset, s.srcOffset+s.size,

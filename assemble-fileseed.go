@@ -112,8 +112,17 @@ func (s *fileSeedSource) Execute(f *os.File) (copied uint64, cloned uint64, err 
 	return s.segment.WriteInto(f, s.offset, s.length, s.blocksize, s.isBlank)
 }
 
+func (s *fileSeedSource) recordStats(stats *ExtractStats, numChunks int) {
+	stats.addChunksFromSeed(uint64(numChunks))
+}
+
 func (s *fileSeedSource) Seed() Seed   { return s.seed }
 func (s *fileSeedSource) File() string { return s.segment.FileName() }
+
+// needsValidation reports whether the source is backed by a seed file whose
+// content must be checked against the index. Null-chunk segments have no
+// backing file and are always valid.
+func (s *fileSeedSource) needsValidation() bool { return s.segment.FileName() != "" }
 
 func (s *fileSeedSource) Validate(file *os.File) error {
 	return s.segment.Validate(file)

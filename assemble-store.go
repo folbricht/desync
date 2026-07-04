@@ -26,6 +26,10 @@ func (s *copyFromStore) Execute(f *os.File) (copied uint64, cloned uint64, err e
 	return 0, 0, err
 }
 
+func (s *copyFromStore) recordStats(stats *ExtractStats, numChunks int) {
+	stats.incChunksFromStore()
+}
+
 func (s *copyFromStore) String() string {
 	return fmt.Sprintf("Store: Copy %v to [%d:%d]", s.chunk.ID.String(), s.chunk.Start, s.chunk.Start+s.chunk.Size)
 }

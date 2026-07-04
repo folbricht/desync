@@ -68,13 +68,27 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		isBlank = true
 	}
 
-	// Find the in-place seed size (if any) to decide truncation strategy.
-	var inPlaceSeedSize int64
+	// Separate the in-place seed (if any) from the file seeds. It reads
+	// from the file being assembled and is handed to the plan explicitly.
+	// There can only be one, extras are dropped.
+	var (
+		inPlaceSeed *InPlaceSeed
+		fileSeeds   []Seed
+	)
 	for _, seed := range seeds {
 		if ips, ok := seed.(*InPlaceSeed); ok {
-			inPlaceSeedSize = ips.index.Length()
-			break
+			if inPlaceSeed == nil {
+				inPlaceSeed = ips
+			}
+			continue
 		}
+		fileSeeds = append(fileSeeds, seed)
+	}
+
+	// The in-place seed size (if any) decides the truncation strategy.
+	var inPlaceSeedSize int64
+	if inPlaceSeed != nil {
+		inPlaceSeedSize = inPlaceSeed.index.Length()
 	}
 
 	// Truncate the output file to the full expected size. Not only does this
@@ -100,48 +114,57 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		return stats, err
 	}
 	defer ns.close()
-	seeds = append([]Seed{ns}, seeds...)
+	fileSeeds = append([]Seed{ns}, fileSeeds...)
 
 	// Record the total number of seeds and blocksize in the stats
-	stats.Seeds = len(seeds)
+	stats.Seeds = len(fileSeeds)
+	if inPlaceSeed != nil {
+		stats.Seeds++
+	}
 	stats.Blocksize = blocksize
 
-	// Create the plan
-retry:
-	plan := NewPlan(name, idx, s,
-		PlanWithConcurrency(options.N),
-		PlanWithSeeds(seeds),
-		PlanWithTargetIsBlank(isBlank),
-	)
+	// Create the plan and validate the seed indexes. Regenerating or
+	// skipping invalid seeds restarts planning with the modified seeds.
+	var plan *AssemblePlan
+	for {
+		plan = NewPlan(name, idx, s,
+			PlanWithConcurrency(options.N),
+			PlanWithSeeds(fileSeeds),
+			PlanWithInPlaceSeed(inPlaceSeed),
+			PlanWithTargetIsBlank(isBlank),
+		)
 
-	// Validate the seed indexes provided and potentially regenerate them
-	if err := plan.Validate(); err != nil {
-		var seedError SeedInvalid
-		if errors.As(err, &seedError) {
-
-			switch options.InvalidSeedAction {
-			case InvalidSeedActionBailOut:
-				return stats, err
-			case InvalidSeedActionRegenerate:
-				Log.WithError(err).Info("Unable to use one or more seeds, regenerating them")
-				for i, s := range seedError.Seeds {
-					if err := s.RegenerateIndex(ctx, options.N, attempt, i+1); err != nil {
-						return stats, err
-					}
-				}
-				attempt++
-				goto retry
-			case InvalidSeedActionSkip:
-				Log.WithError(err).Infof("Unable to use one or more seeds, skipping them")
-				seeds = slices.DeleteFunc(seeds, func(s Seed) bool {
-					return slices.Contains(seedError.Seeds, s)
-				})
-				goto retry
-			default:
-				panic("Unhandled InvalidSeedAction")
-			}
+		err := plan.Validate()
+		if err == nil {
+			break
 		}
-		return stats, err
+		var seedError SeedInvalid
+		if !errors.As(err, &seedError) {
+			return stats, err
+		}
+
+		switch options.InvalidSeedAction {
+		case InvalidSeedActionBailOut:
+			return stats, err
+		case InvalidSeedActionRegenerate:
+			Log.WithError(err).Info("Unable to use one or more seeds, regenerating them")
+			for i, s := range seedError.Seeds {
+				if err := s.RegenerateIndex(ctx, options.N, attempt, i+1); err != nil {
+					return stats, err
+				}
+			}
+			attempt++
+		case InvalidSeedActionSkip:
+			Log.WithError(err).Infof("Unable to use one or more seeds, skipping them")
+			if inPlaceSeed != nil && slices.Contains(seedError.Seeds, Seed(inPlaceSeed)) {
+				inPlaceSeed = nil
+			}
+			fileSeeds = slices.DeleteFunc(fileSeeds, func(s Seed) bool {
+				return slices.Contains(seedError.Seeds, s)
+			})
+		default:
+			panic("Unhandled InvalidSeedAction")
+		}
 	}
 
 	// Generate the plan steps necessary to build the target
@@ -154,13 +177,13 @@ retry:
 	// require other steps to complete first.
 	var (
 		ready   []*PlanStep
-		delayed = make(stepSet)
+		delayed = make(map[*PlanStep]struct{})
 	)
 	for _, step := range steps {
 		if step.ready() {
 			ready = append(ready, step)
 		} else {
-			delayed.add(step)
+			delayed[step] = struct{}{}
 		}
 	}
 
@@ -201,15 +224,8 @@ retry:
 					// Update byte-level stats
 					stats.addBytesCopied(copied)
 					stats.addBytesCloned(cloned)
-					// Update chunk-level stats based on source type
-					switch step.source.(type) {
-					case *copyFromStore:
-						stats.incChunksFromStore()
-					case *skipInPlace, *inPlaceSeedSkip, *inPlaceCopy:
-						stats.addChunksInPlace(uint64(step.numChunks))
-					case *fileSeedSource, *selfSeedSegment:
-						stats.addChunksFromSeed(uint64(step.numChunks))
-					}
+					// Update chunk-level stats
+					step.source.recordStats(stats, step.numChunks)
 					select {
 					case completed <- step:
 					case <-ctx.Done():
@@ -239,16 +255,16 @@ retry:
 			// one and remove the dependency. If all deps have been
 			// removed, send them for processing and remove them
 			// from the ready list.
-			for b := range step.dependents.Each() {
-				b.dependencies.remove(step)
+			for b := range step.dependents {
+				delete(b.dependencies, step)
 				if b.ready() {
-					delayed.remove(b)
+					delete(delayed, b)
 					inProgress <- b
 				}
 			}
 
 			// If there are no more delayed steps, close the work queue.
-			if delayed.len() == 0 {
+			if len(delayed) == 0 {
 				close(inProgress)
 				break
 			}
