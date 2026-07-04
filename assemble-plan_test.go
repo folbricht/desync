@@ -77,9 +77,7 @@ func TestSelfSeedPlanSteps(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			plan, err := NewPlan("test", test.index, nil)
-			require.NoError(t, err)
-			defer plan.Close()
+			plan := NewPlan("test", test.index, nil)
 
 			steps := plan.Steps()
 			got := make([]string, len(steps))
@@ -126,9 +124,7 @@ func TestInPlaceChunkDetection(t *testing.T) {
 	require.NoError(t, err)
 	f.Close()
 
-	plan, err := NewPlan(target, idx, nil, PlanWithTargetIsBlank(false))
-	require.NoError(t, err)
-	defer plan.Close()
+	plan := NewPlan(target, idx, nil, PlanWithTargetIsBlank(false))
 
 	steps := plan.Steps()
 	got := make([]string, len(steps))
@@ -157,9 +153,7 @@ func TestInPlaceChunkDetection(t *testing.T) {
 		require.NoError(t, err)
 		f2.Close()
 
-		plan2, err := NewPlan(target2, idx, nil, PlanWithTargetIsBlank(false))
-		require.NoError(t, err)
-		defer plan2.Close()
+		plan2 := NewPlan(target2, idx, nil, PlanWithTargetIsBlank(false))
 
 		steps2 := plan2.Steps()
 		got2 := make([]string, len(steps2))
@@ -232,9 +226,7 @@ func TestFileSeedPlanSteps(t *testing.T) {
 			seed, err := NewFileSeed("test", "seed", test.seed)
 			require.NoError(t, err)
 
-			plan, err := NewPlan("test", test.target, nil, PlanWithSeeds([]Seed{seed}))
-			require.NoError(t, err)
-			defer plan.Close()
+			plan := NewPlan("test", test.target, nil, PlanWithSeeds([]Seed{seed}))
 
 			steps := plan.Steps()
 			got := make([]string, len(steps))
@@ -295,9 +287,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 	// planSteps is a helper that creates a plan and returns its step strings.
 	planSteps := func(t *testing.T, name string, target Index, opts ...PlanOption) []string {
 		t.Helper()
-		plan, err := NewPlan(name, target, nil, opts...)
-		require.NoError(t, err)
-		t.Cleanup(func() { plan.Close() })
+		plan := NewPlan(name, target, nil, opts...)
 		steps := plan.Steps()
 		got := make([]string, len(steps))
 		for i, s := range steps {
@@ -448,9 +438,7 @@ func TestFileSeedValidation(t *testing.T) {
 		seed, err := NewFileSeed("target", seedFile, seedIndex)
 		require.NoError(t, err)
 
-		plan, err := NewPlan("target", targetIndex, nil, PlanWithSeeds([]Seed{seed}))
-		require.NoError(t, err)
-		defer plan.Close()
+		plan := NewPlan("target", targetIndex, nil, PlanWithSeeds([]Seed{seed}))
 
 		require.NoError(t, plan.Validate())
 	})
@@ -468,9 +456,7 @@ func TestFileSeedValidation(t *testing.T) {
 		seed, err := NewFileSeed("target", seedFile, seedIndex)
 		require.NoError(t, err)
 
-		plan, err := NewPlan("target", targetIndex, nil, PlanWithSeeds([]Seed{seed}))
-		require.NoError(t, err)
-		defer plan.Close()
+		plan := NewPlan("target", targetIndex, nil, PlanWithSeeds([]Seed{seed}))
 
 		// Corrupt the seed file after the plan was created
 		err = os.WriteFile(seedFile, make([]byte, 200), 0644)
@@ -495,10 +481,8 @@ func TestFileSeedValidation(t *testing.T) {
 		inPlace, err := NewInPlaceSeed(f, seedIndex)
 		require.NoError(t, err)
 
-		plan, err := NewPlan(f, targetIndex, nil,
+		plan := NewPlan(f, targetIndex, nil,
 			PlanWithSeeds([]Seed{inPlace}), PlanWithTargetIsBlank(false))
-		require.NoError(t, err)
-		defer plan.Close()
 
 		// Corrupt the target file after the plan was created
 		require.NoError(t, os.WriteFile(f, make([]byte, 200), 0644))
@@ -525,9 +509,7 @@ func TestFileSeedValidation(t *testing.T) {
 		ns := &nullChunkSeed{id: nullID}
 		defer ns.close()
 
-		plan, err := NewPlan("target", nullTargetIndex, nil, PlanWithSeeds([]Seed{ns}))
-		require.NoError(t, err)
-		defer plan.Close()
+		plan := NewPlan("target", nullTargetIndex, nil, PlanWithSeeds([]Seed{ns}))
 
 		require.NoError(t, plan.Validate())
 	})

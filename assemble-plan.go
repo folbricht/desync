@@ -87,7 +87,7 @@ type placement struct {
 }
 
 // NewPlan creates a fully populated AssemblePlan.
-func NewPlan(name string, idx Index, s Store, opts ...PlanOption) (*AssemblePlan, error) {
+func NewPlan(name string, idx Index, s Store, opts ...PlanOption) *AssemblePlan {
 	p := &AssemblePlan{
 		idx:           idx,
 		concurrency:   1,
@@ -100,22 +100,9 @@ func NewPlan(name string, idx Index, s Store, opts ...PlanOption) (*AssemblePlan
 	for _, opt := range opts {
 		opt(p)
 	}
-
-	ss, err := newSelfSeed(p.target, p.idx, p.concurrency)
-	if err != nil {
-		return nil, err
-	}
-	p.selfSeed = ss
-
+	p.selfSeed = newSelfSeed(p.target, p.idx)
 	p.generate()
-	return p, nil
-}
-
-// Close releases resources held by the plan.
-func (p *AssemblePlan) Close() {
-	if p.selfSeed != nil {
-		p.selfSeed.Close()
-	}
+	return p
 }
 
 // Validate checks that all file seed placements still match their underlying
@@ -239,37 +226,21 @@ func (p *AssemblePlan) generate() {
 			continue
 		}
 
-		// Repeat the same placement for all chunks in the sequence.
-		// We dedup sequences later.
+		// The same placement covers the whole matched run, though it may
+		// be cut short by positions that are already filled. We dedup
+		// runs into single steps later.
 		pl := &placement{}
+		size := p.claimRun(pl, i, n)
 
-		// We can use up to n chunks from the seed, find out how much
-		// we can actually use without overwriting any existing placements
-		// in the list.
-		var (
-			to   = i
-			size int
-		)
-		for range n {
-			if p.placements[i] != nil {
-				break
-			}
-
-			p.placements[i] = pl
-			i++
-			size++
-		}
-		i-- // compensate for the outer loop's i++
-
-		// Update the step with the potentially adjusted length
 		seedOffset := p.idx.Chunks[start].Start
-		last := p.idx.Chunks[start+size-1]
-		length := last.Start + last.Size - seedOffset
-		offset := p.idx.Chunks[to].Start
+		length := chunkRangeLength(p.idx.Chunks[start : start+size])
+		offset := p.idx.Chunks[i].Start
 
 		pl.source = p.selfSeed.GetSegment(seedOffset, offset, length)
 		pl.dependsOnStart = start
 		pl.dependsOnSize = size
+
+		i += size - 1 // the loop's i++ moves past the claimed run
 	}
 
 	// Check file seeds for matches in unfilled positions.
@@ -288,40 +259,21 @@ func (p *AssemblePlan) generate() {
 				continue
 			}
 
-			// Repeat the same placement for all chunks in the sequence.
-			// We dedup sequences later.
+			// The same placement covers the whole matched run, though it
+			// may be cut short by positions that are already filled. We
+			// dedup runs into single steps later.
 			pl := &placement{}
-
-			// We can use up to n chunks from the seed, find out how much
-			// we can actually use without overwriting any existing placements
-			// in the list.
-			var (
-				to   = i
-				size int
-			)
-			for range n {
-				if p.placements[i] != nil {
-					break
-				}
-				p.placements[i] = pl
-				i++
-				size++
-			}
-			i-- // compensate for the outer loop's i++
-
-			// Update the step with the potentially adjusted length
-			offset := p.idx.Chunks[to].Start
-			last := p.idx.Chunks[to+size-1]
-			length := last.Start + last.Size - offset
-			segment := seed.GetSegment(match, size)
+			size := p.claimRun(pl, i, n)
 
 			pl.source = &fileSeedSource{
-				segment: segment,
+				segment: seed.GetSegment(match, size),
 				seed:    seed,
-				offset:  offset,
-				length:  length,
+				offset:  p.idx.Chunks[i].Start,
+				length:  chunkRangeLength(p.idx.Chunks[i : i+size]),
 				isBlank: p.targetIsBlank,
 			}
+
+			i += size - 1 // the loop's i++ moves past the claimed run
 		}
 	}
 
@@ -341,6 +293,17 @@ func (p *AssemblePlan) generate() {
 	// We now have a fully populated list of placements. Some are
 	// duplicates, spanning multiple chunks. Dependencies are only defined
 	// forward, like chunk-A needs chunk-B to be written first, etc.
+}
+
+// claimRun assigns pl to up to n consecutive unfilled placements starting at
+// position from. It stops at the first position that is already filled and
+// returns the number of positions claimed.
+func (p *AssemblePlan) claimRun(pl *placement, from, n int) int {
+	size := 0
+	for ; size < n && p.placements[from+size] == nil; size++ {
+		p.placements[from+size] = pl
+	}
+	return size
 }
 
 func (p *AssemblePlan) Steps() []*PlanStep {
@@ -443,11 +406,7 @@ func (p *AssemblePlan) generateSkips() {
 	g.SetLimit(p.concurrency)
 	for i, chunk := range p.idx.Chunks {
 		g.Go(func() error {
-			b := make([]byte, chunk.Size)
-			if _, err := f.ReadAt(b, int64(chunk.Start)); err != nil {
-				return nil
-			}
-			if Digest.Sum(b) == chunk.ID {
+			if chunkInPlace(f, chunk) {
 				p.placements[i] = &placement{source: &skipInPlace{
 					start: chunk.Start,
 					end:   chunk.Start + chunk.Size,

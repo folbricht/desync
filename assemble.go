@@ -108,20 +108,14 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 
 	// Create the plan
 retry:
-	plan, err := NewPlan(name, idx, s,
+	plan := NewPlan(name, idx, s,
 		PlanWithConcurrency(options.N),
 		PlanWithSeeds(seeds),
 		PlanWithTargetIsBlank(isBlank),
 	)
-	if err != nil {
-		return stats, err
-	}
 
 	// Validate the seed indexes provided and potentially regenerate them
 	if err := plan.Validate(); err != nil {
-		// Close the invalid plan
-		plan.Close()
-
 		var seedError SeedInvalid
 		if errors.As(err, &seedError) {
 
@@ -149,7 +143,6 @@ retry:
 		}
 		return stats, err
 	}
-	defer plan.Close()
 
 	// Generate the plan steps necessary to build the target
 	steps := plan.Steps()
