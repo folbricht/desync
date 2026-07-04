@@ -302,9 +302,9 @@ func TestSelfSeedInPlace(t *testing.T) {
 			outSum := md5.Sum(b)
 			assert.Equal(t, sum, outSum, "checksum of extracted file doesn't match expected")
 
-			// All chunks must be in-place. The in-place check in writeChunk
-			// runs before the self-seed lookup, so repeated chunks are not
-			// re-written from the self-seed.
+			// All chunks must be in-place. The plan generator creates skip
+			// placements before matching the self-seed, so repeated chunks
+			// are not re-written from the self-seed.
 			assert.Equal(t, uint64(len(test.index)), stats.ChunksInPlace, "expected all chunks in-place")
 		})
 	}

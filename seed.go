@@ -26,11 +26,11 @@ type Seed interface {
 }
 
 // maxMatchFrom compares chunks starting at position 0 with seedChunks starting
-// at position p. Returns (p, count) where count is the number of consecutive
-// matching chunks. A limit of zero means no limit.
-func maxMatchFrom(chunks, seedChunks []IndexChunk, p, limit int) (int, int) {
+// at position p. Returns the number of consecutive matching chunks. A limit of
+// zero means no limit.
+func maxMatchFrom(chunks, seedChunks []IndexChunk, p, limit int) int {
 	if len(chunks) == 0 {
-		return 0, 0
+		return 0
 	}
 	var (
 		sp int
@@ -49,7 +49,7 @@ func maxMatchFrom(chunks, seedChunks []IndexChunk, p, limit int) (int, int) {
 		dp++
 		sp++
 	}
-	return p, dp - p
+	return dp - p
 }
 
 // SeedSegment represents a matching range between a Seed and a file being
@@ -57,7 +57,6 @@ func maxMatchFrom(chunks, seedChunks []IndexChunk, p, limit int) (int, int) {
 // a target file during an extract operation.
 type SeedSegment interface {
 	FileName() string
-	Size() uint64
 	Validate(file *os.File) error
 	WriteInto(dst *os.File, offset, end, blocksize uint64, isBlank bool) (copied uint64, cloned uint64, err error)
 }

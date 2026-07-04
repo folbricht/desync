@@ -17,7 +17,7 @@ type FileSeed struct {
 	canReflink bool
 }
 
-// NewIndexSeed initializes a new seed that uses an existing index and its blob
+// NewFileSeed initializes a new seed that uses an existing index and its blob
 func NewFileSeed(dstFile string, srcFile string, index Index) (*FileSeed, error) {
 	s := FileSeed{
 		srcFile:    srcFile,
@@ -58,9 +58,9 @@ func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, 
 		limit = 100
 	}
 	for _, p := range pos {
-		seedPos, n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
+		n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
 		if n > maxLen {
-			bestSeedPos = seedPos
+			bestSeedPos = p
 			maxLen = n
 		}
 		if limit != 0 && limit == maxLen {
@@ -171,10 +171,10 @@ func (s *fileSeedSegment) Validate(file *os.File) error {
 // Performs a plain copy of everything in the seed to the target, not cloning
 // of blocks.
 func (s *fileSeedSegment) copy(dst, src *os.File, srcOffset, length, dstOffset uint64) (uint64, uint64, error) {
-	if _, err := dst.Seek(int64(dstOffset), os.SEEK_SET); err != nil {
+	if _, err := dst.Seek(int64(dstOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
-	if _, err := src.Seek(int64(srcOffset), os.SEEK_SET); err != nil {
+	if _, err := src.Seek(int64(srcOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
 

@@ -174,6 +174,20 @@ func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.S
 	return desync.AssembleFile(ctx, name, idx, s, seeds, assembleOpt)
 }
 
+// newSeed creates a seed for the given source file and index. If the source
+// resolves to the same path as the extraction target, the data is already
+// (partially) in place and an in-place seed is used instead of a file seed.
+func newSeed(dstFile, absDst, srcFile string, srcIndex desync.Index) (desync.Seed, error) {
+	absSrc, err := filepath.Abs(srcFile)
+	if err != nil {
+		return nil, err
+	}
+	if absSrc == absDst {
+		return desync.NewInPlaceSeed(srcFile, srcIndex)
+	}
+	return desync.NewFileSeed(dstFile, srcFile, srcIndex)
+}
+
 func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	absDst, err := filepath.Abs(dstFile)
@@ -206,17 +220,7 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desy
 			return nil, err
 		}
 
-		absSrc, err := filepath.Abs(srcFile)
-		if err != nil {
-			return nil, err
-		}
-
-		var seed desync.Seed
-		if absSrc == absDst {
-			seed, err = desync.NewInPlaceSeed(srcFile, srcIndex)
-		} else {
-			seed, err = desync.NewFileSeed(dstFile, srcFile, srcIndex)
-		}
+		seed, err := newSeed(dstFile, absDst, srcFile, srcIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -264,16 +268,7 @@ func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOption
 			if err != nil {
 				return err
 			}
-			absSrc, err := filepath.Abs(srcFile)
-			if err != nil {
-				return err
-			}
-			var seed desync.Seed
-			if absSrc == absDst {
-				seed, err = desync.NewInPlaceSeed(srcFile, srcIndex)
-			} else {
-				seed, err = desync.NewFileSeed(dstFile, srcFile, srcIndex)
-			}
+			seed, err := newSeed(dstFile, absDst, srcFile, srcIndex)
 			if err != nil {
 				return err
 			}

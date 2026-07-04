@@ -107,10 +107,7 @@ func NewPlan(name string, idx Index, s Store, opts ...PlanOption) (*AssemblePlan
 	}
 	p.selfSeed = ss
 
-	if err := p.generate(); err != nil {
-		p.Close()
-		return nil, err
-	}
+	p.generate()
 	return p, nil
 }
 
@@ -206,7 +203,7 @@ func (p *AssemblePlan) Validate() error {
 	return nil
 }
 
-func (p *AssemblePlan) generate() error {
+func (p *AssemblePlan) generate() {
 	// Find the in-place seed, if any. There can only be one.
 	var inPlaceSeed *InPlaceSeed
 	for _, seed := range p.seeds {
@@ -344,8 +341,6 @@ func (p *AssemblePlan) generate() error {
 	// We now have a fully populated list of placements. Some are
 	// duplicates, spanning multiple chunks. Dependencies are only defined
 	// forward, like chunk-A needs chunk-B to be written first, etc.
-
-	return nil
 }
 
 func (p *AssemblePlan) Steps() []*PlanStep {

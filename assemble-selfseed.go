@@ -79,13 +79,11 @@ func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, 
 		if p <= startPos {
 			continue
 		}
-		start, n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
+		n := maxMatchFrom(chunks[startPos:], s.index.Chunks, p, limit)
 		// Clamp to prevent source [p, p+n) overlapping destination [startPos, startPos+n)
-		if max := p - startPos; n > max {
-			n = max
-		}
+		n = min(n, p-startPos)
 		if n >= maxLen { // Using >= here to get the last (longest) match
-			maxStart = start
+			maxStart = p
 			maxLen = n
 		}
 		if limit != 0 && limit == maxLen {
