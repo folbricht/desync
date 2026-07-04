@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -42,9 +41,9 @@ func (s *nullChunkSeed) close() error {
 	return nil
 }
 
-func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, uint64, int, int) {
+func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
 	if startPos >= len(chunks) {
-		return 0, 0, 0, 0
+		return 0, 0
 	}
 	var (
 		n     int
@@ -62,17 +61,11 @@ func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uin
 		}
 		n++
 	}
-	if n == 0 {
-		return 0, 0, 0, 0
-	}
-	last := chunks[startPos+n-1]
-	byteLength := last.Start + last.Size - chunks[startPos].Start
-	return 0, byteLength, 0, n
+	return 0, n
 }
 
-func (s *nullChunkSeed) GetSegment(offset, size uint64) SeedSegment {
+func (s *nullChunkSeed) GetSegment(pos, n int) SeedSegment {
 	return &nullChunkSection{
-		size:       size,
 		blockfile:  s.blockfile,
 		canReflink: s.canReflink,
 	}
@@ -83,7 +76,6 @@ func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int, attempt int,
 }
 
 type nullChunkSection struct {
-	size       uint64
 	blockfile  *os.File
 	canReflink bool
 }
@@ -97,13 +89,7 @@ func (s *nullChunkSection) FileName() string {
 	return ""
 }
 
-func (s *nullChunkSection) Size() uint64 { return s.size }
-
 func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) (uint64, uint64, error) {
-	if length != s.Size() {
-		return 0, 0, fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
-	}
-
 	// When cloning isn't available we'd normally have to copy the 0 bytes into
 	// the target range. But if that's already blank (because it's a new/truncated
 	// file) there's no need to copy 0 bytes.
@@ -111,7 +97,7 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 		if isBlank {
 			return 0, 0, nil
 		}
-		return s.copy(dst, offset, s.Size())
+		return s.copy(dst, offset, length)
 	}
 	return s.clone(dst, offset, length, blocksize, isBlank)
 }

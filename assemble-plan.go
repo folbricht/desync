@@ -234,7 +234,7 @@ func (p *AssemblePlan) generate() {
 			continue // Already filled
 		}
 
-		_, _, start, n := p.selfSeed.LongestMatchFrom(p.idx.Chunks, i)
+		start, n := p.selfSeed.LongestMatchFrom(p.idx.Chunks, i)
 		if n < 1 {
 			continue
 		}
@@ -283,7 +283,7 @@ func (p *AssemblePlan) generate() {
 				continue
 			}
 
-			seedOffset, _, _, n := seed.LongestMatchFrom(p.idx.Chunks, i)
+			match, n := seed.LongestMatchFrom(p.idx.Chunks, i)
 			if n < 1 {
 				continue
 			}
@@ -313,7 +313,7 @@ func (p *AssemblePlan) generate() {
 			offset := p.idx.Chunks[to].Start
 			last := p.idx.Chunks[to+size-1]
 			length := last.Start + last.Size - offset
-			segment := seed.GetSegment(seedOffset, length)
+			segment := seed.GetSegment(match, size)
 
 			pl.source = &fileSeedSource{
 				segment: segment,

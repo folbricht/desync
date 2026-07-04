@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 )
 
 // FileSeed is used to copy or clone blocks from an existing index+blob during
@@ -32,16 +31,16 @@ func NewFileSeed(dstFile string, srcFile string, index Index) (*FileSeed, error)
 }
 
 // LongestMatchFrom returns the longest sequence of chunks anywhere in the seed
-// that match chunks starting at chunks[startPos]. It returns the byte offset
-// and byte length of the match in the seed, plus the chunk offset and chunk
-// length. Returns (0, 0, 0, 0) if there is no match.
-func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, uint64, int, int) {
+// that match chunks starting at chunks[startPos]. It returns the chunk
+// position of the match in the seed and the number of matching chunks, or
+// (0, 0) if there is no match.
+func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
 	if startPos >= len(chunks) || len(s.index.Chunks) == 0 {
-		return 0, 0, 0, 0
+		return 0, 0
 	}
 	pos, ok := s.pos[chunks[startPos].ID]
 	if !ok {
-		return 0, 0, 0, 0
+		return 0, 0
 	}
 	// From every position of chunks[startPos] in the source, find a run of
 	// matching chunks. Then return the longest of those runs.
@@ -67,28 +66,13 @@ func (s *FileSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (uint64, 
 			break
 		}
 	}
-	if maxLen == 0 {
-		return 0, 0, 0, 0
-	}
-	byteOffset := s.index.Chunks[bestSeedPos].Start
-	last := s.index.Chunks[bestSeedPos+maxLen-1]
-	byteLength := last.Start + last.Size - byteOffset
-	return byteOffset, byteLength, bestSeedPos, maxLen
+	return bestSeedPos, maxLen
 }
 
-// GetSegment constructs a SeedSegment for a matched range identified by its
-// byte offset and size in the seed.
-func (s *FileSeed) GetSegment(offset, size uint64) SeedSegment {
-	i := sort.Search(len(s.index.Chunks), func(j int) bool {
-		return s.index.Chunks[j].Start >= offset
-	})
-	var covered uint64
-	end := i
-	for end < len(s.index.Chunks) && covered < size {
-		covered += s.index.Chunks[end].Size
-		end++
-	}
-	return newFileSeedSegment(s.srcFile, s.index.Chunks[i:end], s.canReflink)
+// GetSegment constructs a SeedSegment for n chunks starting at chunk position
+// pos in the seed.
+func (s *FileSeed) GetSegment(pos, n int) SeedSegment {
+	return newFileSeedSegment(s.srcFile, s.index.Chunks[pos:pos+n], s.canReflink)
 }
 
 func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
