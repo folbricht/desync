@@ -44,3 +44,17 @@ func (e InvalidFormat) Error() string {
 type Interrupted struct{}
 
 func (e Interrupted) Error() string { return "interrupted" }
+
+// SeedInvalid is returned when a seed's data doesn't match its index.
+type SeedInvalid struct {
+	Seeds []Seed
+	Err   error
+}
+
+func (e SeedInvalid) Error() string {
+	return fmt.Sprintf("invalid seed: %s", e.Err)
+}
+
+func (e SeedInvalid) Unwrap() error {
+	return e.Err
+}

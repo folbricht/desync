@@ -50,8 +50,10 @@ If a seed is invalid, the extract operation is aborted by default. With
 --skip-invalid-seeds, invalid seeds are discarded and the extraction continues
 without them. Alternatively, --regenerate-invalid-seeds regenerates invalid
 seed indexes in memory from the available data; neither data nor indexes are
-changed on disk. Also, if a seed changes while processing, its invalid chunks
-will be taken from the self seed, or the store, instead of aborting.`,
+changed on disk. Seeds are validated once before extraction begins. If a seed
+file is modified while the extraction is running, it could result in a
+corrupted target file. In such cases, use the verify-index command to check
+the integrity of the target afterwards.`,
 		Example: `  desync extract -s http://192.168.1.1/ -c /path/to/local file.caibx largefile.bin
   desync extract -s /mnt/store -s /tmp/other/store file.tar.caibx file.tar
   desync extract -s /mnt/store --seed /mnt/v1.caibx v2.caibx v2.vmdk
@@ -172,8 +174,26 @@ func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.S
 	return desync.AssembleFile(ctx, name, idx, s, seeds, assembleOpt)
 }
 
+// newSeed creates a seed for the given source file and index. If the source
+// resolves to the same path as the extraction target, the data is already
+// (partially) in place and an in-place seed is used instead of a file seed.
+func newSeed(dstFile, absDst, srcFile string, srcIndex desync.Index) (desync.Seed, error) {
+	absSrc, err := filepath.Abs(srcFile)
+	if err != nil {
+		return nil, err
+	}
+	if absSrc == absDst {
+		return desync.NewInPlaceSeed(srcFile, srcIndex)
+	}
+	return desync.NewFileSeed(dstFile, srcFile, srcIndex)
+}
+
 func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
+	absDst, err := filepath.Abs(dstFile)
+	if err != nil {
+		return nil, err
+	}
 	for _, seedInfo := range seedsInfo {
 		var (
 			srcIndexFile string
@@ -200,7 +220,7 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desy
 			return nil, err
 		}
 
-		seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
+		seed, err := newSeed(dstFile, absDst, srcFile, srcIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -212,6 +232,10 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desy
 func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOptions) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	absIn, err := filepath.Abs(dstIdxFile)
+	if err != nil {
+		return nil, err
+	}
+	absDst, err := filepath.Abs(dstFile)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +268,7 @@ func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOption
 			if err != nil {
 				return err
 			}
-			seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
+			seed, err := newSeed(dstFile, absDst, srcFile, srcIndex)
 			if err != nil {
 				return err
 			}
