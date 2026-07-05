@@ -147,3 +147,24 @@ func TestLocalStoreErrorHandling(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A read failure that isn't "file does not exist" must be reported to the
+// caller, not turned into a misleading ChunkInvalid or, with SkipVerify, a
+// chunk holding partial data.
+func TestLocalStoreGetChunkReadError(t *testing.T) {
+	store := t.TempDir()
+
+	s, err := NewLocalStore(store, StoreOptions{SkipVerify: true})
+	require.NoError(t, err)
+
+	// Put a directory where the chunk file is expected, making os.ReadFile
+	// fail with an error other than IsNotExist on all platforms
+	id := NewChunk([]byte("some data")).ID()
+	_, p := s.nameFromID(id)
+	require.NoError(t, os.MkdirAll(p, 0755))
+
+	_, err = s.GetChunk(id)
+	require.Error(t, err)
+	require.NotErrorAs(t, err, &ChunkMissing{})
+	require.NotErrorAs(t, err, &ChunkInvalid{})
+}
