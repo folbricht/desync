@@ -128,9 +128,11 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 
 	// Truncate the output file to the full expected size. Not only does this
 	// confirm there's enough disk space, but it allows for an optimization
-	// when dealing with the Null Chunk
+	// when dealing with the Null Chunk. On Darwin, the file is physically
+	// pre-allocated as well since sparse files on APFS have shown to cause
+	// issues when written to concurrently.
 	if !isBlkDevice {
-		if err := os.Truncate(name, idx.Length()); err != nil {
+		if err := preallocateFile(name, idx.Length()); err != nil {
 			return stats, err
 		}
 	}
