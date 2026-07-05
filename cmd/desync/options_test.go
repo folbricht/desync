@@ -85,6 +85,7 @@ func TestErrorRetryOptions(t *testing.T) {
 			require.NoError(t, err)
 
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
+			require.NoError(t, err)
 			opt := cmdOpt.MergedWith(configOptions)
 			require.Equal(t, test.errorRetryStoreHit, opt.ErrorRetry)
 			require.Equal(t, test.baseIntervalStoreHit, opt.ErrorRetryBaseInterval)
@@ -178,6 +179,7 @@ func TestStringOptions(t *testing.T) {
 			require.NoError(t, err)
 
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
+			require.NoError(t, err)
 			opt := cmdOpt.MergedWith(configOptions)
 			require.Equal(t, test.clientCertStoreHit, opt.ClientCert)
 			require.Equal(t, test.clientKeyStoreHit, opt.ClientKey)

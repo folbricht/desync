@@ -135,10 +135,9 @@ func (s *FileSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) []IndexCh
 }
 
 type fileSeedSegment struct {
-	file           string
-	chunks         []IndexChunk
-	canReflink     bool
-	needValidation bool
+	file       string
+	chunks     []IndexChunk
+	canReflink bool
 }
 
 func newFileSeedSegment(file string, chunks []IndexChunk, canReflink bool) *fileSeedSegment {

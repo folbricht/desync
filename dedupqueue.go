@@ -13,7 +13,6 @@ var _ Store = &DedupQueue{}
 // upstream store. Implements the Store interface.
 type DedupQueue struct {
 	store         Store
-	mu            sync.Mutex
 	getChunkQueue *queue
 	hasChunkQueue *queue
 }
