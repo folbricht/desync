@@ -120,3 +120,32 @@ func TestIndexReadSeekerValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tail, got)
 }
+
+// An index of a zero-length file has no chunks. Reading and seeking should
+// behave like an empty file rather than panic.
+func TestIndexReadSeekerEmptyIndex(t *testing.T) {
+	idx := Index{
+		Index: FormatIndex{ChunkSizeMax: ChunkSizeMaxDefault},
+	}
+	store := &TestStore{}
+
+	r := NewIndexReadSeeker(idx, store)
+
+	got, err := io.ReadAll(r)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	// Seeking to the start (and end, they're the same) is allowed
+	pos, err := r.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), pos)
+
+	pos, err = r.Seek(0, io.SeekEnd)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), pos)
+
+	buf := make([]byte, 16)
+	n, err := r.Read(buf)
+	assert.Equal(t, 0, n)
+	assert.Equal(t, io.EOF, err)
+}

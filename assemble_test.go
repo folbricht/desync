@@ -364,6 +364,34 @@ func readCaibxFile(t *testing.T, indexLocation string) (idx Index) {
 	return idx
 }
 
+// An index of a zero-length file has no chunks. Extracting it should produce
+// an empty output file rather than panic.
+func TestExtractEmptyIndex(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+
+	// Write some data into the output file to confirm it gets truncated
+	require.NoError(t, os.WriteFile(out, []byte("old content"), 0644))
+
+	index := Index{
+		Index: FormatIndex{
+			FeatureFlags: CaFormatSHA512256,
+			ChunkSizeMin: ChunkSizeMinDefault,
+			ChunkSizeAvg: ChunkSizeAvgDefault,
+			ChunkSizeMax: ChunkSizeMaxDefault,
+		},
+	}
+	store, err := NewLocalStore(t.TempDir(), StoreOptions{})
+	require.NoError(t, err)
+
+	_, err = AssembleFile(context.Background(), out, index, store, nil,
+		AssembleOptions{10, InvalidSeedActionBailOut})
+	require.NoError(t, err)
+
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Empty(t, b)
+}
+
 func TestExtractWithNonStaticSeeds(t *testing.T) {
 	n := 10
 	outDir := t.TempDir()

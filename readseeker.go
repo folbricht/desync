@@ -25,13 +25,17 @@ type IndexPos struct {
 
 // NewIndexReadSeeker initializes a ReadSeeker for indexes.
 func NewIndexReadSeeker(i Index, s Store) *IndexPos {
-	return &IndexPos{
-		Store:      s,
-		Index:      i,
-		Length:     i.Length(),
-		curChunkID: i.Chunks[0].ID,
-		nullChunk:  NewNullChunk(i.Index.ChunkSizeMax),
+	ip := &IndexPos{
+		Store:     s,
+		Index:     i,
+		Length:    i.Length(),
+		nullChunk: NewNullChunk(i.Index.ChunkSizeMax),
 	}
+	// An index of a zero-length file has no chunks
+	if len(i.Chunks) > 0 {
+		ip.curChunkID = i.Chunks[0].ID
+	}
+	return ip
 }
 
 /* findOffset - Actually update our IndexPos for a new Index
@@ -50,6 +54,13 @@ func (ip *IndexPos) findOffset(newPos int64) (int64, error) {
 	// Degenerate case: Seeking to existing position
 	delta = newPos - ip.pos
 	if delta == 0 {
+		return ip.pos, nil
+	}
+
+	// Degenerate case: An empty index has no chunk to look up. Just track
+	// the position, Read() returns EOF for anything at or past the end.
+	if len(ip.Index.Chunks) == 0 {
+		ip.pos = newPos
 		return ip.pos, nil
 	}
 
@@ -143,7 +154,7 @@ func (ip *IndexPos) Seek(offset int64, whence int) (int64, error) {
 func (ip *IndexPos) Read(p []byte) (n int, err error) {
 	var totalCopiedBytes int
 	remainingBytes := p[:]
-	if ip.pos == ip.Length { // if initially called when already at the end, return EOF
+	if ip.pos >= ip.Length { // if initially called when already at or past the end, return EOF
 		return 0, io.EOF
 	}
 	for len(remainingBytes) > 0 {
