@@ -160,7 +160,9 @@ retry:
 	if (err != nil) || (statusCode >= 500 && statusCode < 600) {
 		if attempt >= r.opt.ErrorRetry {
 			log.WithField("attempt", attempt).Debug("failed, giving up")
-			return 0, nil, err
+			// Return the last response as-is. In the server-error case err is
+			// nil and the callers report the actual status code and body.
+			return statusCode, responseBody, err
 		} else {
 			log.WithField("attempt", attempt).WithField("delay", attempt).Debug("waiting, then retrying")
 			time.Sleep(time.Duration(attempt) * r.opt.ErrorRetryBaseInterval)

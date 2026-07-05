@@ -314,3 +314,35 @@ func TestPutChunk(t *testing.T) {
 		})
 	}
 }
+
+// When retries are exhausted on a server error, the returned error must
+// reflect the actual status code and response body, not a synthetic status
+// code 0 or an empty message.
+func TestRetryExhaustedError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		io.WriteString(w, "service down for maintenance")
+	}))
+	defer ts.Close()
+	u, _ := url.Parse(ts.URL)
+
+	s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 2, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
+	require.NoError(t, err)
+
+	// GetChunk reports the real status code
+	_, err = s.GetChunk(ChunkID{0, 0, 0, 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
+
+	// HasChunk reports the real status code
+	_, err = s.HasChunk(ChunkID{0, 0, 0, 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
+
+	// StoreChunk reports the response body
+	chunk, err := NewChunkWithID(ChunkID{0, 0, 0, 1}, []byte("data"), true)
+	require.NoError(t, err)
+	err = s.StoreChunk(chunk)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "service down for maintenance")
+}
