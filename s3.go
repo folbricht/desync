@@ -105,21 +105,23 @@ retry:
 
 	b, err := io.ReadAll(obj)
 	if err != nil {
+		// Don't retry if the chunk or the bucket doesn't exist, those aren't
+		// transient errors. A missing chunk in particular is a normal
+		// occurrence when this store is behind a router or cache.
+		if e, ok := err.(minio.ErrorResponse); ok {
+			switch e.Code {
+			case "NoSuchBucket":
+				return nil, fmt.Errorf("bucket '%s' does not exist", s.bucket)
+			case "NoSuchKey":
+				return nil, ChunkMissing{ID: id}
+			}
+		}
 		if attempt <= s.opt.ErrorRetry {
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
-		if e, ok := err.(minio.ErrorResponse); ok {
-			switch e.Code {
-			case "NoSuchBucket":
-				err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
-			case "NoSuchKey":
-				err = ChunkMissing{ID: id}
-			default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
-				err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
-			}
-		}
-		return nil, err
+		// Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
 	}
 	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
 }
