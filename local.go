@@ -48,8 +48,11 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 	_, p := s.nameFromID(id)
 	b, err := os.ReadFile(p)
-	if os.IsNotExist(err) {
-		return nil, ChunkMissing{id}
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ChunkMissing{id}
+		}
+		return nil, err
 	}
 	return NewChunkFromStorage(id, b, s.converters, s.Opt.SkipVerify)
 }
