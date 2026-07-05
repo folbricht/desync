@@ -137,6 +137,12 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		}
 	}
 
+	// An index of a zero-length file has no chunks. The file has been created
+	// (and truncated) above, so there is nothing left to do.
+	if len(idx.Chunks) == 0 {
+		return stats, nil
+	}
+
 	// Determine the blocksize of the target file which is required for reflinking
 	blocksize := blocksizeOfFile(name)
 
