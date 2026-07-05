@@ -410,6 +410,7 @@ func TestExtractWithNonStaticSeeds(t *testing.T) {
 	var seeds []Seed
 	srcIndex := readCaibxFile(t, "testdata/blob2_corrupted.caibx")
 	seed, err := NewIndexSeed(out, "testdata/blob2_corrupted", srcIndex)
+	require.NoError(t, err)
 	seeds = append(seeds, seed)
 
 	// Test that the MockValidate works as expected

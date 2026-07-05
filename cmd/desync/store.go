@@ -99,7 +99,7 @@ func WritableStore(location string, cmdOpt cmdStoreOptions) (desync.WriteStore, 
 func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 	loc, err := url.Parse(location)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to parse store location %s : %s", location, err)
+		return nil, fmt.Errorf("unable to parse store location %s : %s", location, err)
 	}
 
 	// Get any store options from the config if present and overwrite with settings from
@@ -206,7 +206,7 @@ func writableIndexStore(location string, cmdOpt cmdStoreOptions) (desync.IndexWr
 func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.IndexStore, string, error) {
 	loc, err := url.Parse(location)
 	if err != nil {
-		return nil, "", fmt.Errorf("Unable to parse store location %s : %s", location, err)
+		return nil, "", fmt.Errorf("unable to parse store location %s : %s", location, err)
 	}
 
 	indexName := path.Base(loc.Path)

@@ -16,9 +16,7 @@ type StoreRouter struct {
 // NewStoreRouter returns an initialized router
 func NewStoreRouter(stores ...Store) StoreRouter {
 	var l []Store
-	for _, s := range stores {
-		l = append(l, s)
-	}
+	l = append(l, stores...)
 	return StoreRouter{l}
 }
 

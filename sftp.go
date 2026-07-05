@@ -185,7 +185,10 @@ func (s *SFTPStore) RemoveChunk(id ChunkID) error {
 	defer func() { s.pool <- c }()
 	name := c.nameFromID(id)
 	if _, err := c.client.Stat(name); err != nil {
-		return ChunkMissing{id}
+		if os.IsNotExist(err) {
+			return ChunkMissing{id}
+		}
+		return err
 	}
 	return c.client.Remove(name)
 }
