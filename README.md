@@ -265,17 +265,121 @@ s3+https://example.com/bucket/prefix?lookup=auto
 <details>
 <summary><h3>OCI Registry Stores</h3></summary>
 
-OCI registries can be used to store chunks, using [ORAS](https://oras.land/docs/) to treat the registry as content-addressable storage. Use the `oci+https` scheme when pointing at OCI stores. If the store does not support TLS, use `oci+http` instead.
+OCI container registries (ghcr.io, Docker Hub, Harbor, [zot](https://zothub.io), the [distribution registry](https://github.com/distribution/distribution), ...) can be used as chunk stores. Registries are widely available, often free or low cost, and typically sit behind a CDN, which makes them an attractive way to distribute chunks publicly without running any server infrastructure. Use the `oci+https` scheme when pointing at a registry, or `oci+http` for registries without TLS. The URL contains the registry host followed by the repository name, which must be lowercase:
 
 ```text
-oci+https://ghcr.io/myuser/repo
+oci+https://ghcr.io/myuser/mystore
+oci+http://127.0.0.1:5000/test/store
 ```
 
-Every chunk is stored as its own artifact: a blob holding the chunk data (compressed unless the store is configured with `uncompressed`), referenced by a small manifest that is tagged with the chunk ID. Since the chunk ID appears only in the tag, the store works with desync's default SHA512/256 digest algorithm as well as SHA256, and the tagged manifest protects the chunk from registry garbage collection of unreferenced blobs. Reading a chunk takes two requests (manifest, then blob) and writing takes three, so combining a registry store with a local cache is recommended more than for most other store types.
+An OCI store supports reading, writing, pruning, and use as a cache, so it works with `make`, `extract`, `chop`, `cache`, `info`, `prune` and every other command that takes a `-s` store. Note that index files (`.caibx`/`.caidx`) cannot be stored in a registry, only chunks — distribute the index via an [index store](#remote-indexes) or any other file transfer.
 
-`prune` deletes the manifests of unwanted chunks, only touching tags that parse as chunk IDs, so other artifacts can share the repository. Reclaiming the space held by the unreferenced blobs is left to the registry's own garbage collection. Note that manifest deletion is not supported by every registry: the distribution registry requires it to be enabled (`REGISTRY_STORAGE_DELETE_ENABLED=true`) and GitHub's ghcr.io only supports deletion through the GitHub Packages API, not the registry API.
+#### How chunks are stored
 
-Credentials are looked up in this order: the `DESYNC_OCI_USERNAME` and `DESYNC_OCI_PASSWORD` environment variables, the `oci-credentials` section of the config file (see [Configuration](#configuration)), and finally the Docker credential store — registries logged into with `docker login` or `oras login` work without any desync configuration.
+Every chunk is stored as its own small OCI artifact consisting of a blob holding the chunk data — compressed with zstd unless the store is configured with `uncompressed` — and a manifest referencing that blob, tagged with the chunk ID in hex. A chunk artifact looks like this in the registry:
+
+```json
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "artifactType": "application/vnd.desync.chunk.v1",
+  "config": {
+    "mediaType": "application/vnd.oci.empty.v1+json",
+    "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "size": 2
+  },
+  "layers": [
+    {
+      "mediaType": "application/octet-stream",
+      "digest": "sha256:759129e4f837302163925898441ed7a7ce728e9340dc20c1109f7461a878dc39",
+      "size": 34806
+    }
+  ],
+  "annotations": {
+    "org.opencontainers.image.title": "cf16af015e294eb73277987c0f08f9c8157cb05425e52f5e8023749ac1279948.cacnk"
+  }
+}
+```
+
+This layout has a few important properties:
+
+- The chunk ID appears only in the tag, never as a blob digest. OCI blob digests must be SHA256, so this is what allows the store to work with desync's default SHA512/256 digest algorithm and lets it be combined freely with other stores, caches, and existing indexes.
+- Registries garbage-collect blobs that are not referenced by a manifest (and some, like ghcr.io, won't serve them at all). The tagged manifest keeps every chunk referenced and therefore safe.
+- Identical chunks pushed again reuse the same blob — registries deduplicate blobs by digest within a repository.
+
+Be aware that registry UIs show one tag (or "package version") per chunk, so a store with many chunks makes for a noisy listing. Using a repository dedicated to the chunk store is recommended, although unrelated artifacts sharing the repository are safe, even from `prune`.
+
+Reading a chunk takes two requests (manifest by tag, then blob), an existence check takes one, and writing takes three. desync requests chunks concurrently, which hides much of the added round-trip latency, but combining a registry store with a local cache (`-c`) is still more worthwhile than for most other store types.
+
+#### Authentication
+
+Credentials are looked up in the following order, first match wins:
+
+1. The `DESYNC_OCI_USERNAME` and `DESYNC_OCI_PASSWORD` environment variables. Convenient in CI, e.g. with the ephemeral `GITHUB_TOKEN` in GitHub Actions.
+2. The `oci-credentials` section of the config file (see [Configuration](#configuration)), keyed by host and repository with glob support.
+3. The Docker credential store. If you're logged in with `docker login ghcr.io` or `oras login ghcr.io`, desync picks those credentials up without any configuration.
+
+Anonymous access works for public repositories, so extracting from a public store needs no credentials at all. For ghcr.io, pushing requires a token with the `write:packages` scope, and note that new ghcr.io packages default to private visibility.
+
+#### Store options
+
+The usual [store options](#configuration-reference) apply, keyed by the full store URL: `uncompressed` to store chunks in plain form, `timeout`, `error-retry`, `error-retry-base-interval`, `trust-insecure`, and `ca-cert`/`client-cert`/`client-key` for custom or mutual TLS.
+
+```json
+{
+  "store-options": {
+    "oci+https://registry.internal/desync/store": {
+      "uncompressed": true,
+      "error-retry": 2,
+      "ca-cert": "/path/to/internal-ca.crt"
+    }
+  }
+}
+```
+
+#### Pruning
+
+`desync prune` deletes the manifests of all chunks not referenced by the given indexes. Only tags that parse as chunk IDs are considered. Reclaiming the space held by the then-unreferenced blobs is left to the registry's own garbage collection. Manifest deletion is not supported by every registry: the distribution registry requires it to be enabled with `REGISTRY_STORAGE_DELETE_ENABLED=true`, and ghcr.io only supports deletion through the GitHub Packages API, not the registry API — for ghcr.io, use a cleanup action for untagged/unwanted versions instead.
+
+#### Examples
+
+Publish a file to ghcr.io, using credentials from a previous `docker login`:
+
+```sh
+desync make -s oci+https://ghcr.io/myuser/mystore file.iso.caibx file.iso
+```
+
+Reassemble the file on another machine, keeping a local cache of chunks:
+
+```sh
+desync extract -s oci+https://ghcr.io/myuser/mystore -c /var/tmp/cache file.iso.caibx file.iso
+```
+
+The same, in CI with credentials from the environment:
+
+```sh
+DESYNC_OCI_USERNAME=myuser DESYNC_OCI_PASSWORD=$GITHUB_TOKEN \
+  desync make -s oci+https://ghcr.io/myuser/mystore file.iso.caibx file.iso
+```
+
+See how much of an updated image is already covered by the chunks in the registry:
+
+```sh
+desync info -s oci+https://ghcr.io/myuser/mystore file-v2.iso.caibx
+```
+
+Remove all chunks no longer referenced by the current set of indexes:
+
+```sh
+desync prune -s oci+https://registry.internal/desync/store file-v2.iso.caibx
+```
+
+Run a local throwaway registry for testing:
+
+```sh
+podman run -d --rm -p 5000:5000 -e REGISTRY_STORAGE_DELETE_ENABLED=true docker.io/library/registry:2
+desync make -s oci+http://127.0.0.1:5000/test/store file.iso.caibx file.iso
+```
 
 </details>
 
