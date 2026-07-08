@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/v2/registry/remote/auth"
+	orascreds "oras.land/oras-go/v2/registry/remote/credentials"
 )
 
 // S3Creds holds credentials or references to an S3 credentials file.
@@ -84,19 +86,56 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 	return creds, region
 }
 
-// GetOCICredentialsFor attempts to find creds and region for an OCI location in the config.
-func (c Config) GetOCICredentialsFor(u *url.URL) auth.CredentialFunc {
-	key := u.Host + u.Path
-	credsConfig, ok := c.OCICredentials[key]
-	if !ok {
-		return nil
+// GetOCICredentialsFor attempts to find credentials for an OCI location in the
+// environment and the config (the environment takes precedence). The config is
+// keyed by registry host and repository path, e.g. "ghcr.io/user/repo", and keys
+// can contain glob patterns. If nothing matches, the Docker credential store is
+// used, so registries logged into with "docker login" or "oras login" work
+// without desync configuration.
+func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
+	staticCredentials := func(username, secret string) auth.CredentialFunc {
+		return func(ctx context.Context, hostport string) (auth.Credential, error) {
+			return auth.Credential{
+				Username: username,
+				Password: secret,
+			}, nil
+		}
 	}
-	return func(ctx context.Context, hostport string) (auth.Credential, error) {
-		return auth.Credential{
-			Username: credsConfig.Username,
-			Password: credsConfig.Secret,
-		}, nil
+
+	if username := os.Getenv("DESYNC_OCI_USERNAME"); username != "" {
+		return staticCredentials(username, os.Getenv("DESYNC_OCI_PASSWORD")), nil
 	}
+
+	location := strings.TrimSuffix(u.Host+u.Path, "/")
+	var (
+		credsConfig OCICreds
+		found       bool
+	)
+	for k, v := range c.OCICredentials {
+		// Config keys are always slash-separated, so match with path.Match
+		// rather than filepath.Match, whose separator is OS-dependent.
+		match, err := path.Match(strings.TrimSuffix(k, "/"), location)
+		if err != nil {
+			return nil, err
+		}
+		if match {
+			if found {
+				return nil, fmt.Errorf("multiple oci-credentials entries match the location %q", location)
+			}
+			found = true
+			credsConfig = v
+		}
+	}
+	if found {
+		return staticCredentials(credsConfig.Username, credsConfig.Secret), nil
+	}
+
+	store, err := orascreds.NewStoreFromDocker(orascreds.StoreOptions{})
+	if err != nil {
+		// No usable Docker config, connect anonymously
+		return nil, nil
+	}
+	return orascreds.Credential(store), nil
 }
 
 // GetStoreOptionsFor returns optional config options for a specific store. Note that

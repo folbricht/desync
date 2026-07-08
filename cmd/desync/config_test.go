@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,4 +49,63 @@ func TestConfigFileMultipleMatches(t *testing.T) {
 	// provided location
 	_, err := cfg.GetStoreOptionsFor("/path/to/store")
 	require.Error(t, err)
+}
+
+func TestGetOCICredentials(t *testing.T) {
+	// Make sure credentials aren't picked up from the environment or the
+	// user's Docker config
+	t.Setenv("DESYNC_OCI_USERNAME", "")
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+
+	config := Config{OCICredentials: map[string]OCICreds{
+		"ghcr.io/user/repo":  {Username: "user", Secret: "secret"},
+		"registry.io/*/repo": {Username: "wildcard", Secret: "secret"},
+	}}
+
+	tests := map[string]struct {
+		location string
+		username string
+	}{
+		"exact match": {"oci+https://ghcr.io/user/repo", "user"},
+		"glob match":  {"oci+https://registry.io/anything/repo", "wildcard"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			u, err := url.Parse(test.location)
+			require.NoError(t, err)
+			credFunc, err := config.GetOCICredentialsFor(u)
+			require.NoError(t, err)
+			require.NotNil(t, credFunc)
+			cred, err := credFunc(context.Background(), "")
+			require.NoError(t, err)
+			require.Equal(t, test.username, cred.Username)
+		})
+	}
+
+	// A location without a match should fall back to the Docker credential
+	// store without error
+	u, err := url.Parse("oci+https://other.example.com/some/repo")
+	require.NoError(t, err)
+	_, err = config.GetOCICredentialsFor(u)
+	require.NoError(t, err)
+
+	// Multiple matching config entries are invalid
+	multi := Config{OCICredentials: map[string]OCICreds{
+		"ghcr.io/user/repo": {Username: "a"},
+		"ghcr.io/*/repo":    {Username: "b"},
+	}}
+	u, err = url.Parse("oci+https://ghcr.io/user/repo")
+	require.NoError(t, err)
+	_, err = multi.GetOCICredentialsFor(u)
+	require.Error(t, err)
+
+	// Credentials in the environment take precedence over the config
+	t.Setenv("DESYNC_OCI_USERNAME", "envuser")
+	t.Setenv("DESYNC_OCI_PASSWORD", "envpass")
+	credFunc, err := config.GetOCICredentialsFor(u)
+	require.NoError(t, err)
+	cred, err := credFunc(context.Background(), "")
+	require.NoError(t, err)
+	require.Equal(t, "envuser", cred.Username)
+	require.Equal(t, "envpass", cred.Password)
 }

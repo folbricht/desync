@@ -170,13 +170,13 @@ catar archives can also be extracted to GNU tar archive streams. All files in th
 
 ### Capabilities
 
-| Operation | Local | S3 | GCS | HTTP | SFTP | SSH (casync protocol) |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| Read chunks | yes | yes | yes | yes | yes | yes |
-| Write chunks | yes | yes | yes | yes | yes | no |
-| Use as cache | yes | yes | yes | yes | yes | no |
-| Prune | yes | yes | yes | no | yes | no |
-| Verify | yes | no | no | no | no | no |
+| Operation | Local | S3 | GCS | HTTP | SFTP | SSH (casync protocol) | OCI registry |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Read chunks | yes | yes | yes | yes | yes | yes | yes |
+| Write chunks | yes | yes | yes | yes | yes | no | yes |
+| Use as cache | yes | yes | yes | yes | yes | no | yes |
+| Prune | yes | yes | yes | no | yes | no | no |
+| Verify | yes | no | no | no | no | no | no |
 
 ### Store Architecture
 
@@ -271,7 +271,9 @@ OCI registries can be used to store chunks, using [ORAS](https://oras.land/docs/
 oci+https://ghcr.io/myuser/repo
 ```
 
-Since the OCI specification identifies blobs by SHA256 digest, OCI stores require desync to run with `--digest=sha256` instead of the default SHA512/256. Chunks are stored as blobs whose digest is the chunk ID. Registries verify that uploaded content matches the declared digest, so chunks are always stored uncompressed in OCI stores, regardless of the `uncompressed` store option. Credentials are provided via the `oci-credentials` section of the config file (see [Configuration](#configuration)).
+Every chunk is stored as its own artifact: a blob holding the chunk data (compressed unless the store is configured with `uncompressed`), referenced by a small manifest that is tagged with the chunk ID. Since the chunk ID appears only in the tag, the store works with desync's default SHA512/256 digest algorithm as well as SHA256, and the tagged manifest protects the chunk from registry garbage collection of unreferenced blobs. Reading a chunk takes two requests (manifest, then blob) and writing takes three, so combining a registry store with a local cache is recommended more than for most other store types.
+
+Credentials are looked up in this order: the `DESYNC_OCI_USERNAME` and `DESYNC_OCI_PASSWORD` environment variables, the `oci-credentials` section of the config file (see [Configuration](#configuration)), and finally the Docker credential store — registries logged into with `docker login` or `oras login` work without any desync configuration.
 
 </details>
 
@@ -477,6 +479,7 @@ Not all options apply to all commands.
 | `CASYNC_SSH_PATH` | Overrides the default `ssh` command when connecting to remote SSH or SFTP chunk stores. |
 | `CASYNC_REMOTE_PATH` | Defines the command to run on the chunk store when using SSH. Default: `casync`. |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_SESSION_TOKEN`, `S3_REGION` | S3 store credentials when using a single store. If `S3_ACCESS_KEY` and `S3_SECRET_KEY` are not defined, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` are also considered. These take precedence over config file values. |
+| `DESYNC_OCI_USERNAME`, `DESYNC_OCI_PASSWORD` | OCI registry store credentials. These take precedence over config file values and the Docker credential store. |
 | `DESYNC_PROGRESSBAR_ENABLED` | Enables the progress bar if set to any non-empty value. By default, the progress bar is only shown when STDERR is a terminal. |
 | `DESYNC_ENABLE_PARSABLE_PROGRESS` | Prints operation name, completion percentage, and estimated remaining time to STDERR. Similar to the default progress bar but without the visual bar. |
 | `DESYNC_HTTP_AUTH` | Sets the expected `Authorization` header value from clients when using `chunk-server` or `index-server`. Needs the full string including type and encoding, e.g. `"Basic dXNlcjpwYXNzd29yZAo="`. Command-line values take precedence. |
@@ -511,7 +514,7 @@ This can be combined with store failover by providing the same syntax as used in
 
 - **`s3-credentials`** — Credentials for S3 stores. The key must be the URL scheme and host used for the store, excluding the path, but including the port if used in the store URL. Keys can contain glob patterns (`*`, `?`, `[…]`). See [filepath.Match](https://pkg.go.dev/path/filepath#Match) for wildcard details. Standard [AWS credentials files](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) are also supported.
 
-- **`oci-credentials`** — Credentials for OCI registry stores. The key must be the registry host and repository path, excluding the URL scheme, e.g. `ghcr.io/myuser/repo`.
+- **`oci-credentials`** — Credentials for OCI registry stores. The key must be the registry host and repository path, excluding the URL scheme, e.g. `ghcr.io/myuser/repo`. Keys can contain glob patterns. If no entry matches and no credentials are set in the environment, the Docker credential store is used, so registries logged into with `docker login` or `oras login` are picked up automatically.
 
 - **`store-options`** — Per-store customization of compression, timeouts, retry behavior, and keys. Not all options apply to every store type. The store location in the command line must match the key exactly for options to apply. Glob patterns are also supported; a config file where more than one key matches a single store is considered invalid.
 
