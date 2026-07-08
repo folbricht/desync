@@ -149,6 +149,12 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		if err != nil {
 			return nil, err
 		}
+	case "oci+https", "oci+http":
+		creds := cfg.GetOCICredentialsFor(loc)
+		s, err = desync.NewOCIStore(loc, creds, opt)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		local, err := desync.NewLocalStore(location, opt)
 		if err != nil {

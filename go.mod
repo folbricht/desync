@@ -12,6 +12,8 @@ require (
 	github.com/hanwen/go-fuse/v2 v2.2.0
 	github.com/klauspost/compress v1.16.4
 	github.com/minio/minio-go/v6 v6.0.57
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.5
 	github.com/pkg/xattr v0.4.9
@@ -25,6 +27,7 @@ require (
 	golang.org/x/term v0.43.0
 	google.golang.org/api v0.267.0
 	gopkg.in/cheggaaa/pb.v1 v1.0.28
+	oras.land/oras-go/v2 v2.6.1
 )
 
 require (

@@ -11,7 +11,7 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
 ## Key Features
 
 - **Parallel chunking** — identical output to casync, up to 10x faster
-- **Multiple store backends** — local, HTTP(S), S3/GCS, SFTP, SSH
+- **Multiple store backends** — local, HTTP(S), S3/GCS, SFTP, SSH, OCI registries
 - **Store chaining and caching** — combine stores with failover groups
 - **Seeds and reflinks** — clone blocks from existing files on Btrfs/XFS
 - **Built-in servers** — HTTP(S) chunk server and index server with proxy support
@@ -35,6 +35,7 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
   - [Chaining and Caching](#chaining-and-caching)
   - [Failover Groups](#failover-groups)
   - [S3 Store URLs](#s3-store-urls)
+  - [OCI Registry Stores](#oci-registry-stores)
   - [Compressed vs Uncompressed](#compressed-vs-uncompressed)
   - [Chunk Encryption](#chunk-encryption)
   - [Remote Indexes](#remote-indexes)
@@ -258,6 +259,19 @@ s3+http://127.0.0.1:9000/bucket/prefix?lookup=path
 s3+https://s3.internal.company/bucket/prefix?lookup=dns
 s3+https://example.com/bucket/prefix?lookup=auto
 ```
+
+</details>
+
+<details>
+<summary><h3>OCI Registry Stores</h3></summary>
+
+OCI registries can be used to store chunks, using [ORAS](https://oras.land/docs/) to treat the registry as content-addressable storage. Use the `oci+https` scheme when pointing at OCI stores. If the store does not support TLS, use `oci+http` instead.
+
+```text
+oci+https://ghcr.io/myuser/repo
+```
+
+Since the OCI specification identifies blobs by SHA256 digest, OCI stores require desync to run with `--digest=sha256` instead of the default SHA512/256. Credentials are provided via the `oci-credentials` section of the config file (see [Configuration](#configuration)).
 
 </details>
 
@@ -497,6 +511,8 @@ This can be combined with store failover by providing the same syntax as used in
 
 - **`s3-credentials`** — Credentials for S3 stores. The key must be the URL scheme and host used for the store, excluding the path, but including the port if used in the store URL. Keys can contain glob patterns (`*`, `?`, `[…]`). See [filepath.Match](https://pkg.go.dev/path/filepath#Match) for wildcard details. Standard [AWS credentials files](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) are also supported.
 
+- **`oci-credentials`** — Credentials for OCI registry stores. The key must be the registry host and repository path, excluding the URL scheme, e.g. `ghcr.io/myuser/repo`.
+
 - **`store-options`** — Per-store customization of compression, timeouts, retry behavior, and keys. Not all options apply to every store type. The store location in the command line must match the key exactly for options to apply. Glob patterns are also supported; a config file where more than one key matches a single store is considered invalid.
 
   | Option | Description | Default |
@@ -542,6 +558,12 @@ This can be combined with store failover by providing the same syntax as used in
            "aws-region": "us-west-2",
            "aws-profile": "profile_refreshable"
        }
+  },
+  "oci-credentials": {
+    "ghcr.io/myuser/repo": {
+      "username": "myuser",
+      "secret": "MYSECRET"
+    }
   },
   "store-options": {
     "https://192.168.1.1/store": {
