@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sync"
 )
 
@@ -180,12 +181,13 @@ func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint
 // Validate compares all chunks in this slice of the seed index to the underlying data
 // and fails if they don't match.
 func (s *fileSeedSegment) Validate(file *os.File) error {
+	var buf []byte
 	for _, c := range s.chunks {
-		b := make([]byte, c.Size)
-		if _, err := file.ReadAt(b, int64(c.Start)); err != nil {
+		buf = slices.Grow(buf[:0], int(c.Size))[:c.Size]
+		if _, err := file.ReadAt(buf, int64(c.Start)); err != nil {
 			return err
 		}
-		sum := Digest.Sum(b)
+		sum := Digest.Sum(buf)
 		if sum != c.ID {
 			return fmt.Errorf("seed index for %s doesn't match its data", s.file)
 		}

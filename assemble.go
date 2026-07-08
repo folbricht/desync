@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"golang.org/x/sync/errgroup"
 	"os"
+	"slices"
 )
 
 // InvalidSeedAction represents the action that we will take if a seed
@@ -27,14 +28,15 @@ type AssembleOptions struct {
 
 // writeChunk tries to write a chunk by looking at the self seed, if it is already existing in the
 // destination file or by taking it from the store. The in-place check runs first to avoid unnecessary
-// writes. If the target already has the correct data, no write is performed.
-func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Store, stats *ExtractStats, isBlank bool) error {
+// writes. If the target already has the correct data, no write is performed. buf is scratch space
+// for reading back the destination, reused across calls to avoid an allocation per chunk.
+func writeChunk(c IndexChunk, ss *selfSeed, f *os.File, blocksize uint64, s Store, stats *ExtractStats, isBlank bool, buf []byte) error {
 	// If we operate on an existing file there's a good chance we already
 	// have the data written for this chunk. Let's read it from disk and
 	// compare to what is expected. This is checked first to avoid rewriting
 	// data that is already correct, even for chunks available in the selfSeed.
 	if !isBlank {
-		b := make([]byte, c.Size)
+		b := slices.Grow(buf[:0], int(c.Size))[:c.Size]
 		if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
 			return err
 		}
@@ -175,6 +177,10 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		}
 		defer f.Close()
 		g.Go(func() error {
+			// Scratch buffer for reading chunks back from the destination,
+			// reused for all chunks this worker processes. Grown on demand
+			// if the index reports no (or a too small) max chunk size.
+			buf := make([]byte, idx.Index.ChunkSizeMax)
 			for job := range in {
 				pb.Add(job.segment.lengthChunks())
 				if job.source != nil {
@@ -204,16 +210,16 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 					// while we were extracting an index, we might end up writing to the
 					// destination some unexpected values.
 					for _, c := range job.segment.chunks() {
-						b := make([]byte, c.Size)
-						if _, err := f.ReadAt(b, int64(c.Start)); err != nil {
+						buf = slices.Grow(buf[:0], int(c.Size))[:c.Size]
+						if _, err := f.ReadAt(buf, int64(c.Start)); err != nil {
 							return err
 						}
-						sum := Digest.Sum(b)
+						sum := Digest.Sum(buf)
 						if sum != c.ID {
 							if options.InvalidSeedAction == InvalidSeedActionRegenerate {
 								// Try harder before giving up and aborting
 								Log.WithField("ID", c.ID.String()).Info("The seed may have changed during processing, trying to take the chunk from the self seed or the store")
-								if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
+								if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank, buf); err != nil {
 									return err
 								}
 							} else {
@@ -238,7 +244,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				}
 				c := job.segment.chunks()[0]
 
-				if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank); err != nil {
+				if err := writeChunk(c, ss, f, blocksize, s, stats, isBlank, buf); err != nil {
 					return err
 				}
 
