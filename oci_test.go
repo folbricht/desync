@@ -1,12 +1,15 @@
 package desync
 
 import (
+	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -99,6 +102,21 @@ func (reg *testOCIRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		reg.blobs[d] = b
 		w.WriteHeader(http.StatusCreated)
+	case r.Method == http.MethodGet && r.URL.Path == "/v2/user/repo/tags/list":
+		tags := []string{}
+		for k := range reg.manifests {
+			if !strings.HasPrefix(k, "sha256:") {
+				tags = append(tags, k)
+			}
+		}
+		sort.Strings(tags)
+		b, err := json.Marshal(map[string]any{"name": "user/repo", "tags": tags})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(b)
 	case (r.Method == http.MethodGet || r.Method == http.MethodHead) && strings.HasPrefix(r.URL.Path, manifestPath):
 		m, ok := reg.manifests[strings.TrimPrefix(r.URL.Path, manifestPath)]
 		if !ok {
@@ -231,6 +249,45 @@ func TestOCIStoreRemoveChunk(t *testing.T) {
 
 	// Removing a chunk that isn't there reports it as missing
 	require.ErrorIs(t, s.RemoveChunk(id), ChunkMissing{id})
+}
+
+func TestOCIStorePrune(t *testing.T) {
+	s, reg := newTestOCIStore(t, StoreOptions{})
+
+	chunks := make([]*Chunk, 3)
+	for i := range chunks {
+		chunks[i] = NewChunk(fmt.Appendf(nil, "chunk data %d", i))
+		require.NoError(t, s.StoreChunk(chunks[i]))
+	}
+
+	// Add an unrelated artifact to the same repository, it should survive the prune
+	foreignContent := []byte(`{"schemaVersion":2}`)
+	foreign := testOCIManifest{
+		mediaType: "application/vnd.oci.image.manifest.v1+json",
+		digest:    fmt.Sprintf("sha256:%x", sha256.Sum256(foreignContent)),
+		content:   foreignContent,
+	}
+	reg.mu.Lock()
+	reg.manifests["latest"] = foreign
+	reg.manifests[foreign.digest] = foreign
+	reg.mu.Unlock()
+
+	// Prune everything but the first chunk
+	id := chunks[0].ID()
+	require.NoError(t, s.Prune(context.Background(), map[ChunkID]struct{}{id: {}}))
+
+	hasChunk, err := s.HasChunk(id)
+	require.NoError(t, err)
+	assert.True(t, hasChunk)
+	for _, chunk := range chunks[1:] {
+		hasChunk, err := s.HasChunk(chunk.ID())
+		require.NoError(t, err)
+		assert.False(t, hasChunk)
+	}
+
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	assert.Contains(t, reg.manifests, "latest")
 }
 
 func TestOCIStoreInvalidChunk(t *testing.T) {

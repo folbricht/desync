@@ -28,6 +28,7 @@ import (
 const OCIChunkArtifactType = "application/vnd.desync.chunk.v1"
 
 var _ WriteStore = OCIStore{}
+var _ PruneStore = OCIStore{}
 
 // OCIStore operates on chunks in an OCI registry. Every chunk is stored as its
 // own artifact: a blob holding the chunk in storage format (compressed unless
@@ -227,6 +228,37 @@ func (s OCIStore) RemoveChunk(id ChunkID) error {
 		return err
 	}
 	return s.repo.Manifests().Delete(ctx, desc)
+}
+
+// Prune removes any chunks from the store that are not referenced in the
+// list of chunks. Only tags that parse as chunk IDs are considered, other
+// artifacts sharing the repository are left alone. Just the chunk manifests
+// are deleted, reclaiming the space of the now unreferenced blobs is left
+// to the registry's garbage collection.
+func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
+	return s.repo.Tags(ctx, "", func(tags []string) error {
+		for _, tag := range tags {
+			// See if we're meant to stop
+			select {
+			case <-ctx.Done():
+				return Interrupted{}
+			default:
+			}
+
+			id, err := ChunkIDFromString(tag)
+			if err != nil {
+				continue
+			}
+
+			// Drop the chunk if it's not on the list
+			if _, ok := ids[id]; !ok {
+				if err = s.RemoveChunk(id); err != nil && !errors.Is(err, ChunkMissing{id}) {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // resolveChunkBlob fetches the chunk's manifest by tag and returns the

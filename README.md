@@ -175,7 +175,7 @@ catar archives can also be extracted to GNU tar archive streams. All files in th
 | Read chunks | yes | yes | yes | yes | yes | yes | yes |
 | Write chunks | yes | yes | yes | yes | yes | no | yes |
 | Use as cache | yes | yes | yes | yes | yes | no | yes |
-| Prune | yes | yes | yes | no | yes | no | no |
+| Prune | yes | yes | yes | no | yes | no | yes |
 | Verify | yes | no | no | no | no | no | no |
 
 ### Store Architecture
@@ -272,6 +272,8 @@ oci+https://ghcr.io/myuser/repo
 ```
 
 Every chunk is stored as its own artifact: a blob holding the chunk data (compressed unless the store is configured with `uncompressed`), referenced by a small manifest that is tagged with the chunk ID. Since the chunk ID appears only in the tag, the store works with desync's default SHA512/256 digest algorithm as well as SHA256, and the tagged manifest protects the chunk from registry garbage collection of unreferenced blobs. Reading a chunk takes two requests (manifest, then blob) and writing takes three, so combining a registry store with a local cache is recommended more than for most other store types.
+
+`prune` deletes the manifests of unwanted chunks, only touching tags that parse as chunk IDs, so other artifacts can share the repository. Reclaiming the space held by the unreferenced blobs is left to the registry's own garbage collection. Note that manifest deletion is not supported by every registry: the distribution registry requires it to be enabled (`REGISTRY_STORAGE_DELETE_ENABLED=true`) and GitHub's ghcr.io only supports deletion through the GitHub Packages API, not the registry API.
 
 Credentials are looked up in this order: the `DESYNC_OCI_USERNAME` and `DESYNC_OCI_PASSWORD` environment variables, the `oci-credentials` section of the config file (see [Configuration](#configuration)), and finally the Docker credential store — registries logged into with `docker login` or `oras login` work without any desync configuration.
 
