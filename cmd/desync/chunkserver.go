@@ -24,6 +24,8 @@ type chunkServerOptions struct {
 	skipVerifyWrite bool
 	uncompressed    bool
 	logFile         string
+	encryptionAlg   string
+	encryptionKey   string
 }
 
 func newChunkServerCommand(ctx context.Context) *cobra.Command {
@@ -41,7 +43,9 @@ of chunks written to this server, avoiding the decompression step needed to
 calculate checksums, to improve performance. If -u is used, only uncompressed
 chunks are served (and accepted). If the upstream store serves compressed chunks,
 everything will have to be decompressed server-side so it's better to also read
-from uncompressed upstream stores.
+from uncompressed upstream stores. With --encryption-key, chunks are served (and
+accepted) encrypted, regardless of how they are stored in the upstream store. The
+key can also be provided in the DESYNC_ENCRYPTION_KEY environment variable.
 
 While --concurrency does not limit the number of clients that can be served
 concurrently, it does influence connection pools to remote upstream stores and
@@ -72,6 +76,8 @@ needing to restart the server. This can be done under load as well.
 	flags.BoolVar(&opt.skipVerifyWrite, "skip-verify-write", true, "don't verify chunk data written to this server (faster)")
 	flags.BoolVarP(&opt.uncompressed, "uncompressed", "u", false, "serve uncompressed chunks")
 	flags.StringVar(&opt.logFile, "log", "", "request log file or - for STDOUT")
+	flags.StringVar(&opt.encryptionKey, "encryption-key", "", "serve chunks encrypted with this hex-encoded 256-bit key")
+	flags.StringVar(&opt.encryptionAlg, "encryption-algorithm", "xchacha20-poly1305", "encryption algorithm")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
@@ -86,6 +92,9 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	}
 	if opt.auth == "" {
 		opt.auth = os.Getenv("DESYNC_HTTP_AUTH")
+	}
+	if opt.encryptionKey == "" {
+		opt.encryptionKey = os.Getenv("DESYNC_ENCRYPTION_KEY")
 	}
 
 	addresses := opt.listenAddresses
@@ -131,9 +140,18 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	}
 	defer s.Close()
 
-	var converters desync.Converters
-	if !opt.uncompressed {
-		converters = desync.Converters{desync.Compressor{}}
+	// Build the converters. In this case, the "storage" side is what is served
+	// up by the server towards the client. The StoreOptions struct already has
+	// logic to build the converters from options so use that instead of repeating
+	// it here.
+	converters, err := desync.StoreOptions{
+		Uncompressed:        opt.uncompressed,
+		Encryption:          opt.encryptionKey != "",
+		EncryptionAlgorithm: opt.encryptionAlg,
+		EncryptionKey:       opt.encryptionKey,
+	}.StorageConverters()
+	if err != nil {
+		return err
 	}
 
 	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, converters, opt.auth)

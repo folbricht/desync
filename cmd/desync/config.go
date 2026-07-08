@@ -88,6 +88,11 @@ func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions
 			options = v
 		}
 	}
+	// Allow the encryption key to be kept out of the config file and be
+	// provided via the environment instead.
+	if options.Encryption && options.EncryptionKey == "" {
+		options.EncryptionKey = os.Getenv("DESYNC_ENCRYPTION_KEY")
+	}
 	return options, nil
 }
 

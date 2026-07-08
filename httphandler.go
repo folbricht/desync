@@ -21,15 +21,11 @@ type HTTPHandler struct {
 
 	// Storage-side of the converters in this case is towards the client
 	converters Converters
-
-	// Use the file extension for compressed chunks
-	compressed bool
 }
 
 // NewHTTPHandler initializes and returns a new HTTP handler for a chunks server.
 func NewHTTPHandler(s Store, writable, skipVerifyWrite bool, converters Converters, auth string) http.Handler {
-	compressed := converters.hasCompression()
-	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, converters, compressed}
+	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, converters}
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -117,12 +113,9 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 }
 
 func (h HTTPHandler) idFromPath(p string) (ChunkID, error) {
-	ext := CompressedChunkExt
-	if !h.compressed {
-		if strings.HasSuffix(p, CompressedChunkExt) {
-			return ChunkID{}, errors.New("compressed chunk requested from http chunk store serving uncompressed chunks")
-		}
-		ext = UncompressedChunkExt
+	ext := h.converters.storageExtension()
+	if !strings.HasSuffix(p, ext) {
+		return ChunkID{}, errors.New("invalid chunk type, verify compression and encryption settings")
 	}
 	sID := strings.TrimSuffix(path.Base(p), ext)
 	if len(sID) < 4 {

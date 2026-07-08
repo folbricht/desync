@@ -89,7 +89,11 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	}
 	client := &http.Client{Transport: tr, Timeout: timeout}
 
-	return &RemoteHTTPBase{location: location, client: client, opt: opt, converters: opt.converters()}, nil
+	converters, err := opt.StorageConverters()
+	if err != nil {
+		return nil, err
+	}
+	return &RemoteHTTPBase{location: location, client: client, opt: opt, converters: converters}, nil
 }
 
 func (r *RemoteHTTPBase) String() string {
@@ -258,11 +262,6 @@ func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 
 func (r *RemoteHTTP) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := path.Join(sID[0:4], sID)
-	if r.opt.Uncompressed {
-		name += UncompressedChunkExt
-	} else {
-		name += CompressedChunkExt
-	}
+	name := path.Join(sID[0:4], sID) + r.converters.storageExtension()
 	return name
 }

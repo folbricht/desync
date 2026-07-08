@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -181,4 +182,47 @@ func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc)
 	// Wait a little for the server to start
 	time.Sleep(time.Second)
 	return addr, cancel
+}
+
+// Hex-encoded 256-bit key used in encryption tests.
+const testEncryptionKey = "6368616e676520746869732070617373776f726420746f206120736563726574"
+
+func TestChunkServerEncryption(t *testing.T) {
+	outdir := t.TempDir()
+
+	// Start a (writable) server, it'll expect compressed+encrypted chunks over
+	// the wire while storing them only compressed in the local store
+	addr, cancel := startChunkServer(t, "-s", outdir, "-w", "--skip-verify-read=false", "--skip-verify-write=false", "--encryption-key", testEncryptionKey)
+	defer cancel()
+	store := fmt.Sprintf("http://%s/", addr)
+
+	// Build a client config. The client needs to be setup to talk to the HTTP chunk server
+	// compressed+encrypted. Create a temp JSON config for that HTTP store and load it.
+	cfgFile = filepath.Join(outdir, "config.json")
+	cfgFileContent := fmt.Sprintf(`{"store-options": {"%s":{"encryption": true, "encryption-key": "%s"}}}`, store, testEncryptionKey)
+	require.NoError(t, os.WriteFile(cfgFile, []byte(cfgFileContent), 0644))
+	initConfig()
+
+	// Run a "chop" command to send some chunks (encrypted) over HTTP, then have the server
+	// store them un-encrypted in its local store.
+	chopCmd := newChopCommand(context.Background())
+	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
+	chopCmd.SetOutput(io.Discard)
+	_, err := chopCmd.ExecuteC()
+	require.NoError(t, err)
+
+	// Now read it all back over HTTP (again encrypted) and re-assemble the test file
+	extractFile := filepath.Join(outdir, "blob1")
+	extractCmd := newExtractCommand(context.Background())
+	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", extractFile})
+	extractCmd.SetOutput(io.Discard)
+	_, err = extractCmd.ExecuteC()
+	require.NoError(t, err)
+
+	// Not actually necessary, but for good measure let's compare the blobs
+	blobIn, err := os.ReadFile("testdata/blob1")
+	require.NoError(t, err)
+	blobOut, err := os.ReadFile(extractFile)
+	require.NoError(t, err)
+	require.Equal(t, blobIn, blobOut)
 }
