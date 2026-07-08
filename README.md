@@ -271,7 +271,7 @@ OCI registries can be used to store chunks, using [ORAS](https://oras.land/docs/
 oci+https://ghcr.io/myuser/repo
 ```
 
-Since the OCI specification identifies blobs by SHA256 digest, OCI stores require desync to run with `--digest=sha256` instead of the default SHA512/256. Credentials are provided via the `oci-credentials` section of the config file (see [Configuration](#configuration)).
+Since the OCI specification identifies blobs by SHA256 digest, OCI stores require desync to run with `--digest=sha256` instead of the default SHA512/256. Chunks are stored as blobs whose digest is the chunk ID. Registries verify that uploaded content matches the declared digest, so chunks are always stored uncompressed in OCI stores, regardless of the `uncompressed` store option. Credentials are provided via the `oci-credentials` section of the config file (see [Configuration](#configuration)).
 
 </details>
 
