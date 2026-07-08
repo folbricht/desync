@@ -346,6 +346,50 @@ func TestSelfSeedInPlace(t *testing.T) {
 
 }
 
+// Null segments skip the destination read-back after writing since they have
+// no external source that could change during extraction. Assemble a null-heavy
+// file over an existing file full of non-zero data to confirm the null sections
+// are still written out correctly.
+func TestExtractNullsOverExistingFile(t *testing.T) {
+	data := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(data)
+	null := make([]byte, 4*ChunkSizeMaxDefault)
+	b := join(null, data, null)
+
+	tmp := t.TempDir()
+	in := filepath.Join(tmp, "in")
+	require.NoError(t, os.WriteFile(in, b, 0644))
+	inSum := md5.Sum(b)
+
+	index, _, err := IndexFromFile(
+		context.Background(),
+		in,
+		10,
+		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		NewProgressBar(""),
+	)
+	require.NoError(t, err)
+
+	s, err := NewLocalStore(t.TempDir(), StoreOptions{})
+	require.NoError(t, err)
+	require.NoError(t, ChopFile(context.Background(), in, index.Chunks, s, 10, NewProgressBar("")))
+
+	// Pre-populate the output file with non-zero data so the null sections
+	// actually have to be written, not just skipped over in a blank file
+	garbage := make([]byte, len(b))
+	rand.Read(garbage)
+	out := filepath.Join(tmp, "out")
+	require.NoError(t, os.WriteFile(out, garbage, 0644))
+
+	_, err = AssembleFile(context.Background(), out, index, s, nil,
+		AssembleOptions{10, InvalidSeedActionBailOut})
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Equal(t, inSum, md5.Sum(got))
+}
+
 func join(slices ...[]byte) []byte {
 	var out []byte
 	for _, b := range slices {

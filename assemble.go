@@ -188,6 +188,17 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 						return err
 					}
 
+					// Null segments (identified by an empty filename, like in
+					// Plan.Validate) skip the read-back validation below: they write
+					// deterministic zeros with no external source that could change,
+					// and reading back and hashing large null sections is expensive.
+					if job.source.FileName() == "" {
+						stats.addBytesCopied(copied)
+						stats.addBytesCloned(cloned)
+						ss.add(job.segment)
+						continue
+					}
+
 					// Validate that the written chunks are exactly what we were expecting.
 					// Because the seed might point to a RW location, if the data changed
 					// while we were extracting an index, we might end up writing to the
