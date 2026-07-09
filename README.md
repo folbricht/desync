@@ -307,6 +307,8 @@ Chunk extensions in stores are chosen based on compression or encryption setting
 
 Note that encryption only protects the chunk data itself. Chunk file names, which are the content hashes of the plain data, remain visible to anyone with access to the store. An observer that already knows the plain content of a chunk can therefore confirm its presence in the store.
 
+Encryption provides confidentiality, while integrity comes from desync's regular chunk validation: every chunk is identified by the hash of its plain content, which is verified when chunks are read (unless `skip-verify` is set). The AEAD ciphertext is authenticated under the key, but it is not bound to the chunk's name — someone with write access to the store could swap two encrypted chunk files and decryption alone would not detect it. Such a swap is caught by the content validation of the final consumer, e.g. during `extract`, which is enabled by default. Only disable verification (`skip-verify`, `--skip-verify-read`) for intermediate proxies or caches where a downstream reader still validates the chunks.
+
 </details>
 
 ### Remote Indexes
@@ -504,7 +506,7 @@ This can be combined with store failover by providing the same syntax as used in
   | `client-key` | Key file for mutual SSL. | — |
   | `ca-cert` | Certificate file containing trusted certs or CAs. | — |
   | `trust-insecure` | Trust any certificate presented by the server. | false |
-  | `skip-verify` | Disable data integrity verification on read. Only recommended when chaining stores with `chunk-server` using compressed stores. | false |
+  | `skip-verify` | Disable data integrity verification on read. Only recommended when chaining stores with `chunk-server` where the final consumer still verifies. Chunk validation is also what detects renamed or swapped chunks in encrypted stores, see [Chunk Encryption](#chunk-encryption). | false |
   | `uncompressed` | Read and write uncompressed chunks. Both formats can coexist in the same store. | false |
   | `http-auth` | Value of the `Authorization` header in HTTP requests, e.g. `"Bearer <token>"` or `"Basic dXNlcjpwYXNzd29yZAo="`. | — |
   | `http-cookie` | Value of the `Cookie` header in HTTP requests, e.g. `"name=value; name2=value2"`. | — |
