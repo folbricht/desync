@@ -24,6 +24,9 @@ type S3StoreBase struct {
 	prefix     string
 	opt        StoreOptions
 	converters Converters
+
+	// Chunk file extension, derived from the converters at construction
+	extension string
 }
 
 // S3Store is a read-write store with S3 backing
@@ -37,7 +40,7 @@ func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string,
 	if err != nil {
 		return S3StoreBase{}, err
 	}
-	s := S3StoreBase{Location: u.String(), opt: opt, converters: converters}
+	s := S3StoreBase{Location: u.String(), opt: opt, converters: converters, extension: converters.storageExtension()}
 	if !strings.HasPrefix(u.Scheme, "s3+http") {
 		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http' or 's3+https'", u.Scheme)
 	}
@@ -197,16 +200,15 @@ func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 func (s S3Store) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := s.prefix + sID[0:4] + "/" + sID + s.converters.storageExtension()
+	name := s.prefix + sID[0:4] + "/" + sID + s.extension
 	return name
 }
 
 func (s S3Store) idFromName(name string) (ChunkID, error) {
-	extension := s.converters.storageExtension()
-	if !strings.HasSuffix(name, extension) {
+	if !strings.HasSuffix(name, s.extension) {
 		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
 	}
-	n := strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), extension)
+	n := strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), s.extension)
 	fragments := strings.Split(n, "/")
 	if len(fragments) != 2 {
 		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)

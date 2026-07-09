@@ -124,8 +124,8 @@ func (o *StoreOptions) UnmarshalJSON(data []byte) error {
 // If data is written to storage, the layer's toStorage method is called in
 // the order they are returned. If data is read, the fromStorage method is
 // called in reverse order.
-func (o StoreOptions) StorageConverters() ([]converter, error) {
-	var c []converter
+func (o StoreOptions) StorageConverters() (Converters, error) {
+	var c Converters
 	if !o.Uncompressed {
 		c = append(c, Compressor{})
 	}

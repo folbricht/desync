@@ -25,6 +25,9 @@ type GCStoreBase struct {
 	prefix     string
 	opt        StoreOptions
 	converters Converters
+
+	// Chunk file extension, derived from the converters at construction
+	extension string
 }
 
 // GCStore is a read-write store with Google Storage backing
@@ -58,7 +61,7 @@ func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
 	if err != nil {
 		return GCStoreBase{}, err
 	}
-	s := GCStoreBase{Location: u.String(), opt: opt, converters: converters}
+	s := GCStoreBase{Location: u.String(), opt: opt, converters: converters, extension: converters.storageExtension()}
 	if u.Scheme != "gs" {
 		return s, fmt.Errorf("invalid scheme '%s', expected 'gs'", u.Scheme)
 	}
@@ -253,16 +256,15 @@ func (s GCStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 func (s GCStore) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := s.prefix + sID[0:4] + "/" + sID + s.converters.storageExtension()
+	name := s.prefix + sID[0:4] + "/" + sID + s.extension
 	return name
 }
 
 func (s GCStore) idFromName(name string) (ChunkID, error) {
-	extension := s.converters.storageExtension()
-	if !strings.HasSuffix(name, extension) {
+	if !strings.HasSuffix(name, s.extension) {
 		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
 	}
-	n := strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), extension)
+	n := strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), s.extension)
 	fragments := strings.Split(n, "/")
 	if len(fragments) != 2 {
 		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)

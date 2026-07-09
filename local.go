@@ -29,6 +29,9 @@ type LocalStore struct {
 	Opt StoreOptions
 
 	converters Converters
+
+	// Chunk file extension, derived from the converters at construction
+	extension string
 }
 
 // NewLocalStore creates an instance of a local castore, it only checks presence
@@ -45,7 +48,7 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if err != nil {
 		return LocalStore{}, err
 	}
-	return LocalStore{Base: dir, Opt: opt, converters: converters}, nil
+	return LocalStore{Base: dir, Opt: opt, converters: converters, extension: converters.storageExtension()}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -129,7 +132,6 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 
 	// Go through all chunks underneath Base, filtering out other files, then feed
 	// the IDs to the workers
-	extension := s.converters.storageExtension()
 	err := filepath.Walk(s.Base, func(path string, info os.FileInfo, err error) error {
 		// See if we're meant to stop
 		select {
@@ -145,10 +147,10 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 		}
 		// Skip chunks that don't match the store's extension, they may use
 		// different compression or encryption settings
-		if !strings.HasSuffix(filepath.Base(path), extension) {
+		if !strings.HasSuffix(filepath.Base(path), s.extension) {
 			return nil
 		}
-		sID := strings.TrimSuffix(filepath.Base(path), extension)
+		sID := strings.TrimSuffix(filepath.Base(path), s.extension)
 		// Convert the name into a checksum, if that fails we're probably not looking
 		// at a chunk file and should skip it.
 		id, err := ChunkIDFromString(sID)
@@ -167,7 +169,6 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 // Prune removes any chunks from the store that are not contained in a list
 // of chunks
 func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	extension := s.converters.storageExtension()
 	// Go through all chunks underneath Base, filtering out other directories and files
 	err := filepath.Walk(s.Base, func(path string, info os.FileInfo, err error) error {
 		// See if we're meant to stop
@@ -190,10 +191,10 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		}
 		// Skip chunks that don't match the store's extension, they may use
 		// different compression or encryption settings
-		if !strings.HasSuffix(filepath.Base(path), extension) {
+		if !strings.HasSuffix(filepath.Base(path), s.extension) {
 			return nil
 		}
-		sID := strings.TrimSuffix(filepath.Base(path), extension)
+		sID := strings.TrimSuffix(filepath.Base(path), s.extension)
 		// Convert the name into a checksum, if that fails we're probably not looking
 		// at a chunk file and should skip it.
 		id, err := ChunkIDFromString(sID)
@@ -245,6 +246,6 @@ func (s LocalStore) GetChunkSize(id ChunkID) (int64, error) {
 func (s LocalStore) nameFromID(id ChunkID) (dir, name string) {
 	sID := id.String()
 	dir = filepath.Join(s.Base, sID[0:4])
-	name = filepath.Join(dir, sID) + s.converters.storageExtension()
+	name = filepath.Join(dir, sID) + s.extension
 	return
 }

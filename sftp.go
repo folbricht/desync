@@ -147,7 +147,7 @@ func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	extension := Converters(converters).storageExtension()
+	extension := converters.storageExtension()
 	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N, converters}
 	for i := 0; i < opt.N; i++ {
 		c, err := newSFTPStoreBase(location, opt, extension)
@@ -219,7 +219,6 @@ func (s *SFTPStore) HasChunk(id ChunkID) (bool, error) {
 // Prune removes any chunks from the store that are not contained in a list
 // of chunks
 func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	extension := s.converters.storageExtension()
 	c := <-s.pool
 	defer func() { s.pool <- c }()
 	walker := c.client.Walk(c.path)
@@ -239,10 +238,10 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			continue
 		}
 		path := walker.Path()
-		if !strings.HasSuffix(path, extension) { // Skip files without expected chunk extension
+		if !strings.HasSuffix(path, c.extension) { // Skip files without expected chunk extension
 			continue
 		}
-		sID := strings.TrimSuffix(filepath.Base(path), extension)
+		sID := strings.TrimSuffix(filepath.Base(path), c.extension)
 		// Convert the name into a hash, if that fails we're probably not looking
 		// at a chunk file and should skip it.
 		id, err := ChunkIDFromString(sID)

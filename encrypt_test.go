@@ -75,6 +75,12 @@ func TestAES256GCMCompare(t *testing.T) {
 	require.True(t, enc2.equal(enc1))
 	require.False(t, diffKey.equal(enc1))
 	require.False(t, enc1.equal(diffKey))
+
+	// A different algorithm with the same key must not be equal either
+	diffAlg, err := NewXChaCha20Poly1305(testKey(t, testEncryptionKey))
+	require.NoError(t, err)
+	require.False(t, enc1.equal(diffAlg))
+	require.False(t, diffAlg.equal(enc1))
 }
 
 func TestAES256GCMExtension(t *testing.T) {

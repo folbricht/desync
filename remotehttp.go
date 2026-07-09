@@ -26,6 +26,9 @@ type RemoteHTTPBase struct {
 	client     *http.Client
 	opt        StoreOptions
 	converters Converters
+
+	// Chunk file extension, derived from the converters at construction
+	extension string
 }
 
 // RemoteHTTP is a remote casync store accessed via HTTP.
@@ -93,7 +96,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	if err != nil {
 		return nil, err
 	}
-	return &RemoteHTTPBase{location: location, client: client, opt: opt, converters: converters}, nil
+	return &RemoteHTTPBase{location: location, client: client, opt: opt, converters: converters, extension: converters.storageExtension()}, nil
 }
 
 func (r *RemoteHTTPBase) String() string {
@@ -262,6 +265,6 @@ func (r *RemoteHTTP) StoreChunk(chunk *Chunk) error {
 
 func (r *RemoteHTTP) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := path.Join(sID[0:4], sID) + r.converters.storageExtension()
+	name := path.Join(sID[0:4], sID) + r.extension
 	return name
 }
