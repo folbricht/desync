@@ -3,9 +3,11 @@ package desync
 import (
 	"bytes"
 	"crypto/sha512"
+	"math/bits"
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -178,6 +180,37 @@ var (
 	chunkStart uint64
 	chunkBuf   []byte
 )
+
+// TestChunkerBoundaryTest verifies that the division-free boundary test built
+// from the precomputed constants in NewChunker behaves exactly like the
+// plain "hValue % d == d-1" for all edge cases, in particular the values
+// where hValue+1 or hValue-(d-1) would wrap around 2^32. An earlier version
+// of the fast test declared a false boundary for one hash value per
+// discriminator (e.g. 14413 for the default 64KB average chunk size).
+func TestChunkerBoundaryTest(t *testing.T) {
+	for _, avg := range []uint64{16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024} {
+		c, err := NewChunker(bytes.NewReader(nil), avg/4, avg, avg*4)
+		require.NoError(t, err)
+		d := c.hDiscriminator
+
+		check := func(h uint32) {
+			want := h%d == d-1
+			got := bits.RotateLeft32((h+1)*c.hInverseOdd, c.hRot)-c.hQBias <= c.hQMax
+			if want != got {
+				assert.Equal(t, want, got, "hash value %d, discriminator %d", h, d)
+			}
+		}
+
+		// The low range covers the wrap-around of hValue-(d-1), the high
+		// range covers the wrap-around of hValue+1.
+		for h := uint32(0); h < 3*d; h++ {
+			check(h)
+		}
+		for h := ^uint32(0) - 3*d; h != 0; h++ {
+			check(h)
+		}
+	}
+}
 
 func BenchmarkChunker(b *testing.B) {
 	data, err := os.ReadFile("testdata/chunker.input")
