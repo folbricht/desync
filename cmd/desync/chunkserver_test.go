@@ -226,3 +226,52 @@ func TestChunkServerEncryption(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, blobIn, blobOut)
 }
+
+func TestChunkServerEnvKeyDoesNotEnableEncryption(t *testing.T) {
+	// Having the key in the environment alone must not switch the server to
+	// encrypted serving, it may be set for the sake of an encrypted store
+	// elsewhere in the config
+	t.Setenv("DESYNC_ENCRYPTION_KEY", testEncryptionKey)
+
+	// Reset any config a previous test may have loaded
+	oldCfg := cfg
+	cfg = Config{}
+	t.Cleanup(func() { cfg = oldCfg })
+
+	outdir := t.TempDir()
+	addr, cancel := startChunkServer(t, "-s", outdir, "-w")
+	defer cancel()
+	store := fmt.Sprintf("http://%s/", addr)
+
+	// A plain (compressed, unencrypted) client must be able to write chunks
+	chopCmd := newChopCommand(context.Background())
+	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
+	chopCmd.SetOutput(io.Discard)
+	_, err := chopCmd.ExecuteC()
+	require.NoError(t, err)
+
+	// And the chunks have to be stored with the plain compressed extension
+	matches, err := filepath.Glob(filepath.Join(outdir, "*", "*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches)
+	for _, m := range matches {
+		require.True(t, strings.HasSuffix(m, ".cacnk"), "chunk %s is not a plain compressed chunk", m)
+	}
+}
+
+func TestChunkServerEncryptionMissingKey(t *testing.T) {
+	// Encryption enabled without a key from flag or environment has to be
+	// rejected at startup rather than silently serving plaintext
+	t.Setenv("DESYNC_ENCRYPTION_KEY", "")
+
+	for _, args := range [][]string{
+		{"--encryption"},
+		{"--encryption-algorithm", "aes-256-gcm"},
+	} {
+		cmd := newChunkServerCommand(context.Background())
+		cmd.SetArgs(append(args, "-s", t.TempDir(), "-l", "127.0.0.1:0"))
+		cmd.SetOutput(io.Discard)
+		_, err := cmd.ExecuteC()
+		require.ErrorContains(t, err, "no encryption key configured")
+	}
+}

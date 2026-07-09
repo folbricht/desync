@@ -90,3 +90,28 @@ func TestAES256GCMExtension(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, enc1.extension, enc2.extension)
 }
+
+func TestStorageConvertersValidation(t *testing.T) {
+	tests := map[string]struct {
+		opt StoreOptions
+		err string
+	}{
+		"key without encryption flag":       {StoreOptions{EncryptionKey: testEncryptionKey}, "without setting encryption to true"},
+		"algorithm without encryption flag": {StoreOptions{EncryptionAlgorithm: "aes-256-gcm"}, "without setting encryption to true"},
+		"encryption without key":            {StoreOptions{Encryption: true}, "no encryption key configured"},
+		"invalid key encoding":              {StoreOptions{Encryption: true, EncryptionKey: "not-hex"}, "invalid encryption key"},
+		"unsupported algorithm":             {StoreOptions{Encryption: true, EncryptionKey: testEncryptionKey, EncryptionAlgorithm: "rot13"}, "unsupported encryption algorithm"},
+		"valid":                             {StoreOptions{Encryption: true, EncryptionKey: testEncryptionKey}, ""},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := test.opt.StorageConverters()
+			if test.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, test.err)
+			}
+		})
+	}
+}

@@ -129,6 +129,12 @@ func (o StoreOptions) StorageConverters() ([]converter, error) {
 	if !o.Uncompressed {
 		c = append(c, Compressor{})
 	}
+	if !o.Encryption && (o.EncryptionKey != "" || o.EncryptionAlgorithm != "") {
+		// Refuse configs that set a key or algorithm without turning encryption
+		// on. Silently writing plaintext chunks is the one failure mode this
+		// feature must not have.
+		return nil, errors.New("encryption-key or encryption-algorithm configured without setting encryption to true")
+	}
 	if o.Encryption {
 		if o.EncryptionKey == "" {
 			return nil, errors.New("no encryption key configured")

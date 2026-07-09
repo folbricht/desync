@@ -462,7 +462,7 @@ Not all options apply to all commands.
 | `DESYNC_PROGRESSBAR_ENABLED` | Enables the progress bar if set to any non-empty value. By default, the progress bar is only shown when STDERR is a terminal. |
 | `DESYNC_ENABLE_PARSABLE_PROGRESS` | Prints operation name, completion percentage, and estimated remaining time to STDERR. Similar to the default progress bar but without the visual bar. |
 | `DESYNC_HTTP_AUTH` | Sets the expected `Authorization` header value from clients when using `chunk-server` or `index-server`. Needs the full string including type and encoding, e.g. `"Basic dXNlcjpwYXNzd29yZAo="`. Command-line values take precedence. |
-| `DESYNC_ENCRYPTION_KEY` | Hex-encoded 256-bit chunk encryption key. Used for stores that have `encryption` enabled but no `encryption-key` configured, and by `chunk-server` when `--encryption-key` is not given. |
+| `DESYNC_ENCRYPTION_KEY` | Hex-encoded 256-bit chunk encryption key. Used for stores that have `encryption` enabled but no `encryption-key` configured, and by `chunk-server` when encryption is enabled with `--encryption` but no `--encryption-key` is given. The variable alone never enables encryption. |
 
 </details>
 

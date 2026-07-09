@@ -83,3 +83,28 @@ type converter interface {
 	// True is one converter matches another exactly.
 	equal(converter) bool
 }
+
+// Compression layer converter. Compresses/decompresses chunk data
+// to and from storage. Implements the converter interface. Lives in
+// this file rather than compress.go so it is part of both compression
+// build variants.
+type Compressor struct{}
+
+var _ converter = Compressor{}
+
+func (d Compressor) toStorage(in []byte) ([]byte, error) {
+	return Compress(in)
+}
+
+func (d Compressor) fromStorage(in []byte) ([]byte, error) {
+	return Decompress(nil, in)
+}
+
+func (d Compressor) equal(c converter) bool {
+	_, ok := c.(Compressor)
+	return ok
+}
+
+func (d Compressor) storageExtension() string {
+	return ".cacnk"
+}

@@ -144,3 +144,19 @@ func TestHTTPHandlerEncryption(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, dataIn, dataOut)
 }
+
+func TestHTTPHandlerExtensionMismatch(t *testing.T) {
+	chunkID := NewChunk([]byte("some data")).ID()
+	id := chunkID.String()
+
+	// A server without compression or encryption has no chunk file extension.
+	// Asking it for a compressed chunk has to fail with an error that points
+	// at the mismatch, not with an ID parse error.
+	h := HTTPHandler{}
+	_, err := h.idFromPath("/" + id[0:4] + "/" + id + ".cacnk")
+	require.ErrorContains(t, err, "compression and encryption settings")
+
+	// The same path without the extension is accepted
+	_, err = h.idFromPath("/" + id[0:4] + "/" + id)
+	require.NoError(t, err)
+}

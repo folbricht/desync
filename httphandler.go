@@ -115,9 +115,16 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 func (h HTTPHandler) idFromPath(p string) (ChunkID, error) {
 	ext := h.converters.storageExtension()
 	if !strings.HasSuffix(p, ext) {
-		return ChunkID{}, errors.New("invalid chunk type, verify compression and encryption settings")
+		return ChunkID{}, errors.New("invalid chunk extension, verify compression and encryption settings")
 	}
 	sID := strings.TrimSuffix(path.Base(p), ext)
+	// Chunk IDs are hex-encoded and never contain a '.'. Any extension left
+	// after trimming means the client requested a chunk in a format this
+	// server doesn't serve. The suffix check above can't catch that when
+	// the server's own extension is empty (uncompressed, unencrypted).
+	if strings.Contains(sID, ".") {
+		return ChunkID{}, fmt.Errorf("requested chunk with an unexpected file extension, this server expects '<chunkid>%s', verify compression and encryption settings", ext)
+	}
 	if len(sID) < 4 {
 		return ChunkID{}, fmt.Errorf("expected format '/<prefix>/<chunkid>%s", ext)
 	}
