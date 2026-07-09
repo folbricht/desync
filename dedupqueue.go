@@ -35,7 +35,11 @@ func (q *DedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
 		case nil:
 			return nil, err
 		case *Chunk:
-			return b, err
+			// The chunk in the request is shared with all waiters. Chunk
+			// materializes its plain data and ID lazily without locking,
+			// so hand every caller its own copy. The copies still share
+			// the underlying (read-only) chunk data.
+			return b.clone(), err
 		default:
 			return nil, fmt.Errorf("internal error: unexpected type %T", data)
 		}
@@ -52,7 +56,12 @@ func (q *DedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
 	// in memory after the request is done
 	q.getChunkQueue.delete(id)
 
-	return b, err
+	if b == nil {
+		return nil, err
+	}
+	// Return a copy for the same reason the waiters get one: the chunk stored
+	// in the request must stay untouched while waiters are still reading it.
+	return b.clone(), err
 }
 
 func (q *DedupQueue) HasChunk(id ChunkID) (bool, error) {

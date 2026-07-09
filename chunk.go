@@ -23,6 +23,16 @@ func NewChunk(b []byte) *Chunk {
 	return &Chunk{data: b}
 }
 
+// clone returns a shallow copy of the chunk. The copy shares the underlying
+// data and storage slices, which are never modified after construction, but
+// gets its own lazily-calculated fields (plain data, ID). Data() and ID()
+// mutate the chunk without synchronization, so a chunk handed to multiple
+// goroutines must be cloned for each of them.
+func (c *Chunk) clone() *Chunk {
+	cp := *c
+	return &cp
+}
+
 // NewChunkWithID creates a new chunk from either compressed or uncompressed data
 // (or both if available). It also expects an ID and validates that it matches
 // the uncompressed data unless skipVerify is true. If called with just compressed

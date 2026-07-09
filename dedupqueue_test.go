@@ -7,6 +7,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,4 +73,49 @@ func TestDedupQueueParallel(t *testing.T) {
 		// There should be just one request that was done on the upstream store
 		require.EqualValues(t, 1, requests.Load(), "requests to the store")
 	})
+}
+
+func TestDedupQueueChunkNotShared(t *testing.T) {
+	data := []byte("some data")
+	id := NewChunk(data).ID()
+	compressed, err := Compress(data)
+	require.NoError(t, err)
+
+	store := &TestStore{
+		GetChunkFunc: func(id ChunkID) (*Chunk, error) {
+			// Give the other goroutines time to pile up on this request
+			time.Sleep(10 * time.Millisecond)
+			// Return the chunk in storage form, the plain data is only
+			// materialized lazily when the caller asks for it
+			return NewChunkFromStorage(id, compressed, Converters{Compressor{}}, true)
+		},
+	}
+	q := NewDedupQueue(store)
+
+	// Request the same chunk from many goroutines at once. Each caller must
+	// receive its own copy since accessing the plain data modifies the chunk.
+	// Run with -race to confirm the callers don't share state.
+	chunks := make(chan *Chunk, 10)
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() {
+			c, err := q.GetChunk(id)
+			if !assert.NoError(t, err) {
+				return
+			}
+			b, err := c.Data()
+			assert.NoError(t, err)
+			assert.Equal(t, data, b)
+			chunks <- c
+		})
+	}
+	wg.Wait()
+	close(chunks)
+
+	seen := make(map[*Chunk]struct{})
+	for c := range chunks {
+		_, shared := seen[c]
+		assert.False(t, shared, "the same *Chunk was handed to multiple callers")
+		seen[c] = struct{}{}
+	}
 }
