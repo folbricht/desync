@@ -14,6 +14,9 @@ type RemoteHTTPIndex struct {
 // NewRemoteHTTPIndexStore initializes a new store that pulls the specified index file via HTTP(S) from
 // a remote web server.
 func NewRemoteHTTPIndexStore(location *url.URL, opt StoreOptions) (*RemoteHTTPIndex, error) {
+	if err := opt.ValidateIndexOptions(); err != nil {
+		return nil, err
+	}
 	b, err := NewRemoteHTTPStoreBase(location, opt)
 	if err != nil {
 		return nil, err

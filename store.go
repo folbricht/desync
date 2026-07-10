@@ -129,7 +129,7 @@ func (o StoreOptions) StorageConverters() (Converters, error) {
 	if !o.Uncompressed {
 		c = append(c, Compressor{})
 	}
-	if !o.Encryption && (o.EncryptionKey != "" || o.EncryptionAlgorithm != "") {
+	if !o.Encryption && o.encryptionConfigured() {
 		// Refuse configs that set a key or algorithm without turning encryption
 		// on. Silently writing plaintext chunks is the one failure mode this
 		// feature must not have.
@@ -143,22 +143,37 @@ func (o StoreOptions) StorageConverters() (Converters, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid encryption key, expected hex-encoded 256-bit key: %w", err)
 		}
+		newAEAD := NewXChaCha20Poly1305
 		switch o.EncryptionAlgorithm {
 		case "", "xchacha20-poly1305":
-			enc, err := NewXChaCha20Poly1305(key)
-			if err != nil {
-				return nil, err
-			}
-			c = append(c, enc)
 		case "aes-256-gcm":
-			enc, err := NewAES256GCM(key)
-			if err != nil {
-				return nil, err
-			}
-			c = append(c, enc)
+			newAEAD = NewAES256GCM
 		default:
 			return nil, fmt.Errorf("unsupported encryption algorithm %q", o.EncryptionAlgorithm)
 		}
+		enc, err := newAEAD(key)
+		if err != nil {
+			return nil, err
+		}
+		c = append(c, enc)
 	}
 	return c, nil
+}
+
+// encryptionConfigured returns true if any of the encryption options is set,
+// regardless of whether the combination is valid.
+func (o StoreOptions) encryptionConfigured() bool {
+	return o.Encryption || o.EncryptionKey != "" || o.EncryptionAlgorithm != ""
+}
+
+// ValidateIndexOptions returns an error if the options contain settings that
+// don't apply to index stores. Encryption only covers chunks, indexes are
+// always stored in plain form. Index stores reject encryption options rather
+// than silently ignoring them, which could be mistaken for indexes being
+// stored encrypted.
+func (o StoreOptions) ValidateIndexOptions() error {
+	if o.encryptionConfigured() {
+		return errors.New("encryption is not supported by index stores")
+	}
+	return nil
 }

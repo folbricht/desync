@@ -2,7 +2,6 @@ package desync
 
 import (
 	"bytes"
-	"encoding/hex"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -377,9 +376,7 @@ func TestRemoteHTTPPutEncrypted(t *testing.T) {
 
 	// If everything worked, the request body should be the chunk data, first
 	// compressed, then encrypted. Unwind it manually to check the layers are in order.
-	key, err := hex.DecodeString(testEncryptionKey)
-	require.NoError(t, err)
-	dec, err := NewXChaCha20Poly1305(key)
+	dec, err := NewXChaCha20Poly1305(testKey(t, testEncryptionKey))
 	require.NoError(t, err)
 	decrypted, err := dec.fromStorage(body.Bytes())
 	require.NoError(t, err)

@@ -232,6 +232,14 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	}
 	opt := cmdOpt.MergedWith(configOptions)
 
+	// The index store constructors reject encryption options themselves, but
+	// local and console index stores don't take any options. Check here so a
+	// config entry matching an index location fails uniformly for all backends
+	// instead of silently storing plaintext indexes.
+	if err := opt.ValidateIndexOptions(); err != nil {
+		return nil, "", fmt.Errorf("store options for %q: %w", location, err)
+	}
+
 	var s desync.IndexStore
 	switch loc.Scheme {
 	case "ssh":

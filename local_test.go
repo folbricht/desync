@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"encoding/hex"
 	"io"
 	"os"
 	"testing"
@@ -263,9 +262,7 @@ func TestLocalStoreCompressedEncrypted(t *testing.T) {
 	require.NoError(t, err)
 
 	// First decrypt it, using the correct key
-	key, err := hex.DecodeString(testEncryptionKey)
-	require.NoError(t, err)
-	dec, err := NewXChaCha20Poly1305(key)
+	dec, err := NewXChaCha20Poly1305(testKey(t, testEncryptionKey))
 	require.NoError(t, err)
 	decrypted, err := dec.fromStorage(b)
 	require.NoError(t, err)

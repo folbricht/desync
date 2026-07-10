@@ -101,9 +101,7 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	// alone must not switch the wire format, it may be set for the sake of an
 	// encrypted store elsewhere in the config.
 	encryption := opt.encryption || opt.encryptionKey != "" || opt.encryptionAlg != ""
-	if encryption && opt.encryptionKey == "" {
-		opt.encryptionKey = os.Getenv("DESYNC_ENCRYPTION_KEY")
-	}
+	opt.encryptionKey = encryptionKeyFallback(encryption, opt.encryptionKey)
 
 	addresses := opt.listenAddresses
 	if len(addresses) == 0 {

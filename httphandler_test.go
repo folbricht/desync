@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"encoding/hex"
 	"net/http/httptest"
 	"net/url"
 	"testing"
@@ -112,9 +111,7 @@ func TestHTTPHandlerEncryption(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a read-write capable server with Encryption, no Compression
-	key, err := hex.DecodeString(testEncryptionKey)
-	require.NoError(t, err)
-	enc, err := NewXChaCha20Poly1305(key)
+	enc, err := NewXChaCha20Poly1305(testKey(t, testEncryptionKey))
 	require.NoError(t, err)
 	server := httptest.NewServer(NewHTTPHandler(upstream, true, false, []converter{enc}, ""))
 	defer server.Close()

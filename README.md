@@ -307,6 +307,8 @@ Chunk extensions in stores are chosen based on compression or encryption setting
 
 Note that encryption only protects the chunk data itself. Chunk file names, which are the content hashes of the plain data, remain visible to anyone with access to the store. An observer that already knows the plain content of a chunk can therefore confirm its presence in the store.
 
+Encryption applies to chunk stores only. Index files are always stored in plain form, and index stores reject encryption options rather than silently ignoring them. If a config entry enabling encryption matches a location that is also used to store indexes, index operations will fail with an error — keep indexes in a separate location, or use a more specific config entry without encryption for them. Keep in mind that a plain index reveals metadata about the encrypted content: the IDs, sizes and offsets of all its chunks.
+
 Encryption provides confidentiality, while integrity comes from desync's regular chunk validation: every chunk is identified by the hash of its plain content, which is verified when chunks are read (unless `skip-verify` is set). The AEAD ciphertext is authenticated under the key, but it is not bound to the chunk's name — someone with write access to the store could swap two encrypted chunk files and decryption alone would not detect it. Such a swap is caught by the content validation of the final consumer, e.g. during `extract`, which is enabled by default. Only disable verification (`skip-verify`, `--skip-verify-read`) for intermediate proxies or caches where a downstream reader still validates the chunks.
 
 </details>
