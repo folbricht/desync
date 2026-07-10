@@ -162,12 +162,24 @@ func TestChunkServerMutualTLS(t *testing.T) {
 }
 
 func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc) {
-	// Find a free local port to be used to run the index server on
+	addr := freeLocalAddr(t)
+	return addr, startChunkServerOnAddr(t, addr, args...)
+}
+
+// freeLocalAddr finds a free local address with a port that can be used to
+// run a server on.
+func freeLocalAddr(t *testing.T) string {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := l.Addr().String()
 	l.Close()
+	return addr
+}
 
+// startChunkServerOnAddr starts a chunk server on the given address. The
+// server goroutine reads package globals like the config during startup,
+// so tests that modify those need to do that before calling this.
+func startChunkServerOnAddr(t *testing.T, addr string, args ...string) context.CancelFunc {
 	// Flush any handlers that were registered in the default mux before
 	http.DefaultServeMux = &http.ServeMux{}
 
@@ -183,7 +195,7 @@ func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc)
 
 	// Wait a little for the server to start
 	time.Sleep(time.Second)
-	return addr, cancel
+	return cancel
 }
 
 // randomEncryptionKey returns a new hex-encoded 256-bit chunk encryption key.
@@ -197,16 +209,13 @@ func randomEncryptionKey(t *testing.T) string {
 func TestChunkServerEncryption(t *testing.T) {
 	outdir := t.TempDir()
 	testEncryptionKey := randomEncryptionKey(t)
-
-	// Start a (writable) server, it'll expect compressed+encrypted chunks over
-	// the wire while storing them only compressed in the local store
-	addr, cancel := startChunkServer(t, "-s", outdir, "-w", "--skip-verify-read=false", "--skip-verify-write=false", "--encryption-key", testEncryptionKey)
-	defer cancel()
+	addr := freeLocalAddr(t)
 	store := fmt.Sprintf("http://%s/", addr)
 
 	// Build a client config. The client needs to be setup to talk to the HTTP chunk server
 	// compressed+encrypted. Create a temp JSON config for that HTTP store and load it.
-	// Restore the config globals afterwards so no other test picks up these options.
+	// This has to happen before the server starts since its goroutine reads the same
+	// config globals. Restore them afterwards so no other test picks up these options.
 	oldCfgFile, oldCfg := cfgFile, cfg
 	t.Cleanup(func() { cfgFile, cfg = oldCfgFile, oldCfg })
 	cfgFile = filepath.Join(outdir, "config.json")
@@ -214,6 +223,11 @@ func TestChunkServerEncryption(t *testing.T) {
 	cfgFileContent := fmt.Sprintf(`{"store-options": {"%s":{"encryption": true, "encryption-key": "%s"}}}`, store, testEncryptionKey)
 	require.NoError(t, os.WriteFile(cfgFile, []byte(cfgFileContent), 0644))
 	initConfig()
+
+	// Start a (writable) server, it'll expect compressed+encrypted chunks over
+	// the wire while storing them only compressed in the local store
+	cancel := startChunkServerOnAddr(t, addr, "-s", outdir, "-w", "--skip-verify-read=false", "--skip-verify-write=false", "--encryption-key", testEncryptionKey)
+	defer cancel()
 
 	// Run a "chop" command to send some chunks (encrypted) over HTTP, then have the server
 	// store them un-encrypted in its local store.
