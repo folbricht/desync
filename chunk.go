@@ -97,12 +97,21 @@ func (c *Chunk) ID() ChunkID {
 	return c.id
 }
 
-// Storage returns the chunk data in compressed form. If the chunk was created
-// with compressed data and same modifiers, this data will be returned as is. The
-// caller must not modify the data in the returned slice.
+// Storage returns the chunk data in storage format according to the given
+// modifiers. If the chunk was created with storage data and the same modifiers,
+// this data will be returned as is. If the modifiers only differ by extra or
+// missing trailing layers, just that difference is applied, avoiding expensive
+// conversions of the shared layers, such as recompression when only an
+// encryption layer is added or removed. The caller must not modify the data
+// in the returned slice.
 func (c *Chunk) Storage(modifiers Converters) ([]byte, error) {
-	if len(c.storage) > 0 && modifiers.equal(c.converters) {
-		return c.storage, nil
+	if len(c.storage) > 0 {
+		if suffix, ok := modifiers.trimPrefix(c.converters); ok {
+			return suffix.toStorage(c.storage)
+		}
+		if suffix, ok := c.converters.trimPrefix(modifiers); ok {
+			return suffix.fromStorage(c.storage)
+		}
 	}
 	b, err := c.Data()
 	if err != nil {

@@ -43,15 +43,25 @@ func (s Converters) fromStorage(in []byte) ([]byte, error) {
 // Returns true if both converters have the same layers in the
 // same order. Used for optimizations.
 func (s Converters) equal(c Converters) bool {
-	if len(s) != len(c) {
-		return false
+	suffix, ok := s.trimPrefix(c)
+	return ok && len(suffix) == 0
+}
+
+// trimPrefix returns the layers of s that remain after removing the given
+// prefix, and whether prefix actually is a prefix of s. Used to determine
+// the difference between two conversion stacks, for example a compressed
+// store being served encrypted, where only the extra layers need to be
+// applied. An equal stack returns an empty remainder.
+func (s Converters) trimPrefix(prefix Converters) (Converters, bool) {
+	if len(prefix) > len(s) {
+		return nil, false
 	}
-	for i := range s {
-		if !s[i].equal(c[i]) {
-			return false
+	for i := range prefix {
+		if !s[i].equal(prefix[i]) {
+			return nil, false
 		}
 	}
-	return true
+	return s[len(prefix):], true
 }
 
 // Extension to be used in storage. Concatenation of converter
