@@ -9,6 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Hex-encoded 256-bit keys used in encryption tests.
+const (
+	testEncryptionKey  = "6368616e676520746869732070617373776f726420746f206120736563726574"
+	otherEncryptionKey = "746f74616c6c7920646966666572656e74206b65792075736564206865726521"
+)
+
 func testKey(t *testing.T, s string) []byte {
 	key, err := hex.DecodeString(s)
 	require.NoError(t, err)

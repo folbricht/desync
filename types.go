@@ -3,6 +3,7 @@ package desync
 import (
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -32,6 +33,23 @@ func ChunkIDFromString(id string) (ChunkID, error) {
 
 func (c *ChunkID) String() string {
 	return hex.EncodeToString(c[:])
+}
+
+// chunkIDFromFilename extracts the chunk ID from the base filename of a
+// chunk, which is expected to be the hex-encoded ID followed by the given
+// storage extension. Returns false if the name doesn't match that format,
+// for example for chunks stored with different compression or encryption
+// settings.
+func chunkIDFromFilename(name, extension string) (ChunkID, bool) {
+	sID, ok := strings.CutSuffix(name, extension)
+	if !ok {
+		return ChunkID{}, false
+	}
+	id, err := ChunkIDFromString(sID)
+	if err != nil {
+		return ChunkID{}, false
+	}
+	return id, true
 }
 
 func (c *ChunkID) MarshalJSON() ([]byte, error) {

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -184,11 +186,17 @@ func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc)
 	return addr, cancel
 }
 
-// Hex-encoded 256-bit key used in encryption tests.
-const testEncryptionKey = "6368616e676520746869732070617373776f726420746f206120736563726574"
+// randomEncryptionKey returns a new hex-encoded 256-bit chunk encryption key.
+func randomEncryptionKey(t *testing.T) string {
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err)
+	return hex.EncodeToString(key)
+}
 
 func TestChunkServerEncryption(t *testing.T) {
 	outdir := t.TempDir()
+	testEncryptionKey := randomEncryptionKey(t)
 
 	// Start a (writable) server, it'll expect compressed+encrypted chunks over
 	// the wire while storing them only compressed in the local store
@@ -235,7 +243,7 @@ func TestChunkServerEnvKeyDoesNotEnableEncryption(t *testing.T) {
 	// Having the key in the environment alone must not switch the server to
 	// encrypted serving, it may be set for the sake of an encrypted store
 	// elsewhere in the config
-	t.Setenv("DESYNC_ENCRYPTION_KEY", testEncryptionKey)
+	t.Setenv("DESYNC_ENCRYPTION_KEY", randomEncryptionKey(t))
 
 	// Reset any config a previous test may have loaded
 	oldCfg := cfg

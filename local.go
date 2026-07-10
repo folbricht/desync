@@ -145,16 +145,10 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 		if info.IsDir() { // Skip dirs
 			return nil
 		}
-		// Skip chunks that don't match the store's extension, they may use
-		// different compression or encryption settings
-		if !strings.HasSuffix(filepath.Base(path), s.extension) {
-			return nil
-		}
-		sID := strings.TrimSuffix(filepath.Base(path), s.extension)
-		// Convert the name into a checksum, if that fails we're probably not looking
-		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(sID)
-		if err != nil {
+		// Skip files that aren't chunks matching the store's extension, they
+		// may use different compression or encryption settings
+		id, ok := chunkIDFromFilename(filepath.Base(path), s.extension)
+		if !ok {
 			return nil
 		}
 		// Feed the workers
@@ -189,16 +183,10 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			_ = os.Remove(path)
 			return nil
 		}
-		// Skip chunks that don't match the store's extension, they may use
-		// different compression or encryption settings
-		if !strings.HasSuffix(filepath.Base(path), s.extension) {
-			return nil
-		}
-		sID := strings.TrimSuffix(filepath.Base(path), s.extension)
-		// Convert the name into a checksum, if that fails we're probably not looking
-		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(sID)
-		if err != nil {
+		// Skip files that aren't chunks matching the store's extension, they
+		// may use different compression or encryption settings
+		id, ok := chunkIDFromFilename(filepath.Base(path), s.extension)
+		if !ok {
 			return nil
 		}
 		// See if the chunk we're looking at is in the list we want to keep, if not

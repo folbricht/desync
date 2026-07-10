@@ -205,18 +205,13 @@ func (s S3Store) nameFromID(id ChunkID) string {
 }
 
 func (s S3Store) idFromName(name string) (ChunkID, error) {
-	if !strings.HasSuffix(name, s.extension) {
+	fragments := strings.Split(strings.TrimPrefix(name, s.prefix), "/")
+	if len(fragments) != 2 || !strings.HasPrefix(fragments[1], fragments[0]) {
+		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
+	}
+	id, ok := chunkIDFromFilename(fragments[1], s.extension)
+	if !ok {
 		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
 	}
-	n := strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), s.extension)
-	fragments := strings.Split(n, "/")
-	if len(fragments) != 2 {
-		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
-	}
-	idx := fragments[0]
-	sid := fragments[1]
-	if !strings.HasPrefix(sid, idx) {
-		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
-	}
-	return ChunkIDFromString(sid)
+	return id, nil
 }

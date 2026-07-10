@@ -239,21 +239,16 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		if info.IsDir() { // Skip dirs
 			continue
 		}
-		path := walker.Path()
-		if !strings.HasSuffix(path, c.extension) { // Skip files without expected chunk extension
-			continue
-		}
-		sID := strings.TrimSuffix(filepath.Base(path), c.extension)
-		// Convert the name into a hash, if that fails we're probably not looking
-		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(sID)
-		if err != nil {
+		// Skip files that aren't chunks matching the store's extension, they
+		// may use different compression or encryption settings
+		id, ok := chunkIDFromFilename(filepath.Base(walker.Path()), c.extension)
+		if !ok {
 			continue
 		}
 		// See if the chunk we're looking at is in the list we want to keep, if not
 		// remove it.
 		if _, ok := ids[id]; !ok {
-			if err = s.RemoveChunk(id); err != nil {
+			if err := s.RemoveChunk(id); err != nil {
 				return err
 			}
 		}
