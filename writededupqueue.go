@@ -36,7 +36,11 @@ func (q *WriteDedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
 		case nil:
 			return nil, err
 		case *Chunk:
-			return b, err
+			// The chunk in the request is shared with all waiters. Chunk
+			// materializes its plain data and ID lazily without locking,
+			// so hand every caller its own copy. The copies still share
+			// the underlying (read-only) chunk data.
+			return b.clone(), err
 		default:
 			return nil, fmt.Errorf("internal error: unexpected type %T", data)
 		}
@@ -63,8 +67,10 @@ func (q *WriteDedupQueue) StoreChunk(chunk *Chunk) error {
 	err := q.S.StoreChunk(chunk)
 
 	// Signal to any others that wait for us that we're done, they'll use our data
-	// and don't need to hit the store themselves
-	req.markDone(chunk, err)
+	// and don't need to hit the store themselves. Publish a copy of the chunk,
+	// detached from the one the caller passed in and keeps using, so the copy
+	// stays untouched while waiters read from it.
+	req.markDone(chunk.clone(), err)
 
 	// We're done, drop the request from the queue to avoid keeping all the chunk data
 	// in memory after the request is done
