@@ -40,28 +40,16 @@ func (s Converters) fromStorage(in []byte) ([]byte, error) {
 	return b, nil
 }
 
-// Returns true if both converters have the same layers in the
-// same order. Used for optimizations.
-func (s Converters) equal(c Converters) bool {
-	suffix, ok := s.trimPrefix(c)
-	return ok && len(suffix) == 0
-}
-
-// trimPrefix returns the layers of s that remain after removing the given
-// prefix, and whether prefix actually is a prefix of s. Used to determine
-// the difference between two conversion stacks, for example a compressed
-// store being served encrypted, where only the extra layers need to be
-// applied. An equal stack returns an empty remainder.
-func (s Converters) trimPrefix(prefix Converters) (Converters, bool) {
-	if len(prefix) > len(s) {
-		return nil, false
+// commonPrefix returns the number of leading layers shared between the
+// two conversion stacks. Used to determine the difference between them,
+// for example a compressed store being served encrypted, where only the
+// differing layers need to be applied.
+func (s Converters) commonPrefix(c Converters) int {
+	var n int
+	for n < len(s) && n < len(c) && s[n].equal(c[n]) {
+		n++
 	}
-	for i := range prefix {
-		if !s[i].equal(prefix[i]) {
-			return nil, false
-		}
-	}
-	return s[len(prefix):], true
+	return n
 }
 
 // Extension to be used in storage. Concatenation of converter

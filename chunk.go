@@ -43,9 +43,8 @@ func NewChunkWithID(id ChunkID, b []byte, skipVerify bool) (*Chunk, error) {
 		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
 	}
-	sum := c.ID()
-	if sum != id {
-		return nil, ChunkInvalid{ID: id, Sum: sum}
+	if err := c.verify(); err != nil {
+		return nil, err
 	}
 	return c, nil
 }
@@ -59,11 +58,27 @@ func NewChunkFromStorage(id ChunkID, b []byte, modifiers Converters, skipVerify 
 		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
 	}
-	sum := c.ID()
-	if sum != id {
-		return nil, ChunkInvalid{ID: id, Sum: sum}
+	if err := c.verify(); err != nil {
+		return nil, err
 	}
 	return c, nil
+}
+
+// verify confirms the chunk's plain data matches its expected ID. Errors
+// converting the storage data to plain form, such as decryption failures,
+// are reported as ChunkInvalid as well, with the cause preserved, since
+// they equally mean the chunk in the store is unusable.
+func (c *Chunk) verify() error {
+	b, err := c.Data()
+	if err != nil {
+		return ChunkInvalid{ID: c.id, Err: err}
+	}
+	sum := Digest.Sum(b)
+	if sum != c.id {
+		return ChunkInvalid{ID: c.id, Sum: sum}
+	}
+	c.idCalculated = true
+	return nil
 }
 
 // Data returns the chunk data in uncompressed form. If the chunk was created
@@ -99,18 +114,28 @@ func (c *Chunk) ID() ChunkID {
 
 // Storage returns the chunk data in storage format according to the given
 // modifiers. If the chunk was created with storage data and the same modifiers,
-// this data will be returned as is. If the modifiers only differ by extra or
-// missing trailing layers, just that difference is applied, avoiding expensive
-// conversions of the shared layers, such as recompression when only an
-// encryption layer is added or removed. The caller must not modify the data
-// in the returned slice.
+// this data will be returned as is. If the modifiers share leading layers with
+// the chunk's own, only the difference is applied, avoiding expensive
+// conversions of the shared layers, such as recompression when just an
+// encryption layer is added, removed, or uses a different key. The caller
+// must not modify the data in the returned slice.
 func (c *Chunk) Storage(modifiers Converters) ([]byte, error) {
 	if len(c.storage) > 0 {
-		if suffix, ok := modifiers.trimPrefix(c.converters); ok {
-			return suffix.toStorage(c.storage)
-		}
-		if suffix, ok := c.converters.trimPrefix(modifiers); ok {
-			return suffix.fromStorage(c.storage)
+		// If the stacks share leading layers, unwind the chunk's own extra
+		// layers and apply the requested ones on top. When nothing is shared
+		// and the storage data isn't plain, unwinding is the same work as
+		// Data() below, which also caches the plain data on the chunk for
+		// other consumers, so prefer that path.
+		if n := modifiers.commonPrefix(c.converters); n > 0 || len(c.converters) == 0 {
+			b := c.storage
+			if n < len(c.converters) {
+				var err error
+				b, err = c.converters[n:].fromStorage(b)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return modifiers[n:].toStorage(b)
 		}
 	}
 	b, err := c.Data()

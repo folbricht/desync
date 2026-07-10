@@ -39,4 +39,33 @@ func TestChunkStorageSharedLayers(t *testing.T) {
 	storage, err = c.Storage(Converters{Compressor{}, enc})
 	require.NoError(t, err)
 	require.Equal(t, encrypted, storage)
+
+	// Key rotation: convert between two encrypted formats that share the
+	// compression layer, as when re-encrypting a store with a new key.
+	// Only the encryption layer should be swapped.
+	otherEnc, err := NewXChaCha20Poly1305(testKey(t, otherEncryptionKey))
+	require.NoError(t, err)
+	reEncrypted, err := c.Storage(Converters{Compressor{}, otherEnc})
+	require.NoError(t, err)
+	decrypted, err = otherEnc.fromStorage(reEncrypted)
+	require.NoError(t, err)
+	require.Equal(t, compressed, decrypted)
+}
+
+// Converting a chunk to plain storage format goes through Data() which
+// caches the result on the chunk, so that later consumers, such as reading
+// a chunk back after storing it in an uncompressed cache, don't convert
+// the same data again.
+func TestChunkStoragePlainCached(t *testing.T) {
+	plain := []byte("some data")
+	compressed, err := Compress(plain)
+	require.NoError(t, err)
+
+	c, err := NewChunkFromStorage(ChunkID{}, compressed, Converters{Compressor{}}, true)
+	require.NoError(t, err)
+
+	storage, err := c.Storage(nil)
+	require.NoError(t, err)
+	require.Equal(t, plain, storage)
+	require.Equal(t, plain, c.data, "plain data not cached on the chunk")
 }
