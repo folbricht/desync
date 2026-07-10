@@ -276,7 +276,7 @@ An OCI store supports reading, writing, pruning, and use as a cache, so it works
 
 #### How chunks are stored
 
-Every chunk is stored as its own small OCI artifact consisting of a blob holding the chunk data — compressed with zstd unless the store is configured with `uncompressed` — and a manifest referencing that blob, tagged with the chunk ID in hex. A chunk artifact looks like this in the registry:
+Every chunk is stored as its own small OCI artifact consisting of a blob holding the chunk data — compressed and/or encrypted according to the store options — and a manifest referencing that blob. The manifest is tagged with the chunk ID in hex followed by the storage extension, the same naming used for chunk files in other stores, e.g. `<id>.cacnk` for a compressed store or `<id>.cacnk.xchacha20-poly1305-<keyid>` for a compressed and encrypted one (see [Chunk Encryption](#chunk-encryption)). Chunks in different formats or with different encryption keys can therefore coexist in one repository, and `prune` only considers chunks matching the store's own configuration. A chunk artifact looks like this in the registry:
 
 ```json
 {
@@ -303,7 +303,7 @@ Every chunk is stored as its own small OCI artifact consisting of a blob holding
 
 This layout has a few important properties:
 
-- The chunk ID appears only in the tag, never as a blob digest. OCI blob digests must be SHA256, so this is what allows the store to work with desync's default SHA512/256 digest algorithm and lets it be combined freely with other stores, caches, and existing indexes.
+- The chunk ID appears only in the tag, never as a blob digest. OCI blob digests must be SHA256, so this is what allows the store to work with desync's default SHA512/256 digest algorithm and lets it be combined freely with other stores, caches, and existing indexes. It is also what makes encryption possible: the registry digests and verifies the ciphertext.
 - Registries garbage-collect blobs that are not referenced by a manifest (and some, like ghcr.io, won't serve them at all). The tagged manifest keeps every chunk referenced and therefore safe.
 - Identical chunks pushed again reuse the same blob — registries deduplicate blobs by digest within a repository.
 

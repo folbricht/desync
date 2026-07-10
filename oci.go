@@ -31,18 +31,24 @@ var _ WriteStore = OCIStore{}
 var _ PruneStore = OCIStore{}
 
 // OCIStore operates on chunks in an OCI registry. Every chunk is stored as its
-// own artifact: a blob holding the chunk in storage format (compressed unless
-// configured otherwise), referenced by a minimal image manifest that is tagged
-// with the chunk ID in hex. The tag is the only place the chunk ID appears, so
-// any chunk digest algorithm works, including the default SHA512/256 which OCI
-// blob digests could not represent. The manifest also keeps the blob referenced,
-// protecting it from registry garbage collection of unreferenced blobs.
+// own artifact: a blob holding the chunk in storage format (compressed and/or
+// encrypted as configured), referenced by a minimal image manifest that is
+// tagged with the chunk ID in hex followed by the storage extension, the same
+// naming used for chunk files in other stores. The tag is the only place the
+// chunk ID appears, so any chunk digest algorithm works, including the default
+// SHA512/256 which OCI blob digests could not represent, and chunks in
+// different storage formats or with different encryption keys can coexist in
+// one repository. The manifest also keeps the blob referenced, protecting it
+// from registry garbage collection of unreferenced blobs.
 type OCIStore struct {
 	repo         *remote.Repository
 	location     string
 	opt          StoreOptions
 	converters   Converters
 	configPushed *atomic.Bool
+
+	// Chunk tag extension, derived from the converters at construction
+	extension string
 }
 
 // NewOCIStore initializes a store using an OCI registry as backend.
@@ -114,18 +120,30 @@ func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCISt
 	repo.Client = client
 	repo.PlainHTTP = u.Scheme == "oci+http"
 
+	converters, err := opt.StorageConverters()
+	if err != nil {
+		return OCIStore{}, err
+	}
 	s := OCIStore{
 		repo:         repo,
 		location:     u.String(),
 		opt:          opt,
-		converters:   opt.converters(),
+		converters:   converters,
 		configPushed: &atomic.Bool{},
+		extension:    converters.storageExtension(),
 	}
 	return s, nil
 }
 
 func (s OCIStore) String() string {
 	return s.location
+}
+
+// tagFromID returns the manifest tag for a chunk, the hex ID followed by
+// the storage extension. Both are well within the OCI tag grammar and
+// length limit.
+func (s OCIStore) tagFromID(id ChunkID) string {
+	return id.String() + s.extension
 }
 
 // Close the store. NOP operation but needed to implement the store interface.
@@ -158,7 +176,7 @@ func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 // HasChunk returns true if the chunk is in the store.
 func (s OCIStore) HasChunk(id ChunkID) (bool, error) {
-	_, err := s.repo.Resolve(context.Background(), id.String())
+	_, err := s.repo.Resolve(context.Background(), s.tagFromID(id))
 	switch {
 	case err == nil:
 		return true, nil
@@ -174,11 +192,7 @@ func (s OCIStore) HasChunk(id ChunkID) (bool, error) {
 func (s OCIStore) StoreChunk(chunk *Chunk) error {
 	ctx := context.Background()
 	id := chunk.ID()
-	b, err := chunk.Data()
-	if err != nil {
-		return err
-	}
-	b, err = s.converters.toStorage(b)
+	b, err := chunk.Storage(s.converters)
 	if err != nil {
 		return err
 	}
@@ -201,7 +215,7 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 		ArtifactType: OCIChunkArtifactType,
 		Config:       config,
 		Layers:       []ocispec.Descriptor{blobDesc},
-		Annotations:  map[string]string{ocispec.AnnotationTitle: id.String() + ".cacnk"},
+		Annotations:  map[string]string{ocispec.AnnotationTitle: s.tagFromID(id)},
 	}
 	mb, err := json.Marshal(manifest)
 	if err != nil {
@@ -212,7 +226,7 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 		Digest:    digest.FromBytes(mb),
 		Size:      int64(len(mb)),
 	}
-	return s.repo.Manifests().PushReference(ctx, manifestDesc, bytes.NewReader(mb), id.String())
+	return s.repo.Manifests().PushReference(ctx, manifestDesc, bytes.NewReader(mb), s.tagFromID(id))
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the store.
@@ -220,7 +234,7 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 // the blob is left for the registry's garbage collection.
 func (s OCIStore) RemoveChunk(id ChunkID) error {
 	ctx := context.Background()
-	desc, err := s.repo.Resolve(ctx, id.String())
+	desc, err := s.repo.Resolve(ctx, s.tagFromID(id))
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
 			return ChunkMissing{id}
@@ -231,10 +245,11 @@ func (s OCIStore) RemoveChunk(id ChunkID) error {
 }
 
 // Prune removes any chunks from the store that are not referenced in the
-// list of chunks. Only tags that parse as chunk IDs are considered, other
-// artifacts sharing the repository are left alone. Just the chunk manifests
-// are deleted, reclaiming the space of the now unreferenced blobs is left
-// to the registry's garbage collection.
+// list of chunks. Only tags matching the store's chunk naming, the ID
+// followed by the storage extension, are considered. Other artifacts and
+// chunks in different storage formats sharing the repository are left
+// alone. Just the chunk manifests are deleted, reclaiming the space of the
+// now unreferenced blobs is left to the registry's garbage collection.
 func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	return s.repo.Tags(ctx, "", func(tags []string) error {
 		for _, tag := range tags {
@@ -245,14 +260,14 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			default:
 			}
 
-			id, err := ChunkIDFromString(tag)
-			if err != nil {
+			id, ok := chunkIDFromFilename(tag, s.extension)
+			if !ok {
 				continue
 			}
 
 			// Drop the chunk if it's not on the list
 			if _, ok := ids[id]; !ok {
-				if err = s.RemoveChunk(id); err != nil && !errors.Is(err, ChunkMissing{id}) {
+				if err := s.RemoveChunk(id); err != nil && !errors.Is(err, ChunkMissing{id}) {
 					return err
 				}
 			}
@@ -264,7 +279,7 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 // resolveChunkBlob fetches the chunk's manifest by tag and returns the
 // descriptor of the blob holding the chunk data.
 func (s OCIStore) resolveChunkBlob(ctx context.Context, id ChunkID) (ocispec.Descriptor, error) {
-	_, r, err := s.repo.FetchReference(ctx, id.String())
+	_, r, err := s.repo.FetchReference(ctx, s.tagFromID(id))
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
 			return ocispec.Descriptor{}, ChunkMissing{id}

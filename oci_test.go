@@ -206,14 +206,44 @@ func TestOCIStoreRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, data, b)
 
-	// The chunk's manifest must be tagged with the chunk ID to be protected
-	// from registry garbage collection, and the blob must hold the chunk in
-	// compressed form
+	// The chunk's manifest must be tagged with the chunk ID and storage
+	// extension to be protected from registry garbage collection, and the
+	// blob must hold the chunk in compressed form
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
-	assert.Contains(t, reg.manifests, id.String())
+	assert.Contains(t, reg.manifests, id.String()+".cacnk")
 	compressed := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
 	assert.NotContains(t, reg.blobs, compressed, "chunk blob should be compressed")
+}
+
+// Encrypted chunks use the same tag naming as chunk files in other stores,
+// with the algorithm and key ID in the extension, so chunks with different
+// keys or formats can coexist in one repository.
+func TestOCIStoreEncrypted(t *testing.T) {
+	s, reg := newTestOCIStore(t, StoreOptions{Encryption: true, EncryptionKey: testEncryptionKey})
+
+	data := []byte("some chunk data")
+	chunk := NewChunk(data)
+	id := chunk.ID()
+	require.NoError(t, s.StoreChunk(chunk))
+
+	got, err := s.GetChunk(id)
+	require.NoError(t, err)
+	b, err := got.Data()
+	require.NoError(t, err)
+	assert.Equal(t, data, b)
+
+	// The manifest tag has to carry the algorithm and key ID
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	var tags []string
+	for k := range reg.manifests {
+		if strings.HasPrefix(k, id.String()) {
+			tags = append(tags, k)
+		}
+	}
+	require.Len(t, tags, 1)
+	assert.Regexp(t, `\.cacnk\.xchacha20-poly1305-[0-9a-f]{8}$`, tags[0])
 }
 
 func TestOCIStoreUncompressed(t *testing.T) {
@@ -267,9 +297,15 @@ func TestOCIStorePrune(t *testing.T) {
 		digest:    fmt.Sprintf("sha256:%x", sha256.Sum256(foreignContent)),
 		content:   foreignContent,
 	}
+	// Also add a chunk in a different storage format, a bare chunk-ID tag as
+	// used by an uncompressed, unencrypted store. Pruning this compressed
+	// store must not touch chunks in other formats.
+	otherFormat := NewChunk([]byte("other format chunk"))
+	otherFormatID := otherFormat.ID()
 	reg.mu.Lock()
 	reg.manifests["latest"] = foreign
 	reg.manifests[foreign.digest] = foreign
+	reg.manifests[otherFormatID.String()] = foreign
 	reg.mu.Unlock()
 
 	// Prune everything but the first chunk
@@ -288,6 +324,7 @@ func TestOCIStorePrune(t *testing.T) {
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
 	assert.Contains(t, reg.manifests, "latest")
+	assert.Contains(t, reg.manifests, otherFormatID.String(), "chunk in a different storage format was pruned")
 }
 
 func TestOCIStoreInvalidChunk(t *testing.T) {
