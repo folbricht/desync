@@ -198,7 +198,11 @@ func TestChunkServerEncryption(t *testing.T) {
 
 	// Build a client config. The client needs to be setup to talk to the HTTP chunk server
 	// compressed+encrypted. Create a temp JSON config for that HTTP store and load it.
+	// Restore the config globals afterwards so no other test picks up these options.
+	oldCfgFile, oldCfg := cfgFile, cfg
+	t.Cleanup(func() { cfgFile, cfg = oldCfgFile, oldCfg })
 	cfgFile = filepath.Join(outdir, "config.json")
+	cfg = Config{}
 	cfgFileContent := fmt.Sprintf(`{"store-options": {"%s":{"encryption": true, "encryption-key": "%s"}}}`, store, testEncryptionKey)
 	require.NoError(t, os.WriteFile(cfgFile, []byte(cfgFileContent), 0644))
 	initConfig()

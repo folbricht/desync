@@ -94,8 +94,9 @@ func runInspectChunks(ctx context.Context, opt inspectChunksOptions, args []stri
 
 	for _, chunk := range c.Chunks {
 		var size int64 = 0
-		// Get the compressed size only if the store actually has compressed chunks
-		if opt.store != "" && !s.Opt.Uncompressed {
+		// Get the size in the store only if it differs from the plain size,
+		// i.e. the chunks are compressed, encrypted, or both
+		if opt.store != "" && (!s.Opt.Uncompressed || s.Opt.Encryption) {
 			size, _ = s.GetChunkSize(chunk.ID)
 		}
 

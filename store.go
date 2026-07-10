@@ -129,7 +129,7 @@ func (o StoreOptions) StorageConverters() (Converters, error) {
 	if !o.Uncompressed {
 		c = append(c, Compressor{})
 	}
-	if !o.Encryption && o.encryptionConfigured() {
+	if !o.Encryption && o.EncryptionConfigured() {
 		// Refuse configs that set a key or algorithm without turning encryption
 		// on. Silently writing plaintext chunks is the one failure mode this
 		// feature must not have.
@@ -160,9 +160,9 @@ func (o StoreOptions) StorageConverters() (Converters, error) {
 	return c, nil
 }
 
-// encryptionConfigured returns true if any of the encryption options is set,
+// EncryptionConfigured returns true if any of the encryption options is set,
 // regardless of whether the combination is valid.
-func (o StoreOptions) encryptionConfigured() bool {
+func (o StoreOptions) EncryptionConfigured() bool {
 	return o.Encryption || o.EncryptionKey != "" || o.EncryptionAlgorithm != ""
 }
 
@@ -172,7 +172,7 @@ func (o StoreOptions) encryptionConfigured() bool {
 // than silently ignoring them, which could be mistaken for indexes being
 // stored encrypted.
 func (o StoreOptions) ValidateIndexOptions() error {
-	if o.encryptionConfigured() {
+	if o.EncryptionConfigured() {
 		return errors.New("encryption is not supported by index stores")
 	}
 	return nil

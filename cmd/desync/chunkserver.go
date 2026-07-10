@@ -97,11 +97,24 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	if opt.auth == "" {
 		opt.auth = os.Getenv("DESYNC_HTTP_AUTH")
 	}
-	// Encryption needs to be requested explicitly with a flag. The env variable
-	// alone must not switch the wire format, it may be set for the sake of an
-	// encrypted store elsewhere in the config.
-	encryption := opt.encryption || opt.encryptionKey != "" || opt.encryptionAlg != ""
-	opt.encryptionKey = encryptionKeyFallback(encryption, opt.encryptionKey)
+
+	// Build the converters for the format this server exchanges with its
+	// clients, before any upstream store is opened, so that invalid encryption
+	// options fail fast. Encryption needs to be requested explicitly with one
+	// of its flags. The env variable alone must not switch the wire format, it
+	// may be set for the sake of an encrypted store elsewhere in the config.
+	wireOpt := desync.StoreOptions{
+		Uncompressed:        opt.uncompressed,
+		Encryption:          opt.encryption,
+		EncryptionAlgorithm: opt.encryptionAlg,
+		EncryptionKey:       opt.encryptionKey,
+	}
+	wireOpt.Encryption = wireOpt.EncryptionConfigured()
+	wireOpt.EncryptionKey = encryptionKeyFallback(wireOpt.Encryption, wireOpt.EncryptionKey)
+	converters, err := wireOpt.StorageConverters()
+	if err != nil {
+		return err
+	}
 
 	addresses := opt.listenAddresses
 	if len(addresses) == 0 {
@@ -145,20 +158,6 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 		}()
 	}
 	defer s.Close()
-
-	// Build the converters. In this case, the "storage" side is what is served
-	// up by the server towards the client. The StoreOptions struct already has
-	// logic to build the converters from options so use that instead of repeating
-	// it here.
-	converters, err := desync.StoreOptions{
-		Uncompressed:        opt.uncompressed,
-		Encryption:          encryption,
-		EncryptionAlgorithm: opt.encryptionAlg,
-		EncryptionKey:       opt.encryptionKey,
-	}.StorageConverters()
-	if err != nil {
-		return err
-	}
 
 	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, converters, opt.auth)
 

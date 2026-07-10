@@ -20,7 +20,7 @@ func NewSFTPIndexStore(location *url.URL, opt StoreOptions) (*SFTPIndexStore, er
 	if err := opt.ValidateIndexOptions(); err != nil {
 		return nil, err
 	}
-	b, err := newSFTPStoreBase(location, opt)
+	b, err := newSFTPStoreBase(location, opt, "")
 	if err != nil {
 		return nil, err
 	}

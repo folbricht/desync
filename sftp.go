@@ -38,12 +38,10 @@ type SFTPStore struct {
 	converters Converters
 }
 
-// Creates a base sftp client
-func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, error) {
-	converters, err := opt.StorageConverters()
-	if err != nil {
-		return nil, err
-	}
+// Creates a base sftp client. The extension is the chunk file extension
+// derived from the caller's converters, or empty for index stores which
+// don't use converters.
+func newSFTPStoreBase(location *url.URL, opt StoreOptions, extension string) (*SFTPStoreBase, error) {
 	sshCmd := os.Getenv("CASYNC_SSH_PATH")
 	if sshCmd == "" {
 		sshCmd = "ssh"
@@ -91,7 +89,7 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, erro
 		cancel()
 		return nil, errors.Wrapf(err, "failed to stat '%s'", path)
 	}
-	return &SFTPStoreBase{location, path, client, cancel, opt, converters.storageExtension()}, nil
+	return &SFTPStoreBase{location, path, client, cancel, opt, extension}, nil
 }
 
 // StoreObject adds a new object to a writable index or chunk store.
@@ -151,9 +149,10 @@ func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	extension := converters.storageExtension()
 	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N, converters}
 	for i := 0; i < opt.N; i++ {
-		c, err := newSFTPStoreBase(location, opt)
+		c, err := newSFTPStoreBase(location, opt, extension)
 		if err != nil {
 			return nil, err
 		}

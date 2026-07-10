@@ -24,7 +24,7 @@ func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) 
 	// The casync protocol always exchanges compressed chunks, storage
 	// options don't apply here. Reject encryption settings rather than
 	// silently ignoring them.
-	if opt.encryptionConfigured() {
+	if opt.EncryptionConfigured() {
 		return nil, errors.New("encryption is not supported by casync protocol (ssh://) stores")
 	}
 	remote := RemoteSSH{location: location, pool: make(chan *Protocol, opt.N), n: opt.N}
