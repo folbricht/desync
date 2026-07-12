@@ -186,14 +186,20 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 func (s *SFTPStore) RemoveChunk(id ChunkID) error {
 	c := <-s.pool
 	defer func() { s.pool <- c }()
-	name := c.nameFromID(id)
-	if _, err := c.client.Stat(name); err != nil {
+	return c.removeChunk(id)
+}
+
+// removeChunk deletes a chunk over this connection. Returns ChunkMissing if
+// the chunk is not in the store.
+func (s *SFTPStoreBase) removeChunk(id ChunkID) error {
+	name := s.nameFromID(id)
+	if _, err := s.client.Stat(name); err != nil {
 		if os.IsNotExist(err) {
 			return ChunkMissing{id}
 		}
 		return err
 	}
-	return c.client.Remove(name)
+	return s.client.Remove(name)
 }
 
 // StoreChunk adds a new chunk to the store
@@ -245,10 +251,12 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		if !ok {
 			continue
 		}
-		// See if the chunk we're looking at is in the list we want to keep, if not
-		// remove it.
+		// See if the chunk we're looking at is in the list we want to keep, if
+		// not remove it. Use the connection this iteration already holds,
+		// RemoveChunk would wait for another one from the pool, forever if
+		// the pool size is 1.
 		if _, ok := ids[id]; !ok {
-			if err := s.RemoveChunk(id); err != nil {
+			if err := c.removeChunk(id); err != nil {
 				return err
 			}
 		}
