@@ -21,6 +21,12 @@ type RemoteSSH struct {
 
 // NewRemoteSSHStore establishes up to n connections with a casync chunk server
 func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) {
+	// The casync protocol always exchanges compressed chunks, storage
+	// options don't apply here. Reject encryption settings rather than
+	// silently ignoring them.
+	if opt.EncryptionConfigured() {
+		return nil, errors.New("encryption is not supported by casync protocol (ssh://) stores")
+	}
 	remote := RemoteSSH{location: location, pool: make(chan *Protocol, opt.N), n: opt.N}
 	// Start n sessions and put them into the pool (buffered channel)
 	for i := 0; i < remote.n; i++ {

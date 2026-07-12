@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -345,4 +346,41 @@ func TestRetryExhaustedError(t *testing.T) {
 	err = s.StoreChunk(chunk)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "service down for maintenance")
+}
+
+func TestRemoteHTTPPutEncrypted(t *testing.T) {
+	body := new(bytes.Buffer)
+
+	// Setup a dummy server that records the request body (raw chunk data)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(body, r.Body)
+	}))
+	defer ts.Close()
+	u, _ := url.Parse(ts.URL)
+
+	// HTTP client store with encryption and compression
+	httpStore, err := NewRemoteHTTPStore(u, StoreOptions{
+		Uncompressed:  false,
+		Encryption:    true,
+		EncryptionKey: testEncryptionKey,
+	})
+	require.NoError(t, err)
+
+	// Prep a test chunk
+	dataIn := []byte("some data")
+	chunkIn := NewChunk(dataIn)
+
+	// Send the chunk over HTTP
+	err = httpStore.StoreChunk(chunkIn)
+	require.NoError(t, err)
+
+	// If everything worked, the request body should be the chunk data, first
+	// compressed, then encrypted. Unwind it manually to check the layers are in order.
+	dec, err := NewXChaCha20Poly1305(testKey(t, testEncryptionKey))
+	require.NoError(t, err)
+	decrypted, err := dec.fromStorage(body.Bytes())
+	require.NoError(t, err)
+	uncompressed, err := Decompress(nil, decrypted)
+	require.NoError(t, err)
+	require.Equal(t, dataIn, uncompressed)
 }

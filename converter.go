@@ -1,5 +1,7 @@
 package desync
 
+import "strings"
+
 // Converters are modifiers for chunk data, such as compression or encryption.
 // They are used to prepare chunk data for storage, or to read it from storage.
 // The order of the conversion layers matters. When plain data is prepared for
@@ -38,29 +40,26 @@ func (s Converters) fromStorage(in []byte) ([]byte, error) {
 	return b, nil
 }
 
-// Returns true if conversion involves compression. Typically
-// used to determine the correct file-extension.
-func (s Converters) hasCompression() bool {
-	for _, layer := range s {
-		if _, ok := layer.(Compressor); ok {
-			return true
-		}
+// commonPrefix returns the number of leading layers shared between the
+// two conversion stacks. Used to determine the difference between them,
+// for example a compressed store being served encrypted, where only the
+// differing layers need to be applied.
+func (s Converters) commonPrefix(c Converters) int {
+	var n int
+	for n < len(s) && n < len(c) && s[n].equal(c[n]) {
+		n++
 	}
-	return false
+	return n
 }
 
-// Returns true if both converters have the same layers in the
-// same order. Used for optimizations.
-func (s Converters) equal(c Converters) bool {
-	if len(s) != len(c) {
-		return false
+// Extension to be used in storage. Concatenation of converter
+// extensions in order (towards storage).
+func (s Converters) storageExtension() string {
+	var ext strings.Builder
+	for _, layer := range s {
+		ext.WriteString(layer.storageExtension())
 	}
-	for i := range s {
-		if !s[i].equal(c[i]) {
-			return false
-		}
-	}
-	return true
+	return ext.String()
 }
 
 // converter is a storage data modifier layer.
@@ -75,10 +74,18 @@ type converter interface {
 	// the output may be used for the next conversion layer.
 	fromStorage([]byte) ([]byte, error)
 
+	// Returns the file extension that should be used for a
+	// chunk when stored. Usually a concatenation of layers.
+	storageExtension() string
+
+	// True is one converter matches another exactly.
 	equal(converter) bool
 }
 
-// Compression layer
+// Compression layer converter. Compresses/decompresses chunk data
+// to and from storage. Implements the converter interface. Lives in
+// this file rather than compress.go so it is part of both compression
+// build variants.
 type Compressor struct{}
 
 var _ converter = Compressor{}
@@ -94,4 +101,8 @@ func (d Compressor) fromStorage(in []byte) ([]byte, error) {
 func (d Compressor) equal(c converter) bool {
 	_, ok := c.(Compressor)
 	return ok
+}
+
+func (d Compressor) storageExtension() string {
+	return ".cacnk"
 }

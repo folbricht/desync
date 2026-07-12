@@ -54,16 +54,25 @@ func (s *ProtocolServer) Serve(ctx context.Context) error {
 			}
 			chunk, err := s.store.GetChunk(id)
 			if err != nil {
-				if _, ok := err.(ChunkMissing); ok {
-					if err = s.p.SendMissing(id); err != nil {
-						return errors.Wrap(err, "failed to send to client")
-					}
+				if _, ok := err.(ChunkMissing); !ok {
+					return errors.Wrap(err, "unable to read chunk from store")
 				}
-				return errors.Wrap(err, "unable to read chunk from store")
+				if err = s.p.SendMissing(id); err != nil {
+					return errors.Wrap(err, "failed to send to client")
+				}
+				continue
 			}
 			b, err := chunk.Storage([]converter{Compressor{}})
 			if err != nil {
-				return err
+				// The chunk is in the store but can't be converted to the
+				// wire format, perhaps corrupt or encrypted with a different
+				// key. Report it missing so the client can deal with the one
+				// chunk instead of tearing down the whole session.
+				Log.WithField("chunk", id.String()).WithError(err).Error("unable to convert chunk to wire format")
+				if err = s.p.SendMissing(id); err != nil {
+					return errors.Wrap(err, "failed to send to client")
+				}
+				continue
 			}
 			if err := s.p.SendProtocolChunk(chunk.ID(), CaProtocolChunkCompressed, b); err != nil {
 				return errors.Wrap(err, "failed to send chunk data")

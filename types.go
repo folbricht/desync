@@ -3,6 +3,8 @@ package desync
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -32,6 +34,39 @@ func ChunkIDFromString(id string) (ChunkID, error) {
 
 func (c *ChunkID) String() string {
 	return hex.EncodeToString(c[:])
+}
+
+// chunkIDFromFilename extracts the chunk ID from the base filename of a
+// chunk, which is expected to be the hex-encoded ID followed by the given
+// storage extension. Returns false if the name doesn't match that format,
+// for example for chunks stored with different compression or encryption
+// settings.
+func chunkIDFromFilename(name, extension string) (ChunkID, bool) {
+	sID, ok := strings.CutSuffix(name, extension)
+	if !ok {
+		return ChunkID{}, false
+	}
+	id, err := ChunkIDFromString(sID)
+	if err != nil {
+		return ChunkID{}, false
+	}
+	return id, true
+}
+
+// chunkIDFromObjectName extracts the chunk ID from the name of an object in
+// a bucket store such as S3 or GCS, which is expected to be the store prefix
+// followed by the first four characters of the ID, a slash, and the chunk
+// filename.
+func chunkIDFromObjectName(name, prefix, extension string) (ChunkID, error) {
+	fragments := strings.Split(strings.TrimPrefix(name, prefix), "/")
+	if len(fragments) != 2 || !strings.HasPrefix(fragments[1], fragments[0]) {
+		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
+	}
+	id, ok := chunkIDFromFilename(fragments[1], extension)
+	if !ok {
+		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
+	}
+	return id, nil
 }
 
 func (c *ChunkID) MarshalJSON() ([]byte, error) {

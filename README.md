@@ -17,6 +17,7 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
 - **Built-in servers** — HTTP(S) chunk server and index server with proxy support
 - **FUSE mounting** — mount blob indexes as files
 - **Tar interoperability** — create/extract catar from standard tar streams
+- **Chunk encryption** — optional store encryption with XChaCha20-Poly1305 or AES-256-GCM
 - **Cross-platform** — Linux, macOS, Windows (subset), BSD
 
 ## Table of Contents
@@ -35,6 +36,7 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
   - [Failover Groups](#failover-groups)
   - [S3 Store URLs](#s3-store-urls)
   - [Compressed vs Uncompressed](#compressed-vs-uncompressed)
+  - [Chunk Encryption](#chunk-encryption)
   - [Remote Indexes](#remote-indexes)
 - [CLI Reference](#cli-reference)
   - [Commands](#commands)
@@ -276,6 +278,41 @@ Compressed and uncompressed chunks can live in the same store and don't interfer
 
 </details>
 
+<details>
+<summary><h3>Chunk Encryption</h3></summary>
+
+Chunks can be encrypted with a symmetric algorithm on a per-store basis. To use encryption, it has to be enabled in the [configuration](#configuration) file by setting `encryption` to `true` and providing a 256-bit encryption key. The key is expected hex-encoded and should be randomly generated, for example with:
+
+```text
+openssl rand -hex 32
+```
+
+A single instance of desync can use multiple stores at the same time, each with a different (or the same) encryption algorithm and key. Encrypted chunks are stored with file extensions containing the algorithm and a key identifier (the leading 4 bytes of the SHA256 hash of the key). If the key for a store is changed, all existing chunks in it will become "invisible" since the extension no longer matches. To change the key, chunks have to be re-encrypted with the new key, ideally into a new store. Create a new store, then either re-chunk the data, or use `desync cache -c <new-store> -s <old-store> <index>` to decrypt the chunks from the old store and re-encrypt them with the new key in the new store.
+
+Encryption nonces are generated randomly per chunk which can weaken encryption in some modes when used on very large chunk stores, see notes below.
+
+| ID | Algorithm | Key | Nonce/IV | Notes |
+|:---:|:---:|:---:|:---:|:---:|
+| `xchacha20-poly1305` | XChaCha20-Poly1305 (AEAD) | 256bit | 192bit | Default |
+| `aes-256-gcm` | AES 256bit Galois Counter Mode (AEAD) | 256bit | 96bit | Don't use for large chunk stores (>2<sup>32</sup> chunks) |
+
+Chunk extensions in stores are chosen based on compression or encryption settings as follows:
+
+| Compressed | Encrypted | Extension | Example |
+|:---:|:---:|:---:|:---:|
+| no | no | n/a | `fbef/fbef1a00ced..9280ce78` |
+| yes | no | `.cacnk` | `fbef/fbef1a00ced..9280ce78.cacnk` |
+| no | yes | `.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.aes-256-gcm-635af003` |
+| yes | yes | `.cacnk.<algorithm>-<keyID>` | `fbef/fbef1a00ced..9280ce78.cacnk.aes-256-gcm-635af003` |
+
+Note that encryption only protects the chunk data itself. Chunk file names, which are the content hashes of the plain data, remain visible to anyone with access to the store. An observer that already knows the plain content of a chunk can therefore confirm its presence in the store.
+
+Encryption applies to chunk stores only. Index files are always stored in plain form, and index stores reject encryption options rather than silently ignoring them. If a config entry enabling encryption matches a location that is also used to store indexes, index operations will fail with an error — keep indexes in a separate location, or use a more specific config entry without encryption for them. Keep in mind that a plain index reveals metadata about the encrypted content: the IDs, sizes and offsets of all its chunks.
+
+Encryption provides confidentiality, while integrity comes from desync's regular chunk validation: every chunk is identified by the hash of its plain content, which is verified when chunks are read (unless `skip-verify` is set). The AEAD ciphertext is authenticated under the key, but it is not bound to the chunk's name — someone with write access to the store could swap two encrypted chunk files and decryption alone would not detect it. Such a swap is caught by the content validation of the final consumer, e.g. during `extract`, which is enabled by default. Only disable verification (`skip-verify`, `--skip-verify-read`) for intermediate proxies or caches where a downstream reader still validates the chunks.
+
+</details>
+
 ### Remote Indexes
 
 Indexes can be stored and retrieved from remote locations via SFTP, S3, and HTTP. Storing indexes remotely is optional and deliberately separate from chunk storage. While it's possible to store indexes in the same location as chunks in the case of SFTP and S3, this should only be done in secured environments. The built-in HTTP chunk store (`chunk-server` command) can not be used as index server. Use the `index-server` command instead to start an index server that serves indexes and can optionally store them as well (with `-w`).
@@ -429,6 +466,7 @@ Not all options apply to all commands.
 | `DESYNC_PROGRESSBAR_ENABLED` | Enables the progress bar if set to any non-empty value. By default, the progress bar is only shown when STDERR is a terminal. |
 | `DESYNC_ENABLE_PARSABLE_PROGRESS` | Prints operation name, completion percentage, and estimated remaining time to STDERR. Similar to the default progress bar but without the visual bar. |
 | `DESYNC_HTTP_AUTH` | Sets the expected `Authorization` header value from clients when using `chunk-server` or `index-server`. Needs the full string including type and encoding, e.g. `"Basic dXNlcjpwYXNzd29yZAo="`. Command-line values take precedence. |
+| `DESYNC_ENCRYPTION_KEY` | Hex-encoded 256-bit chunk encryption key. Used for stores that have `encryption` enabled but no `encryption-key` configured, and by `chunk-server` when encryption is enabled with `--encryption` but no `--encryption-key` is given. The variable alone never enables encryption. |
 
 </details>
 
@@ -470,10 +508,13 @@ This can be combined with store failover by providing the same syntax as used in
   | `client-key` | Key file for mutual SSL. | — |
   | `ca-cert` | Certificate file containing trusted certs or CAs. | — |
   | `trust-insecure` | Trust any certificate presented by the server. | false |
-  | `skip-verify` | Disable data integrity verification on read. Only recommended when chaining stores with `chunk-server` using compressed stores. | false |
+  | `skip-verify` | Disable data integrity verification on read. Only recommended when chaining stores with `chunk-server` where the final consumer still verifies. Chunk validation is also what detects renamed or swapped chunks in encrypted stores, see [Chunk Encryption](#chunk-encryption). | false |
   | `uncompressed` | Read and write uncompressed chunks. Both formats can coexist in the same store. | false |
   | `http-auth` | Value of the `Authorization` header in HTTP requests, e.g. `"Bearer <token>"` or `"Basic dXNlcjpwYXNzd29yZAo="`. | — |
   | `http-cookie` | Value of the `Cookie` header in HTTP requests, e.g. `"name=value; name2=value2"`. | — |
+  | `encryption` | Set to `true` to encrypt chunks in the store. See [Chunk Encryption](#chunk-encryption). | false |
+  | `encryption-key` | Hex-encoded 256-bit encryption key, e.g. generated with `openssl rand -hex 32`. Can also be provided via the `DESYNC_ENCRYPTION_KEY` environment variable. | — |
+  | `encryption-algorithm` | Encryption algorithm, `xchacha20-poly1305` or `aes-256-gcm`. | `xchacha20-poly1305` |
 
 </details>
 
@@ -519,6 +560,11 @@ This can be combined with store failover by providing the same syntax as used in
     },
     "/path/to/local/cache": {
       "uncompressed": true
+    },
+    "/path/to/encrypted/store": {
+      "encryption": true,
+      "encryption-algorithm": "xchacha20-poly1305",
+      "encryption-key": "d69371915dbc4b1f0ec55e2a80f0e089accf4b32e0f8dc0e29fed7f0f30d1b26"
     }
   }
 }

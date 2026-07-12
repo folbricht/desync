@@ -88,7 +88,20 @@ func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions
 			options = v
 		}
 	}
+	options.EncryptionKey = encryptionKeyFallback(options.Encryption, options.EncryptionKey)
 	return options, nil
+}
+
+// encryptionKeyFallback allows the encryption key to be kept out of config
+// files and flags and be provided via the environment instead. It returns the
+// configured key, or the value of DESYNC_ENCRYPTION_KEY if no key is configured
+// while encryption is enabled. The environment variable alone never enables
+// encryption.
+func encryptionKeyFallback(enabled bool, key string) string {
+	if enabled && key == "" {
+		return os.Getenv("DESYNC_ENCRYPTION_KEY")
+	}
+	return key
 }
 
 func newConfigCommand(ctx context.Context) *cobra.Command {

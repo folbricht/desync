@@ -33,21 +33,10 @@ func (c *Chunk) clone() *Chunk {
 	return &cp
 }
 
-// NewChunkWithID creates a new chunk from either compressed or uncompressed data
-// (or both if available). It also expects an ID and validates that it matches
-// the uncompressed data unless skipVerify is true. If called with just compressed
-// data, it'll decompress it for the ID validation.
+// NewChunkWithID creates a new chunk from plain data. It also expects an ID
+// and validates that it matches the data unless skipVerify is true.
 func NewChunkWithID(id ChunkID, b []byte, skipVerify bool) (*Chunk, error) {
-	c := &Chunk{id: id, data: b}
-	if skipVerify {
-		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
-		return c, nil
-	}
-	sum := c.ID()
-	if sum != id {
-		return nil, ChunkInvalid{ID: id, Sum: sum}
-	}
-	return c, nil
+	return NewChunkFromStorage(id, b, nil, skipVerify)
 }
 
 // NewChunkFromStorage builds a new chunk from data that is not in plain format.
@@ -59,11 +48,27 @@ func NewChunkFromStorage(id ChunkID, b []byte, modifiers Converters, skipVerify 
 		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
 		return c, nil
 	}
-	sum := c.ID()
-	if sum != id {
-		return nil, ChunkInvalid{ID: id, Sum: sum}
+	if err := c.verify(); err != nil {
+		return nil, err
 	}
 	return c, nil
+}
+
+// verify confirms the chunk's plain data matches its expected ID. Errors
+// converting the storage data to plain form, such as decryption failures,
+// are reported as ChunkInvalid as well, with the cause preserved, since
+// they equally mean the chunk in the store is unusable.
+func (c *Chunk) verify() error {
+	b, err := c.Data()
+	if err != nil {
+		return ChunkInvalid{ID: c.id, Err: err}
+	}
+	sum := Digest.Sum(b)
+	if sum != c.id {
+		return ChunkInvalid{ID: c.id, Sum: sum}
+	}
+	c.idCalculated = true
+	return nil
 }
 
 // Data returns the chunk data in uncompressed form. If the chunk was created
@@ -97,12 +102,30 @@ func (c *Chunk) ID() ChunkID {
 	return c.id
 }
 
-// Storage returns the chunk data in compressed form. If the chunk was created
-// with compressed data and same modifiers, this data will be returned as is. The
-// caller must not modify the data in the returned slice.
+// Storage returns the chunk data in storage format according to the given
+// modifiers. If the chunk was created with storage data and the same modifiers,
+// this data will be returned as is. If the modifiers share leading layers with
+// the chunk's own, only the difference is applied, avoiding expensive
+// conversions of the shared layers, such as recompression when just an
+// encryption layer is added, removed, or uses a different key. The caller
+// must not modify the data in the returned slice.
 func (c *Chunk) Storage(modifiers Converters) ([]byte, error) {
-	if len(c.storage) > 0 && modifiers.equal(c.converters) {
-		return c.storage, nil
+	if len(c.storage) > 0 {
+		// If the stacks share leading layers, unwind the chunk's own extra
+		// layers and apply the requested ones on top. When nothing is shared,
+		// unwinding is the same work as Data() below, which also caches the
+		// plain data on the chunk for other consumers, so prefer that path.
+		if n := modifiers.commonPrefix(c.converters); n > 0 {
+			b := c.storage
+			if n < len(c.converters) {
+				var err error
+				b, err = c.converters[n:].fromStorage(b)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return modifiers[n:].toStorage(b)
+		}
 	}
 	b, err := c.Data()
 	if err != nil {

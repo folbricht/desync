@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -159,12 +162,24 @@ func TestChunkServerMutualTLS(t *testing.T) {
 }
 
 func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc) {
-	// Find a free local port to be used to run the index server on
+	addr := freeLocalAddr(t)
+	return addr, startChunkServerOnAddr(t, addr, args...)
+}
+
+// freeLocalAddr finds a free local address with a port that can be used to
+// run a server on.
+func freeLocalAddr(t *testing.T) string {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := l.Addr().String()
 	l.Close()
+	return addr
+}
 
+// startChunkServerOnAddr starts a chunk server on the given address. The
+// server goroutine reads package globals like the config during startup,
+// so tests that modify those need to do that before calling this.
+func startChunkServerOnAddr(t *testing.T, addr string, args ...string) context.CancelFunc {
 	// Flush any handlers that were registered in the default mux before
 	http.DefaultServeMux = &http.ServeMux{}
 
@@ -180,5 +195,109 @@ func startChunkServer(t *testing.T, args ...string) (string, context.CancelFunc)
 
 	// Wait a little for the server to start
 	time.Sleep(time.Second)
-	return addr, cancel
+	return cancel
+}
+
+// randomEncryptionKey returns a new hex-encoded 256-bit chunk encryption key.
+func randomEncryptionKey(t *testing.T) string {
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err)
+	return hex.EncodeToString(key)
+}
+
+func TestChunkServerEncryption(t *testing.T) {
+	outdir := t.TempDir()
+	testEncryptionKey := randomEncryptionKey(t)
+	addr := freeLocalAddr(t)
+	store := fmt.Sprintf("http://%s/", addr)
+
+	// Build a client config. The client needs to be setup to talk to the HTTP chunk server
+	// compressed+encrypted. Create a temp JSON config for that HTTP store and load it.
+	// This has to happen before the server starts since its goroutine reads the same
+	// config globals. Restore them afterwards so no other test picks up these options.
+	oldCfgFile, oldCfg := cfgFile, cfg
+	t.Cleanup(func() { cfgFile, cfg = oldCfgFile, oldCfg })
+	cfgFile = filepath.Join(outdir, "config.json")
+	cfg = Config{}
+	cfgFileContent := fmt.Sprintf(`{"store-options": {"%s":{"encryption": true, "encryption-key": "%s"}}}`, store, testEncryptionKey)
+	require.NoError(t, os.WriteFile(cfgFile, []byte(cfgFileContent), 0644))
+	initConfig()
+
+	// Start a (writable) server, it'll expect compressed+encrypted chunks over
+	// the wire while storing them only compressed in the local store
+	cancel := startChunkServerOnAddr(t, addr, "-s", outdir, "-w", "--skip-verify-read=false", "--skip-verify-write=false", "--encryption-key", testEncryptionKey)
+	defer cancel()
+
+	// Run a "chop" command to send some chunks (encrypted) over HTTP, then have the server
+	// store them un-encrypted in its local store.
+	chopCmd := newChopCommand(context.Background())
+	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
+	chopCmd.SetOutput(io.Discard)
+	_, err := chopCmd.ExecuteC()
+	require.NoError(t, err)
+
+	// Now read it all back over HTTP (again encrypted) and re-assemble the test file
+	extractFile := filepath.Join(outdir, "blob1")
+	extractCmd := newExtractCommand(context.Background())
+	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", extractFile})
+	extractCmd.SetOutput(io.Discard)
+	_, err = extractCmd.ExecuteC()
+	require.NoError(t, err)
+
+	// Not actually necessary, but for good measure let's compare the blobs
+	blobIn, err := os.ReadFile("testdata/blob1")
+	require.NoError(t, err)
+	blobOut, err := os.ReadFile(extractFile)
+	require.NoError(t, err)
+	require.Equal(t, blobIn, blobOut)
+}
+
+func TestChunkServerEnvKeyDoesNotEnableEncryption(t *testing.T) {
+	// Having the key in the environment alone must not switch the server to
+	// encrypted serving, it may be set for the sake of an encrypted store
+	// elsewhere in the config
+	t.Setenv("DESYNC_ENCRYPTION_KEY", randomEncryptionKey(t))
+
+	// Reset any config a previous test may have loaded
+	oldCfg := cfg
+	cfg = Config{}
+	t.Cleanup(func() { cfg = oldCfg })
+
+	outdir := t.TempDir()
+	addr, cancel := startChunkServer(t, "-s", outdir, "-w")
+	defer cancel()
+	store := fmt.Sprintf("http://%s/", addr)
+
+	// A plain (compressed, unencrypted) client must be able to write chunks
+	chopCmd := newChopCommand(context.Background())
+	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
+	chopCmd.SetOutput(io.Discard)
+	_, err := chopCmd.ExecuteC()
+	require.NoError(t, err)
+
+	// And the chunks have to be stored with the plain compressed extension
+	matches, err := filepath.Glob(filepath.Join(outdir, "*", "*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches)
+	for _, m := range matches {
+		require.True(t, strings.HasSuffix(m, ".cacnk"), "chunk %s is not a plain compressed chunk", m)
+	}
+}
+
+func TestChunkServerEncryptionMissingKey(t *testing.T) {
+	// Encryption enabled without a key from flag or environment has to be
+	// rejected at startup rather than silently serving plaintext
+	t.Setenv("DESYNC_ENCRYPTION_KEY", "")
+
+	for _, args := range [][]string{
+		{"--encryption"},
+		{"--encryption-algorithm", "aes-256-gcm"},
+	} {
+		cmd := newChunkServerCommand(context.Background())
+		cmd.SetArgs(append(args, "-s", t.TempDir(), "-l", "127.0.0.1:0"))
+		cmd.SetOutput(io.Discard)
+		_, err := cmd.ExecuteC()
+		require.ErrorContains(t, err, "no encryption key configured")
+	}
 }

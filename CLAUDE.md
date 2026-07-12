@@ -71,7 +71,7 @@ Stores are composed for routing, caching, and failover:
 
 **Chunking:** `Chunker` (`chunker.go`) uses a rolling hash (SipHash, 48-byte window) for content-defined chunking with configurable min/avg/max sizes (default 16KB/64KB/256KB).
 
-**Converter pipeline** (`coverter.go`): Layered data transformations applied in order for writes, reverse for reads. Currently only compression (zstd via `Compressor`), but designed for adding encryption.
+**Converter pipeline** (`converter.go`): Layered data transformations applied in order for writes, reverse for reads: compression (zstd via `Compressor`) and optional encryption (`encrypt.go`, XChaCha20-Poly1305 or AES-256-GCM). Converter stacks determine the chunk file extension via `storageExtension()`.
 
 **Assembly:** `AssembleFile()` (`assemble.go`) reconstructs files from an index and chunk stores, supporting self-seeding and file seeds for efficient cloning with reflink support (Btrfs/XFS).
 

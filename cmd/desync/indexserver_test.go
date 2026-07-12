@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -139,10 +138,7 @@ func TestIndexServerHead(t *testing.T) {
 
 func startIndexServer(t *testing.T, args ...string) (string, context.CancelFunc) {
 	// Find a free local port to be used to run the index server on
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := l.Addr().String()
-	l.Close()
+	addr := freeLocalAddr(t)
 
 	// Flush any handlers that were registered in the default mux before
 	http.DefaultServeMux = &http.ServeMux{}
