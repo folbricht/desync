@@ -3,6 +3,7 @@ package desync
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -50,6 +51,22 @@ func chunkIDFromFilename(name, extension string) (ChunkID, bool) {
 		return ChunkID{}, false
 	}
 	return id, true
+}
+
+// chunkIDFromObjectName extracts the chunk ID from the name of an object in
+// a bucket store such as S3 or GCS, which is expected to be the store prefix
+// followed by the first four characters of the ID, a slash, and the chunk
+// filename.
+func chunkIDFromObjectName(name, prefix, extension string) (ChunkID, error) {
+	fragments := strings.Split(strings.TrimPrefix(name, prefix), "/")
+	if len(fragments) != 2 || !strings.HasPrefix(fragments[1], fragments[0]) {
+		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
+	}
+	id, ok := chunkIDFromFilename(fragments[1], extension)
+	if !ok {
+		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
+	}
+	return id, nil
 }
 
 func (c *ChunkID) MarshalJSON() ([]byte, error) {

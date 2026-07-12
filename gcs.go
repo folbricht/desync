@@ -239,7 +239,7 @@ func (s GCStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			return err
 		}
 
-		id, err := s.idFromName(attrs.Name)
+		id, err := chunkIDFromObjectName(attrs.Name, s.prefix, s.extension)
 		if err != nil {
 			continue
 		}
@@ -258,16 +258,4 @@ func (s GCStore) nameFromID(id ChunkID) string {
 	sID := id.String()
 	name := s.prefix + sID[0:4] + "/" + sID + s.extension
 	return name
-}
-
-func (s GCStore) idFromName(name string) (ChunkID, error) {
-	fragments := strings.Split(strings.TrimPrefix(name, s.prefix), "/")
-	if len(fragments) != 2 || !strings.HasPrefix(fragments[1], fragments[0]) {
-		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
-	}
-	id, ok := chunkIDFromFilename(fragments[1], s.extension)
-	if !ok {
-		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
-	}
-	return id, nil
 }

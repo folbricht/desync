@@ -92,11 +92,21 @@ func runInspectChunks(ctx context.Context, opt inspectChunksOptions, args []stri
 		}
 	}
 
+	// Get sizes in the store only if they differ from the plain size, i.e.
+	// a converter such as compression or encryption is configured. The
+	// store constructor already validated the options, so this can't fail.
+	var converted bool
+	if opt.store != "" {
+		converters, err := s.Opt.StorageConverters()
+		if err != nil {
+			return err
+		}
+		converted = len(converters) > 0
+	}
+
 	for _, chunk := range c.Chunks {
 		var size int64 = 0
-		// Get the size in the store only if it differs from the plain size,
-		// i.e. the chunks are compressed, encrypted, or both
-		if opt.store != "" && (!s.Opt.Uncompressed || s.Opt.Encryption) {
+		if converted {
 			size, _ = s.GetChunkSize(chunk.ID)
 		}
 

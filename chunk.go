@@ -33,20 +33,10 @@ func (c *Chunk) clone() *Chunk {
 	return &cp
 }
 
-// NewChunkWithID creates a new chunk from either compressed or uncompressed data
-// (or both if available). It also expects an ID and validates that it matches
-// the uncompressed data unless skipVerify is true. If called with just compressed
-// data, it'll decompress it for the ID validation.
+// NewChunkWithID creates a new chunk from plain data. It also expects an ID
+// and validates that it matches the data unless skipVerify is true.
 func NewChunkWithID(id ChunkID, b []byte, skipVerify bool) (*Chunk, error) {
-	c := &Chunk{id: id, data: b}
-	if skipVerify {
-		c.idCalculated = true // Pretend this was calculated. No need to re-calc later
-		return c, nil
-	}
-	if err := c.verify(); err != nil {
-		return nil, err
-	}
-	return c, nil
+	return NewChunkFromStorage(id, b, nil, skipVerify)
 }
 
 // NewChunkFromStorage builds a new chunk from data that is not in plain format.
@@ -122,11 +112,10 @@ func (c *Chunk) ID() ChunkID {
 func (c *Chunk) Storage(modifiers Converters) ([]byte, error) {
 	if len(c.storage) > 0 {
 		// If the stacks share leading layers, unwind the chunk's own extra
-		// layers and apply the requested ones on top. When nothing is shared
-		// and the storage data isn't plain, unwinding is the same work as
-		// Data() below, which also caches the plain data on the chunk for
-		// other consumers, so prefer that path.
-		if n := modifiers.commonPrefix(c.converters); n > 0 || len(c.converters) == 0 {
+		// layers and apply the requested ones on top. When nothing is shared,
+		// unwinding is the same work as Data() below, which also caches the
+		// plain data on the chunk for other consumers, so prefer that path.
+		if n := modifiers.commonPrefix(c.converters); n > 0 {
 			b := c.storage
 			if n < len(c.converters) {
 				var err error

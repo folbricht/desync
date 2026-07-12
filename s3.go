@@ -183,7 +183,7 @@ func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		default:
 		}
 
-		id, err := s.idFromName(object.Key)
+		id, err := chunkIDFromObjectName(object.Key, s.prefix, s.extension)
 		if err != nil {
 			continue
 		}
@@ -202,16 +202,4 @@ func (s S3Store) nameFromID(id ChunkID) string {
 	sID := id.String()
 	name := s.prefix + sID[0:4] + "/" + sID + s.extension
 	return name
-}
-
-func (s S3Store) idFromName(name string) (ChunkID, error) {
-	fragments := strings.Split(strings.TrimPrefix(name, s.prefix), "/")
-	if len(fragments) != 2 || !strings.HasPrefix(fragments[1], fragments[0]) {
-		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
-	}
-	id, ok := chunkIDFromFilename(fragments[1], s.extension)
-	if !ok {
-		return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
-	}
-	return id, nil
 }
