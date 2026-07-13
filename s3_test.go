@@ -365,9 +365,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 
 	t.Run("corrupt_body_recover", func(t *testing.T) {
@@ -407,9 +405,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 }
 
