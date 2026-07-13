@@ -316,7 +316,7 @@ Reading a chunk takes two requests (manifest by tag, then blob), an existence ch
 Credentials are looked up in the following order, first match wins:
 
 1. The `DESYNC_OCI_USERNAME` and `DESYNC_OCI_PASSWORD` environment variables. Convenient in CI, e.g. with the ephemeral `GITHUB_TOKEN` in GitHub Actions.
-2. The `oci-credentials` section of the config file (see [Configuration](#configuration)), keyed by host and repository with glob support.
+2. The `oci-credentials` section of the config file (see [Configuration](#configuration)), keyed by the full store URL with glob support, the same format as `store-options` keys.
 3. The Docker credential store. If you're logged in with `docker login ghcr.io` or `oras login ghcr.io`, desync picks those credentials up without any configuration.
 
 Anonymous access works for public repositories, so extracting from a public store needs no credentials at all. For ghcr.io, pushing requires a token with the `write:packages` scope, and note that new ghcr.io packages default to private visibility.
@@ -339,7 +339,7 @@ The usual [store options](#configuration-reference) apply, keyed by the full sto
 
 #### Pruning
 
-`desync prune` deletes the manifests of all chunks not referenced by the given indexes. Only tags that parse as chunk IDs are considered. Reclaiming the space held by the then-unreferenced blobs is left to the registry's own garbage collection. Manifest deletion is not supported by every registry: the distribution registry requires it to be enabled with `REGISTRY_STORAGE_DELETE_ENABLED=true`, and ghcr.io only supports deletion through the GitHub Packages API, not the registry API — for ghcr.io, use a cleanup action for untagged/unwanted versions instead.
+`desync prune` deletes the manifests of all chunks not referenced by the given indexes. Only tags that parse as chunk IDs are considered, and of those only manifests with the desync chunk artifact type are deleted, so an unrelated artifact tagged with a chunk-ID-shaped hex string is safe. Reclaiming the space held by the then-unreferenced blobs is left to the registry's own garbage collection. Manifest deletion is not supported by every registry: the distribution registry requires it to be enabled with `REGISTRY_STORAGE_DELETE_ENABLED=true`, and ghcr.io only supports deletion through the GitHub Packages API, not the registry API — for ghcr.io, use a cleanup action for untagged/unwanted versions instead.
 
 #### Examples
 
@@ -620,7 +620,7 @@ This can be combined with store failover by providing the same syntax as used in
 
 - **`s3-credentials`** — Credentials for S3 stores. The key must be the URL scheme and host used for the store, excluding the path, but including the port if used in the store URL. Keys can contain glob patterns (`*`, `?`, `[…]`). See [filepath.Match](https://pkg.go.dev/path/filepath#Match) for wildcard details. Standard [AWS credentials files](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) are also supported.
 
-- **`oci-credentials`** — Credentials for OCI registry stores. The key must be the registry host and repository path, excluding the URL scheme, e.g. `ghcr.io/myuser/repo`. Keys can contain glob patterns. If no entry matches and no credentials are set in the environment, the Docker credential store is used, so registries logged into with `docker login` or `oras login` are picked up automatically.
+- **`oci-credentials`** — Credentials for OCI registry stores. The key must be the store URL, e.g. `oci+https://ghcr.io/myuser/repo`, the same format as `store-options` keys. Keys can contain glob patterns. If no entry matches and no credentials are set in the environment, the Docker credential store is used, so registries logged into with `docker login` or `oras login` are picked up automatically.
 
 - **`store-options`** — Per-store customization of compression, timeouts, retry behavior, and keys. Not all options apply to every store type. The store location in the command line must match the key exactly for options to apply. Glob patterns are also supported; a config file where more than one key matches a single store is considered invalid.
 
@@ -669,7 +669,7 @@ This can be combined with store failover by providing the same syntax as used in
        }
   },
   "oci-credentials": {
-    "ghcr.io/myuser/repo": {
+    "oci+https://ghcr.io/myuser/repo": {
       "username": "myuser",
       "secret": "MYSECRET"
     }

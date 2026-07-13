@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -88,10 +87,10 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 
 // GetOCICredentialsFor attempts to find credentials for an OCI location in the
 // environment and the config (the environment takes precedence). The config is
-// keyed by registry host and repository path, e.g. "ghcr.io/user/repo", and keys
-// can contain glob patterns. If nothing matches, the Docker credential store is
-// used, so registries logged into with "docker login" or "oras login" work
-// without desync configuration.
+// keyed by the store URL, e.g. "oci+https://ghcr.io/user/repo", and keys can
+// contain glob patterns, just like store-options keys. If nothing matches, the
+// Docker credential store is used, so registries logged into with
+// "docker login" or "oras login" work without desync configuration.
 func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 	staticCredentials := func(username, secret string) auth.CredentialFunc {
 		return func(ctx context.Context, hostport string) (auth.Credential, error) {
@@ -106,19 +105,13 @@ func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 		return staticCredentials(username, os.Getenv("DESYNC_OCI_PASSWORD")), nil
 	}
 
-	location := strings.TrimSuffix(u.Host+u.Path, "/")
+	location := u.String()
 	var (
 		credsConfig OCICreds
 		found       bool
 	)
 	for k, v := range c.OCICredentials {
-		// Config keys are always slash-separated, so match with path.Match
-		// rather than filepath.Match, whose separator is OS-dependent.
-		match, err := path.Match(strings.TrimSuffix(k, "/"), location)
-		if err != nil {
-			return nil, err
-		}
-		if match {
+		if locationMatch(k, location) {
 			if found {
 				return nil, fmt.Errorf("multiple oci-credentials entries match the location %q", location)
 			}
@@ -132,8 +125,10 @@ func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 
 	store, err := orascreds.NewStoreFromDocker(orascreds.StoreOptions{})
 	if err != nil {
-		// No usable Docker config, connect anonymously
-		return nil, nil
+		// An absent Docker config simply yields an empty credential store,
+		// so an error here means the config exists but is unusable. Report
+		// it rather than silently degrading to anonymous access.
+		return nil, fmt.Errorf("failed to load docker credential config: %w", err)
 	}
 	return orascreds.Credential(store), nil
 }

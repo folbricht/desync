@@ -13,7 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,8 +31,9 @@ func TestOCIStoreScheme(t *testing.T) {
 		url       string
 		plainHTTP bool
 	}{
-		"https": {"oci+https://registry.example.com/user/repo", false},
-		"http":  {"oci+http://127.0.0.1:5000/user/repo", true},
+		"https":          {"oci+https://registry.example.com/user/repo", false},
+		"http":           {"oci+http://127.0.0.1:5000/user/repo", true},
+		"trailing slash": {"oci+https://registry.example.com/user/repo/", false},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -327,6 +330,53 @@ func TestOCIStorePrune(t *testing.T) {
 	assert.Contains(t, reg.manifests, otherFormatID.String(), "chunk in a different storage format was pruned")
 }
 
+// With an uncompressed, unencrypted store the tag extension is empty, so any
+// 64-hex-character tag parses as a chunk ID. Chunks are told apart from
+// foreign artifacts by the manifest's artifact type, so prune, remove, and
+// reads must all leave a foreign artifact under a chunk-ID-shaped tag alone.
+func TestOCIStorePruneForeignArtifact(t *testing.T) {
+	s, reg := newTestOCIStore(t, StoreOptions{Uncompressed: true})
+
+	keep := NewChunk([]byte("chunk to keep"))
+	drop := NewChunk([]byte("chunk to prune"))
+	require.NoError(t, s.StoreChunk(keep))
+	require.NoError(t, s.StoreChunk(drop))
+
+	// A foreign image tagged with a 64-hex string, as CI systems do when
+	// tagging by commit or content hash
+	foreignContent := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
+	foreign := testOCIManifest{
+		mediaType: "application/vnd.oci.image.manifest.v1+json",
+		digest:    fmt.Sprintf("sha256:%x", sha256.Sum256(foreignContent)),
+		content:   foreignContent,
+	}
+	hexTag := strings.Repeat("0123", 16)
+	foreignID, err := ChunkIDFromString(hexTag)
+	require.NoError(t, err)
+	reg.mu.Lock()
+	reg.manifests[hexTag] = foreign
+	reg.manifests[foreign.digest] = foreign
+	reg.mu.Unlock()
+
+	// The foreign artifact must not be mistaken for a stored chunk
+	_, err = s.GetChunk(foreignID)
+	require.ErrorIs(t, err, ChunkMissing{foreignID})
+	require.ErrorIs(t, s.RemoveChunk(foreignID), ChunkMissing{foreignID})
+
+	require.NoError(t, s.Prune(context.Background(), map[ChunkID]struct{}{keep.ID(): {}}))
+
+	hasChunk, err := s.HasChunk(keep.ID())
+	require.NoError(t, err)
+	assert.True(t, hasChunk)
+	hasChunk, err = s.HasChunk(drop.ID())
+	require.NoError(t, err)
+	assert.False(t, hasChunk)
+
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	assert.Contains(t, reg.manifests, hexTag, "foreign artifact with a chunk-ID-shaped tag was pruned")
+}
+
 func TestOCIStoreInvalidChunk(t *testing.T) {
 	s, reg := newTestOCIStore(t, StoreOptions{Uncompressed: true})
 
@@ -344,4 +394,61 @@ func TestOCIStoreInvalidChunk(t *testing.T) {
 	_, err := s.GetChunk(chunk.ID())
 	var invalid ChunkInvalid
 	require.ErrorAs(t, err, &invalid)
+}
+
+// A corrupt or malicious manifest declaring a negative or absurd blob size
+// must produce an error, not a panic or a huge allocation.
+func TestOCIStoreInvalidBlobSize(t *testing.T) {
+	s, reg := newTestOCIStore(t, StoreOptions{Uncompressed: true})
+
+	chunk := NewChunk([]byte("some chunk data"))
+	id := chunk.ID()
+	require.NoError(t, s.StoreChunk(chunk))
+
+	for name, size := range map[string]int64{"negative": -1, "huge": 1 << 60} {
+		t.Run(name, func(t *testing.T) {
+			manifest := fmt.Sprintf(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":%q,"config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},"layers":[{"mediaType":"application/octet-stream","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":%d}]}`, OCIChunkArtifactType, size)
+			m := testOCIManifest{
+				mediaType: "application/vnd.oci.image.manifest.v1+json",
+				digest:    fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(manifest))),
+				content:   []byte(manifest),
+			}
+			reg.mu.Lock()
+			reg.manifests[id.String()] = m
+			reg.manifests[m.digest] = m
+			reg.mu.Unlock()
+
+			_, err := s.GetChunk(id)
+			require.ErrorContains(t, err, "invalid size")
+		})
+	}
+}
+
+// Transient network errors like a dropped connection are retried when
+// error-retry is configured, matching the other network stores.
+func TestOCIStoreRetry(t *testing.T) {
+	reg := newTestOCIRegistry()
+	var dropped atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Drop the very first connection without a response
+		if dropped.CompareAndSwap(false, true) {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				conn.Close()
+			}
+			return
+		}
+		reg.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	u, err := url.Parse("oci+" + srv.URL + "/user/repo")
+	require.NoError(t, err)
+	s, err := NewOCIStore(u, nil, StoreOptions{ErrorRetry: 2, ErrorRetryBaseInterval: time.Millisecond})
+	require.NoError(t, err)
+
+	hasChunk, err := s.HasChunk(NewChunk([]byte("some chunk data")).ID())
+	require.NoError(t, err)
+	assert.False(t, hasChunk)
+	assert.True(t, dropped.Load())
 }

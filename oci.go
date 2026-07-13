@@ -3,15 +3,13 @@ package desync
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +24,21 @@ import (
 
 // OCIChunkArtifactType identifies desync chunk artifacts in an OCI registry.
 const OCIChunkArtifactType = "application/vnd.desync.chunk.v1"
+
+// maxOCIChunkBlobSize caps the blob size accepted from a chunk manifest. Far
+// above any real chunk, it only stops a corrupt or malicious manifest from
+// driving a huge or invalid allocation before the blob is even fetched.
+const maxOCIChunkBlobSize = 1 << 30
+
+// retryPredicate retries any transport error, matching the error-retry
+// behavior of the other network stores. Response codes are left to the
+// default predicate, which retries 408, 429, and 5xx.
+func retryPredicate(resp *http.Response, err error) (bool, error) {
+	if err != nil {
+		return true, nil
+	}
+	return retry.DefaultPredicate(resp, nil)
+}
 
 var _ WriteStore = OCIStore{}
 var _ PruneStore = OCIStore{}
@@ -56,43 +69,29 @@ func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCISt
 	if u.Scheme != "oci+https" && u.Scheme != "oci+http" {
 		return OCIStore{}, fmt.Errorf("unsupported scheme %s, expected oci+https or oci+http", u.Scheme)
 	}
-	repo, err := remote.NewRepository(u.Host + u.Path)
+	repo, err := remote.NewRepository(strings.TrimSuffix(u.Host+u.Path, "/"))
 	if err != nil {
 		return OCIStore{}, fmt.Errorf("failed to initialize oci registry store: %w", err)
 	}
+	// Chunk manifests never carry a subject, so the client-side referrers
+	// indexing oras-go falls back to on registries without referrers support
+	// can never have anything to do. Declaring the capability stops it from
+	// fetching every manifest ahead of a delete just to look for a subject.
+	repo.SetReferrersCapability(true)
 
-	// Build a TLS client config
-	tlsConfig := &tls.Config{InsecureSkipVerify: opt.TrustInsecure}
-
-	// Add client key/cert if provided
-	if opt.ClientCert != "" && opt.ClientKey != "" {
-		certificate, err := tls.LoadX509KeyPair(opt.ClientCert, opt.ClientKey)
-		if err != nil {
-			return OCIStore{}, fmt.Errorf("failed to load client certificate from %s", opt.ClientCert)
-		}
-		tlsConfig.Certificates = []tls.Certificate{certificate}
-	}
-
-	// Load custom CA set if provided
-	if opt.CACert != "" {
-		certPool := x509.NewCertPool()
-		b, err := os.ReadFile(opt.CACert)
-		if err != nil {
-			return OCIStore{}, err
-		}
-		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return OCIStore{}, errors.New("no CA certificates found in ca-cert file")
-		}
-		tlsConfig.RootCAs = certPool
+	tlsConfig, err := opt.tlsClientConfig()
+	if err != nil {
+		return OCIStore{}, err
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
+	transport.MaxIdleConnsPerHost = opt.N
 
 	var rt http.RoundTripper = transport
 	if opt.ErrorRetry > 0 {
 		policy := &retry.GenericPolicy{
-			Retryable: retry.DefaultPredicate,
+			Retryable: retryPredicate,
 			Backoff: func(attempt int, resp *http.Response) time.Duration {
 				return time.Duration(attempt+1) * opt.ErrorRetryBaseInterval
 			},
@@ -102,17 +101,8 @@ func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCISt
 		rt = &retry.Transport{Base: transport, Policy: func() retry.Policy { return policy }}
 	}
 
-	// If no timeout was given in config (set to 0), then use 1 minute. If timeout is negative, use 0 to
-	// set an infinite timeout.
-	timeout := opt.Timeout
-	if timeout == 0 {
-		timeout = time.Minute
-	} else if timeout < 0 {
-		timeout = 0
-	}
-
 	client := &auth.Client{
-		Client:     &http.Client{Transport: rt, Timeout: timeout},
+		Client:     &http.Client{Transport: rt, Timeout: opt.effectiveTimeout()},
 		Cache:      auth.NewCache(),
 		Credential: creds,
 	}
@@ -204,7 +194,7 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 		Digest:    digest.FromBytes(b),
 		Size:      int64(len(b)),
 	}
-	if err := s.repo.Blobs().Push(ctx, blobDesc, bytes.NewReader(b)); err != nil && !errors.Is(err, errdef.ErrAlreadyExists) {
+	if err := s.repo.Blobs().Push(ctx, blobDesc, bytes.NewReader(b)); err != nil {
 		return err
 	}
 	config := ocispec.DescriptorEmptyJSON
@@ -230,15 +220,14 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the store.
-// Used when verifying and repairing caches. Only the manifest is deleted,
-// the blob is left for the registry's garbage collection.
+// Used when verifying and repairing caches. Only manifests carrying the
+// desync chunk artifact type are deleted; a tag that names any other kind
+// of artifact reports the chunk as missing instead. The blob is left for
+// the registry's garbage collection.
 func (s OCIStore) RemoveChunk(id ChunkID) error {
 	ctx := context.Background()
-	desc, err := s.repo.Resolve(ctx, s.tagFromID(id))
+	_, desc, err := s.fetchChunkManifest(ctx, id)
 	if err != nil {
-		if errors.Is(err, errdef.ErrNotFound) {
-			return ChunkMissing{id}
-		}
 		return err
 	}
 	return s.repo.Manifests().Delete(ctx, desc)
@@ -246,10 +235,12 @@ func (s OCIStore) RemoveChunk(id ChunkID) error {
 
 // Prune removes any chunks from the store that are not referenced in the
 // list of chunks. Only tags matching the store's chunk naming, the ID
-// followed by the storage extension, are considered. Other artifacts and
-// chunks in different storage formats sharing the repository are left
-// alone. Just the chunk manifests are deleted, reclaiming the space of the
-// now unreferenced blobs is left to the registry's garbage collection.
+// followed by the storage extension, are considered, and of those only
+// manifests carrying the desync chunk artifact type are deleted. Other
+// artifacts and chunks in different storage formats sharing the repository
+// are left alone, even ones under a chunk-ID-shaped tag. Just the chunk
+// manifests are deleted, reclaiming the space of the now unreferenced blobs
+// is left to the registry's garbage collection.
 func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	return s.repo.Tags(ctx, "", func(tags []string) error {
 		for _, tag := range tags {
@@ -279,46 +270,60 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 // resolveChunkBlob fetches the chunk's manifest by tag and returns the
 // descriptor of the blob holding the chunk data.
 func (s OCIStore) resolveChunkBlob(ctx context.Context, id ChunkID) (ocispec.Descriptor, error) {
-	_, r, err := s.repo.FetchReference(ctx, s.tagFromID(id))
+	manifest, _, err := s.fetchChunkManifest(ctx, id)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if len(manifest.Layers) != 1 {
+		return ocispec.Descriptor{}, fmt.Errorf("manifest for chunk %s in %s references %d blobs, expected exactly one", id.String(), s, len(manifest.Layers))
+	}
+	blobDesc := manifest.Layers[0]
+	if blobDesc.Size < 0 || blobDesc.Size > maxOCIChunkBlobSize {
+		return ocispec.Descriptor{}, fmt.Errorf("manifest for chunk %s in %s references a blob of invalid size %d", id.String(), s, blobDesc.Size)
+	}
+	return blobDesc, nil
+}
+
+// fetchChunkManifest fetches the manifest tagged for the chunk and returns it
+// along with its own descriptor. A tag that doesn't exist, or one that names
+// a manifest without the desync chunk artifact type, resolves to ChunkMissing:
+// the tag alone can't be trusted, an unrelated artifact sharing the repository
+// may sit under a chunk-ID-shaped tag, especially when the storage extension
+// is empty (uncompressed, unencrypted stores).
+func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.Manifest, ocispec.Descriptor, error) {
+	desc, r, err := s.repo.FetchReference(ctx, s.tagFromID(id))
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
-			return ocispec.Descriptor{}, ChunkMissing{id}
+			return ocispec.Manifest{}, ocispec.Descriptor{}, ChunkMissing{id}
 		}
-		return ocispec.Descriptor{}, err
+		return ocispec.Manifest{}, ocispec.Descriptor{}, err
 	}
 	defer r.Close()
 	mb, err := io.ReadAll(r)
 	if err != nil {
-		return ocispec.Descriptor{}, err
+		return ocispec.Manifest{}, ocispec.Descriptor{}, err
 	}
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(mb, &manifest); err != nil {
-		return ocispec.Descriptor{}, fmt.Errorf("invalid manifest for chunk %s in %s: %w", id, s, err)
+		return ocispec.Manifest{}, ocispec.Descriptor{}, fmt.Errorf("invalid manifest for chunk %s in %s: %w", id.String(), s, err)
 	}
-	if len(manifest.Layers) != 1 {
-		return ocispec.Descriptor{}, fmt.Errorf("manifest for chunk %s in %s references %d blobs, expected exactly one", id, s, len(manifest.Layers))
+	if manifest.ArtifactType != OCIChunkArtifactType {
+		return ocispec.Manifest{}, ocispec.Descriptor{}, ChunkMissing{id}
 	}
-	return manifest.Layers[0], nil
+	return manifest, desc, nil
 }
 
 // ensureConfigBlob uploads the shared empty config blob that every chunk
-// manifest references. It only needs to exist once per repository, so the
-// check-and-push runs once per store instance.
+// manifest references. Registries accept re-pushes of existing blobs, so
+// the push is simply skipped once it has succeeded for this store instance.
 func (s OCIStore) ensureConfigBlob(ctx context.Context) error {
 	if s.configPushed.Load() {
 		return nil
 	}
 	desc := ocispec.DescriptorEmptyJSON
 	desc.Data = nil
-	exists, err := s.repo.Blobs().Exists(ctx, desc)
-	if err != nil {
+	if err := s.repo.Blobs().Push(ctx, desc, bytes.NewReader(ocispec.DescriptorEmptyJSON.Data)); err != nil {
 		return err
-	}
-	if !exists {
-		err := s.repo.Blobs().Push(ctx, desc, bytes.NewReader(ocispec.DescriptorEmptyJSON.Data))
-		if err != nil && !errors.Is(err, errdef.ErrAlreadyExists) {
-			return err
-		}
 	}
 	s.configPushed.Store(true)
 	return nil

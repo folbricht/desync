@@ -58,16 +58,20 @@ func TestGetOCICredentials(t *testing.T) {
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
 
 	config := Config{OCICredentials: map[string]OCICreds{
-		"ghcr.io/user/repo":  {Username: "user", Secret: "secret"},
-		"registry.io/*/repo": {Username: "wildcard", Secret: "secret"},
+		"oci+https://ghcr.io/user/repo":  {Username: "user", Secret: "secret"},
+		"oci+https://registry.io/*/repo": {Username: "wildcard", Secret: "secret"},
+		// A malformed glob pattern never matches but must not break the
+		// lookup for other locations
+		"oci+https://bad.example.com/[repo": {Username: "broken"},
 	}}
 
 	tests := map[string]struct {
 		location string
 		username string
 	}{
-		"exact match": {"oci+https://ghcr.io/user/repo", "user"},
-		"glob match":  {"oci+https://registry.io/anything/repo", "wildcard"},
+		"exact match":          {"oci+https://ghcr.io/user/repo", "user"},
+		"glob match":           {"oci+https://registry.io/anything/repo", "wildcard"},
+		"trailing slash match": {"oci+https://ghcr.io/user/repo/", "user"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -91,13 +95,24 @@ func TestGetOCICredentials(t *testing.T) {
 
 	// Multiple matching config entries are invalid
 	multi := Config{OCICredentials: map[string]OCICreds{
-		"ghcr.io/user/repo": {Username: "a"},
-		"ghcr.io/*/repo":    {Username: "b"},
+		"oci+https://ghcr.io/user/repo": {Username: "a"},
+		"oci+https://ghcr.io/*/repo":    {Username: "b"},
 	}}
 	u, err = url.Parse("oci+https://ghcr.io/user/repo")
 	require.NoError(t, err)
 	_, err = multi.GetOCICredentialsFor(u)
 	require.Error(t, err)
+
+	// A Docker config that exists but can't be parsed is an error, not a
+	// silent fallback to anonymous access
+	brokenDocker := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(brokenDocker, "config.json"), []byte("not json"), 0600))
+	t.Setenv("DOCKER_CONFIG", brokenDocker)
+	unmatched, err := url.Parse("oci+https://other.example.com/some/repo")
+	require.NoError(t, err)
+	_, err = config.GetOCICredentialsFor(unmatched)
+	require.Error(t, err)
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
 
 	// Credentials in the environment take precedence over the config
 	t.Setenv("DESYNC_OCI_USERNAME", "envuser")
