@@ -149,6 +149,15 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		if err != nil {
 			return nil, err
 		}
+	case "oci+https", "oci+http":
+		creds, err := cfg.GetOCICredentialsFor(loc)
+		if err != nil {
+			return nil, err
+		}
+		s, err = desync.NewOCIStore(loc, creds, opt)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		local, err := desync.NewLocalStore(location, opt)
 		if err != nil {
@@ -244,6 +253,8 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	switch loc.Scheme {
 	case "ssh":
 		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
+	case "oci+https", "oci+http":
+		return nil, "", errors.New("Index storage is not supported by oci registry stores")
 	case "sftp":
 		s, err = desync.NewSFTPIndexStore(&p, opt)
 		if err != nil {
