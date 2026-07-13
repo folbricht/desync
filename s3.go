@@ -147,7 +147,7 @@ retry:
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
-		return nil, err
+		return nil, errors.Wrap(err, s.String())
 	}
 	return chunk, nil
 }
