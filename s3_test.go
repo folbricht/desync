@@ -230,9 +230,11 @@ func TestS3StoreGetChunk(t *testing.T) {
 				chunk, err := store.GetChunk(chunkId)
 				if err != nil {
 					c <- err
+					return
 				}
 				if chunk.ID() != chunkId {
 					c <- fmt.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
+					return
 				}
 				c <- nil
 			}()
@@ -265,10 +267,11 @@ func TestS3StoreGetChunk(t *testing.T) {
 
 			c := make(chan error)
 			go func() {
-				_, err = store.GetChunk(chunkId)
+				_, err := store.GetChunk(chunkId)
 				opError := &net.OpError{}
 				if err == nil || !errors.As(err, &opError) {
-					c <- err
+					c <- fmt.Errorf("expected GetChunk to fail with a net.OpError, got %v", err)
+					return
 				}
 				c <- nil
 			}()
@@ -304,9 +307,11 @@ func TestS3StoreGetChunk(t *testing.T) {
 				chunk, err := store.GetChunk(chunkId)
 				if err != nil {
 					c <- err
+					return
 				}
 				if chunk.ID() != chunkId {
 					c <- fmt.Errorf("got chunk with id equal to %q, expected %q", chunk.ID(), chunkId)
+					return
 				}
 				c <- nil
 			}()
