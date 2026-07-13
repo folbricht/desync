@@ -12,6 +12,7 @@ import (
 	minio "github.com/minio/minio-go/v6"
 	"github.com/minio/minio-go/v6/pkg/credentials"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var _ WriteStore = S3Store{}
@@ -123,13 +124,32 @@ retry:
 			}
 		}
 		if attempt <= s.opt.ErrorRetry {
+			obj.Close()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
 		// Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
 		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
 	}
-	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
+
+	// A short read of the chunk body (e.g. flaky transport/endpoint) can leave us
+	// with truncated data that fails to decompress or hash. Treat that the same as
+	// other transient errors and retry under the --error-retry policy.
+	chunk, err := NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
+	if err != nil {
+		if attempt <= s.opt.ErrorRetry {
+			Log.WithFields(logrus.Fields{
+				"chunk":   id,
+				"object":  name,
+				"attempt": attempt,
+			}).WithError(err).Info("chunk failed validation, retrying")
+			obj.Close()
+			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
+			goto retry
+		}
+		return nil, errors.Wrap(err, s.String())
+	}
+	return chunk, nil
 }
 
 // StoreChunk adds a new chunk to the store
