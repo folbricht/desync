@@ -5,7 +5,10 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSelfSeed(t *testing.T) {
@@ -13,9 +16,7 @@ func TestSelfSeed(t *testing.T) {
 	store := t.TempDir()
 
 	s, err := NewLocalStore(store, StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Build a number of fake chunks that can then be used in the test in any order
 	type rawChunk struct {
@@ -30,9 +31,7 @@ func TestSelfSeed(t *testing.T) {
 		b := make([]byte, size)
 		rand.Read(b)
 		chunk := NewChunk(b)
-		if err = s.StoreChunk(chunk); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, s.StoreChunk(chunk))
 		chunks[i] = rawChunk{chunk.ID(), b}
 	}
 
@@ -97,39 +96,23 @@ func TestSelfSeed(t *testing.T) {
 			sum := md5.Sum(b)
 
 			// Build a temp target file to extract into
-			dst, err := os.CreateTemp("", "dst")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.Remove(dst.Name())
-			defer dst.Close()
+			dst := filepath.Join(t.TempDir(), "dst")
 
 			// Extract the file
-			stats, err := AssembleFile(context.Background(), dst.Name(), idx, s, nil,
+			stats, err := AssembleFile(context.Background(), dst, idx, s, nil,
 				AssembleOptions{1, InvalidSeedActionBailOut},
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			// Compare the checksums to that of the input data
-			b, err = os.ReadFile(dst.Name())
-			if err != nil {
-				t.Fatal(err)
-			}
-			outSum := md5.Sum(b)
-			if sum != outSum {
-				t.Fatal("checksum of extracted file doesn't match expected")
-			}
+			b, err = os.ReadFile(dst)
+			require.NoError(t, err)
+			require.Equal(t, sum, md5.Sum(b), "checksum of extracted file doesn't match expected")
 
 			// Compare to the expected number of bytes copied or cloned from the seed
 			fromSeed := int(stats.BytesCopied + stats.BytesCloned)
-			if fromSeed < test.minCloned {
-				t.Fatalf("expected min %d bytes copied/cloned from self-seed, got %d", test.minCloned, fromSeed)
-			}
-			if fromSeed > test.maxCloned {
-				t.Fatalf("expected max %d bytes copied/cloned from self-seed, got %d", test.maxCloned, fromSeed)
-			}
+			require.GreaterOrEqual(t, fromSeed, test.minCloned, "bytes copied/cloned from self-seed")
+			require.LessOrEqual(t, fromSeed, test.maxCloned, "bytes copied/cloned from self-seed")
 		})
 	}
 

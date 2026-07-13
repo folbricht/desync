@@ -1,11 +1,10 @@
 package desync
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
-	"io"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,15 +22,9 @@ func TestExtract(t *testing.T) {
 		b = append(b, b...)
 	}
 	b = append(b, make([]byte, 2*ChunkSizeMaxDefault)...) // want to have at least one null-chunk in the input
-	in, err := os.CreateTemp("", "in")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(in.Name())
-	if _, err := io.Copy(in, bytes.NewReader(b)); err != nil {
-		t.Fatal(err)
-	}
-	in.Close()
+	tmp := t.TempDir()
+	in := filepath.Join(tmp, "in")
+	require.NoError(t, os.WriteFile(in, b, 0644))
 
 	// Record the checksum of the input file, used to compare to the output later
 	inSum := md5.Sum(b)
@@ -39,7 +32,7 @@ func TestExtract(t *testing.T) {
 	// Chunk the file to get an index
 	index, _, err := IndexFromFile(
 		context.Background(),
-		in.Name(),
+		in,
 		10,
 		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 		NewProgressBar(""),
@@ -55,7 +48,7 @@ func TestExtract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ChopFile(context.Background(), in.Name(), index.Chunks, s, 10, NewProgressBar("")); err != nil {
+	if err := ChopFile(context.Background(), in, index.Chunks, s, 10, NewProgressBar("")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,36 +60,18 @@ func TestExtract(t *testing.T) {
 	}
 
 	// Prepare output files for each test - first a non-existing one
-	out1, err := os.CreateTemp("", "out1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Remove(out1.Name())
+	out1 := filepath.Join(tmp, "out1")
 
 	// This one is a complete file matching what we expect at the end
-	out2, err := os.CreateTemp("", "out2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(out2, bytes.NewReader(b)); err != nil {
-		t.Fatal(err)
-	}
-	out2.Close()
-	defer os.Remove(out2.Name())
+	out2 := filepath.Join(tmp, "out2")
+	require.NoError(t, os.WriteFile(out2, b, 0644))
 
 	// Incomplete or damaged file that has most but not all data
-	out3, err := os.CreateTemp("", "out3")
-	if err != nil {
-		t.Fatal(err)
-	}
 	b[0] ^= 0xff // flip some bits
 	b[len(b)-1] ^= 0xff
 	b = append(b, 0) // make it longer
-	if _, err := io.Copy(out3, bytes.NewReader(b)); err != nil {
-		t.Fatal(err)
-	}
-	out3.Close()
-	defer os.Remove(out3.Name())
+	out3 := filepath.Join(tmp, "out3")
+	require.NoError(t, os.WriteFile(out3, b, 0644))
 
 	// At this point we have the data needed for the test setup
 	// in - Temp file that represents the original input file
@@ -113,14 +88,13 @@ func TestExtract(t *testing.T) {
 		store   Store
 		seed    []Seed
 	}{
-		"extract to new file":        {outfile: out1.Name(), store: s},
-		"extract to complete file":   {outfile: out2.Name(), store: bs},
-		"extract to incomplete file": {outfile: out3.Name(), store: s},
+		"extract to new file":        {outfile: out1, store: s},
+		"extract to complete file":   {outfile: out2, store: bs},
+		"extract to incomplete file": {outfile: out3, store: s},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			defer os.Remove(test.outfile)
 			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
 				AssembleOptions{10, InvalidSeedActionBailOut},
 			); err != nil {
@@ -200,16 +174,10 @@ func TestSeed(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Build the destination file so we can chunk it
-			dst, err := os.CreateTemp("", "dst")
-			if err != nil {
-				t.Fatal(err)
-			}
+			tmp := t.TempDir()
+			dst := filepath.Join(tmp, "dst")
 			dstBytes := join(test.target...)
-			if _, err := io.Copy(dst, bytes.NewReader(dstBytes)); err != nil {
-				t.Fatal(err)
-			}
-			dst.Close()
-			defer os.Remove(dst.Name())
+			require.NoError(t, os.WriteFile(dst, dstBytes, 0644))
 
 			// Record the checksum of the target file, used to compare to the output later
 			dstSum := md5.Sum(dstBytes)
@@ -217,7 +185,7 @@ func TestSeed(t *testing.T) {
 			// Chunk the file to get an index
 			dstIndex, _, err := IndexFromFile(
 				context.Background(),
-				dst.Name(),
+				dst,
 				10,
 				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 				NewProgressBar(""),
@@ -227,25 +195,18 @@ func TestSeed(t *testing.T) {
 			}
 
 			// Chop up the input file into the store
-			if err := ChopFile(context.Background(), dst.Name(), dstIndex.Chunks, s, 10, NewProgressBar("")); err != nil {
+			if err := ChopFile(context.Background(), dst, dstIndex.Chunks, s, 10, NewProgressBar("")); err != nil {
 				t.Fatal(err)
 			}
 
 			// Build the seed files and indexes then populate the array of seeds
 			var seeds []Seed
-			for _, f := range test.seeds {
-				seedFile, err := os.CreateTemp("", "seed")
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := io.Copy(seedFile, bytes.NewReader(join(f...))); err != nil {
-					t.Fatal(err)
-				}
-				seedFile.Close()
-				defer os.Remove(seedFile.Name())
+			for i, f := range test.seeds {
+				seedFile := filepath.Join(tmp, fmt.Sprintf("seed%d", i))
+				require.NoError(t, os.WriteFile(seedFile, join(f...), 0644))
 				seedIndex, _, err := IndexFromFile(
 					context.Background(),
-					seedFile.Name(),
+					seedFile,
 					10,
 					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
 					NewProgressBar(""),
@@ -253,19 +214,19 @@ func TestSeed(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				seed, err := NewIndexSeed(dst.Name(), seedFile.Name(), seedIndex)
+				seed, err := NewIndexSeed(dst, seedFile, seedIndex)
 				if err != nil {
 					t.Fatal(err)
 				}
 				seeds = append(seeds, seed)
 			}
 
-			if _, err := AssembleFile(context.Background(), dst.Name(), dstIndex, s, seeds,
+			if _, err := AssembleFile(context.Background(), dst, dstIndex, s, seeds,
 				AssembleOptions{10, InvalidSeedActionBailOut},
 			); err != nil {
 				t.Fatal(err)
 			}
-			b, err := os.ReadFile(dst.Name())
+			b, err := os.ReadFile(dst)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -353,19 +314,11 @@ func TestSelfSeedInPlace(t *testing.T) {
 			sum := md5.Sum(b)
 
 			// Build a temp target file pre-populated with the correct content
-			dst, err := os.CreateTemp("", "dst")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.Remove(dst.Name())
-			_, err = dst.Write(b)
-			if err != nil {
-				t.Fatal(err)
-			}
-			dst.Close()
+			dst := filepath.Join(t.TempDir(), "dst")
+			require.NoError(t, os.WriteFile(dst, b, 0644))
 
 			// Extract the file
-			stats, err := AssembleFile(context.Background(), dst.Name(), idx, s, nil,
+			stats, err := AssembleFile(context.Background(), dst, idx, s, nil,
 				AssembleOptions{1, InvalidSeedActionBailOut},
 			)
 			if err != nil {
@@ -373,7 +326,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 			}
 
 			// Compare the checksums to that of the input data
-			b, err = os.ReadFile(dst.Name())
+			b, err = os.ReadFile(dst)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -391,6 +344,50 @@ func TestSelfSeedInPlace(t *testing.T) {
 		})
 	}
 
+}
+
+// Null segments skip the destination read-back after writing since they have
+// no external source that could change during extraction. Assemble a null-heavy
+// file over an existing file full of non-zero data to confirm the null sections
+// are still written out correctly.
+func TestExtractNullsOverExistingFile(t *testing.T) {
+	data := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(data)
+	null := make([]byte, 4*ChunkSizeMaxDefault)
+	b := join(null, data, null)
+
+	tmp := t.TempDir()
+	in := filepath.Join(tmp, "in")
+	require.NoError(t, os.WriteFile(in, b, 0644))
+	inSum := md5.Sum(b)
+
+	index, _, err := IndexFromFile(
+		context.Background(),
+		in,
+		10,
+		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		NewProgressBar(""),
+	)
+	require.NoError(t, err)
+
+	s, err := NewLocalStore(t.TempDir(), StoreOptions{})
+	require.NoError(t, err)
+	require.NoError(t, ChopFile(context.Background(), in, index.Chunks, s, 10, NewProgressBar("")))
+
+	// Pre-populate the output file with non-zero data so the null sections
+	// actually have to be written, not just skipped over in a blank file
+	garbage := make([]byte, len(b))
+	rand.Read(garbage)
+	out := filepath.Join(tmp, "out")
+	require.NoError(t, os.WriteFile(out, garbage, 0644))
+
+	_, err = AssembleFile(context.Background(), out, index, s, nil,
+		AssembleOptions{10, InvalidSeedActionBailOut})
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Equal(t, inSum, md5.Sum(got))
 }
 
 func join(slices ...[]byte) []byte {
@@ -411,6 +408,34 @@ func readCaibxFile(t *testing.T, indexLocation string) (idx Index) {
 	return idx
 }
 
+// An index of a zero-length file has no chunks. Extracting it should produce
+// an empty output file rather than panic.
+func TestExtractEmptyIndex(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+
+	// Write some data into the output file to confirm it gets truncated
+	require.NoError(t, os.WriteFile(out, []byte("old content"), 0644))
+
+	index := Index{
+		Index: FormatIndex{
+			FeatureFlags: CaFormatSHA512256,
+			ChunkSizeMin: ChunkSizeMinDefault,
+			ChunkSizeAvg: ChunkSizeAvgDefault,
+			ChunkSizeMax: ChunkSizeMaxDefault,
+		},
+	}
+	store, err := NewLocalStore(t.TempDir(), StoreOptions{})
+	require.NoError(t, err)
+
+	_, err = AssembleFile(context.Background(), out, index, store, nil,
+		AssembleOptions{10, InvalidSeedActionBailOut})
+	require.NoError(t, err)
+
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Empty(t, b)
+}
+
 func TestExtractWithNonStaticSeeds(t *testing.T) {
 	n := 10
 	outDir := t.TempDir()
@@ -429,6 +454,7 @@ func TestExtractWithNonStaticSeeds(t *testing.T) {
 	var seeds []Seed
 	srcIndex := readCaibxFile(t, "testdata/blob2_corrupted.caibx")
 	seed, err := NewIndexSeed(out, "testdata/blob2_corrupted", srcIndex)
+	require.NoError(t, err)
 	seeds = append(seeds, seed)
 
 	// Test that the MockValidate works as expected

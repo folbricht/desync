@@ -43,8 +43,8 @@ Use '-' to read the index from STDIN.`,
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store")
-	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "index(s) to ignore chunks from")
-	flags.StringSliceVarP(&opt.ignoreChunks, "ignore-chunks", "", nil, "ignore chunks from text file")
+	flags.StringSliceVarP(&opt.ignoreIndexes, "ignore", "", nil, "index(es) with chunks to be excluded")
+	flags.StringSliceVarP(&opt.ignoreChunks, "ignore-chunks", "", nil, "text file with chunk IDs to be excluded")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }

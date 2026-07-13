@@ -20,22 +20,27 @@ func (e NoSuchObject) Error() string {
 	return fmt.Sprintf("object %s missing from store", e.location)
 }
 
-// ChunkInvalid means the hash of the chunk content doesn't match its ID, or the
-// chunk could not be validated at all (for example because it failed to decompress).
+// ChunkInvalid means the chunk failed validation, either because the hash
+// of its content doesn't match its ID, or because the storage data couldn't
+// be converted to plain data in the first place, for example when
+// decryption or decompression fails. In the latter case Err holds the
+// conversion error.
 type ChunkInvalid struct {
 	ID  ChunkID
 	Sum ChunkID
-	Err error // underlying cause when validation couldn't be completed; nil for a plain hash mismatch
+	Err error
 }
 
 func (e ChunkInvalid) Error() string {
 	if e.Err != nil {
-		return fmt.Sprintf("chunk %s could not be validated: %v", e.ID.String(), e.Err)
+		return fmt.Sprintf("invalid chunk %s: %s", e.ID.String(), e.Err)
 	}
 	return fmt.Sprintf("chunk id %s does not match its hash %s", e.ID.String(), e.Sum.String())
 }
 
-func (e ChunkInvalid) Unwrap() error { return e.Err }
+func (e ChunkInvalid) Unwrap() error {
+	return e.Err
+}
 
 // InvalidFormat is returned when an error occurred when parsing an archive file
 type InvalidFormat struct {

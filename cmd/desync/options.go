@@ -41,7 +41,7 @@ func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions
 		opt.SkipVerify = true
 	}
 	if o.FlagSet.Lookup("trust-insecure").Changed {
-		opt.TrustInsecure = true
+		opt.TrustInsecure = o.trustInsecure
 	}
 	if o.FlagSet.Lookup("error-retry").Changed {
 		opt.ErrorRetry = o.errorRetry
@@ -94,6 +94,9 @@ func (o cmdServerOptions) validate() error {
 		if o.clientCA != "" {
 			return errors.New("--client-ca requires --cert and --key (TLS must be enabled)")
 		}
+	}
+	if o.mutualTLS && o.clientCA == "" {
+		return errors.New("--mutual-tls requires --client-ca (otherwise any certificate trusted by the system CA pool would be accepted)")
 	}
 	if o.clientCA != "" && !o.mutualTLS {
 		return errors.New("--client-ca requires --mutual-tls (otherwise client certificates are not verified)")

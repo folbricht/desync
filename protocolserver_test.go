@@ -1,10 +1,11 @@
 package desync
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestProtocolServer(t *testing.T) {
@@ -26,26 +27,16 @@ func TestProtocolServer(t *testing.T) {
 
 	// Client
 	flags, err := server.Initialize(CaProtocolPullChunks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if flags&CaProtocolReadableStore == 0 {
-		t.Fatalf("server not offering chunks")
-	}
+	require.NoError(t, err)
+	require.NotZero(t, flags&CaProtocolReadableStore, "server not offering chunks")
 
 	// Should find this chunk
 	chunk, err := server.RequestChunk(id)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	b, _ := chunk.Data()
-	if !bytes.Equal(b, uncompressed) {
-		t.Fatal("chunk data doesn't match expected")
-	}
+	require.Equal(t, uncompressed, b)
 
 	// This one's missing
 	_, err = server.RequestChunk(ChunkID{0})
-	if _, ok := err.(ChunkMissing); !ok {
-		t.Fatal("expected ChunkMissing error, got:", err)
-	}
+	require.IsType(t, ChunkMissing{}, err)
 }

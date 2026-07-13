@@ -8,15 +8,19 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	minio "github.com/minio/minio-go/v6"
 	"github.com/minio/minio-go/v6/pkg/credentials"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -169,17 +173,11 @@ func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bu
 	var errorTimes int
 	// using localhost + resolver let us work on hosts that support only ipv6 or only ipv4
 	ip, err := net.DefaultResolver.LookupIP(ctx, "ip", "localhost")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ip) < 1 {
-		t.Fatalf("cannot resolve localhost")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, ip, "cannot resolve localhost")
 
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip[0], Port: 0})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	group.Go(func() error {
 		<-ctx.Done()
@@ -207,9 +205,7 @@ func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bu
 
 func TestS3StoreGetChunk(t *testing.T) {
 	chunkId, err := ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	location := "vertucon-central"
 	bucket := "doomsdaydevices"
 	provider := MockCredProvider{}
@@ -248,9 +244,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 
 	t.Run("fail", func(t *testing.T) {
@@ -286,9 +280,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 
 	t.Run("recover", func(t *testing.T) {
@@ -326,9 +318,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 			}
 		})
 
-		if err := group.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, group.Wait())
 	})
 
 	t.Run("corrupt_body_fail", func(t *testing.T) {
@@ -421,4 +411,32 @@ func TestS3StoreGetChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+// A missing chunk is not a transient error and is a normal occurrence when
+// the store sits behind a router or cache. GetChunk must return ChunkMissing
+// right away instead of going through the ErrorRetry sleep/retry loop.
+func TestS3StoreGetMissingChunk(t *testing.T) {
+	chunkId, err := ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
+	require.NoError(t, err)
+	provider := MockCredProvider{}
+
+	var requests int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	u, err := url.Parse(ts.URL)
+	require.NoError(t, err)
+
+	endpoint := url.URL{Scheme: "s3+http", Host: u.Host, Path: "/doomsdaydevices/blob1.store/"}
+	store, err := NewS3Store(&endpoint, credentials.New(&provider), "vertucon-central",
+		StoreOptions{ErrorRetry: 3, ErrorRetryBaseInterval: time.Millisecond}, minio.BucketLookupAuto)
+	require.NoError(t, err)
+
+	_, err = store.GetChunk(chunkId)
+	var missing ChunkMissing
+	require.ErrorAs(t, err, &missing)
+	require.EqualValues(t, 1, atomic.LoadInt32(&requests), "missing chunk should not be retried")
 }

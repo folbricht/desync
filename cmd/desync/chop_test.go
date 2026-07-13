@@ -49,7 +49,7 @@ func TestChopErrors(t *testing.T) {
 		{"without store",
 			[]string{"testdata/blob1.caibx", "testdata/blob1"}},
 		{"invalid store",
-			[]string{"-s", filepath.Join(os.TempDir(), "desync"), "testdata/blob1.caibx", "testdata/blob1"}},
+			[]string{"-s", filepath.Join(t.TempDir(), "desync"), "testdata/blob1.caibx", "testdata/blob1"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := newChopCommand(context.Background())

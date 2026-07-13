@@ -1,11 +1,13 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 const defaultErrorRetry = 3
@@ -65,14 +67,11 @@ func TestErrorRetryOptions(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := os.CreateTemp("", "desync-options")
-			require.NoError(t, err)
-			defer os.Remove(f.Name())
-			_, err = f.Write(test.cfgFileContent)
-			require.NoError(t, err)
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, test.cfgFileContent, 0644))
 
 			// Set the global config file name
-			cfgFile = f.Name()
+			cfgFile = f
 
 			initConfig()
 
@@ -82,10 +81,11 @@ func TestErrorRetryOptions(t *testing.T) {
 			cmd.SetArgs(test.args)
 
 			// Execute the mock command, to load the options provided in the launch arguments
-			_, err = cmd.ExecuteC()
+			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
+			require.NoError(t, err)
 			opt := cmdOpt.MergedWith(configOptions)
 			require.Equal(t, test.errorRetryStoreHit, opt.ErrorRetry)
 			require.Equal(t, test.baseIntervalStoreHit, opt.ErrorRetryBaseInterval)
@@ -107,11 +107,11 @@ func TestServerOptionsValidate(t *testing.T) {
 	}{
 		{"no TLS, no mTLS", cmdServerOptions{}, ""},
 		{"TLS only", cmdServerOptions{cert: "c", key: "k"}, ""},
-		{"TLS with mutualTLS", cmdServerOptions{cert: "c", key: "k", mutualTLS: true}, ""},
 		{"TLS with mutualTLS and clientCA", cmdServerOptions{cert: "c", key: "k", mutualTLS: true, clientCA: "ca"}, ""},
 		{"key without cert", cmdServerOptions{key: "k"}, "--key and --cert"},
 		{"cert without key", cmdServerOptions{cert: "c"}, "--key and --cert"},
-		{"mutualTLS without TLS", cmdServerOptions{mutualTLS: true}, "--mutual-tls requires"},
+		{"mutualTLS without TLS", cmdServerOptions{mutualTLS: true}, "--mutual-tls requires --cert and --key"},
+		{"mutualTLS without clientCA", cmdServerOptions{cert: "c", key: "k", mutualTLS: true}, "--mutual-tls requires --client-ca"},
 		{"clientCA without TLS", cmdServerOptions{clientCA: "ca"}, "--client-ca requires --cert"},
 		{"clientCA without mutualTLS", cmdServerOptions{cert: "c", key: "k", clientCA: "ca"}, "--client-ca requires --mutual-tls"},
 	} {
@@ -161,14 +161,11 @@ func TestStringOptions(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := os.CreateTemp("", "desync-options")
-			require.NoError(t, err)
-			defer os.Remove(f.Name())
-			_, err = f.Write(test.cfgFileContent)
-			require.NoError(t, err)
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, test.cfgFileContent, 0644))
 
 			// Set the global config file name
-			cfgFile = f.Name()
+			cfgFile = f
 
 			initConfig()
 
@@ -178,10 +175,11 @@ func TestStringOptions(t *testing.T) {
 			cmd.SetArgs(test.args)
 
 			// Execute the mock command, to load the options provided in the launch arguments
-			_, err = cmd.ExecuteC()
+			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
 			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
+			require.NoError(t, err)
 			opt := cmdOpt.MergedWith(configOptions)
 			require.Equal(t, test.clientCertStoreHit, opt.ClientCert)
 			require.Equal(t, test.clientKeyStoreHit, opt.ClientKey)
@@ -193,6 +191,71 @@ func TestStringOptions(t *testing.T) {
 			require.Equal(t, test.clientCertStoreMiss, opt.ClientCert)
 			require.Equal(t, test.clientKeyStoreMiss, opt.ClientKey)
 			require.Equal(t, test.caCertStoreMiss, opt.CACert)
+		})
+	}
+}
+
+func TestTrustInsecureOption(t *testing.T) {
+	for _, test := range []struct {
+		name                   string
+		args                   []string
+		cfgFileContent         []byte
+		trustInsecureStoreHit  bool
+		trustInsecureStoreMiss bool
+	}{
+		{"Config enables trust-insecure, no CLI flag",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"trust-insecure": true}}}`),
+			true, false,
+		},
+		{"Config enables trust-insecure, CLI explicitly disables it",
+			[]string{"--trust-insecure=false"},
+			[]byte(`{"store-options": {"/store/*/":{"trust-insecure": true}}}`),
+			false, false,
+		},
+		{"Config without trust-insecure, CLI enables it",
+			[]string{"--trust-insecure"},
+			[]byte(`{"store-options": {"/store/*/":{"uncompressed": true}}}`),
+			true, true,
+		},
+		{"Config without trust-insecure, no CLI flag",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"uncompressed": true}}}`),
+			false, false,
+		},
+		{"Config disables trust-insecure, CLI enables it",
+			[]string{"--trust-insecure"},
+			[]byte(`{"store-options": {"/store/*/":{"trust-insecure": false}}}`),
+			true, true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, test.cfgFileContent, 0644))
+
+			// Set the global config file name
+			cfgFile = f
+
+			initConfig()
+
+			var cmdOpt cmdStoreOptions
+
+			cmd := newTestOptionsCommand(&cmdOpt)
+			cmd.SetArgs(test.args)
+
+			// Execute the mock command, to load the options provided in the launch arguments
+			_, err := cmd.ExecuteC()
+			require.NoError(t, err)
+
+			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
+			require.NoError(t, err)
+			opt := cmdOpt.MergedWith(configOptions)
+			require.Equal(t, test.trustInsecureStoreHit, opt.TrustInsecure)
+
+			configOptions, err = cfg.GetStoreOptionsFor("/missingStore")
+			require.NoError(t, err)
+			opt = cmdOpt.MergedWith(configOptions)
+			require.Equal(t, test.trustInsecureStoreMiss, opt.TrustInsecure)
 		})
 	}
 }

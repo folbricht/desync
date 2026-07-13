@@ -22,11 +22,12 @@ var _ WriteStore = &SFTPStore{}
 
 // SFTPStoreBase is the base object for SFTP chunk and index stores.
 type SFTPStoreBase struct {
-	location *url.URL
-	path     string
-	client   *sftp.Client
-	cancel   context.CancelFunc
-	opt      StoreOptions
+	location  *url.URL
+	path      string
+	client    *sftp.Client
+	cancel    context.CancelFunc
+	opt       StoreOptions
+	extension string
 }
 
 // SFTPStore is a chunk store that uses SFTP over SSH.
@@ -37,8 +38,10 @@ type SFTPStore struct {
 	converters Converters
 }
 
-// Creates a base sftp client
-func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, error) {
+// Creates a base sftp client. The extension is the chunk file extension
+// derived from the caller's converters, or empty for index stores which
+// don't use converters.
+func newSFTPStoreBase(location *url.URL, opt StoreOptions, extension string) (*SFTPStoreBase, error) {
 	sshCmd := os.Getenv("CASYNC_SSH_PATH")
 	if sshCmd == "" {
 		sshCmd = "ssh"
@@ -52,8 +55,13 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, erro
 	if location.User != nil {
 		host = location.User.Username() + "@" + location.Host
 	}
+	// Reject destinations that ssh would parse as command-line options.
+	if err := validateSSHHost(host); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := exec.CommandContext(ctx, sshCmd, host, "-s", "sftp")
+	// "--" terminates option parsing so the destination can't be read as a flag.
+	c := exec.CommandContext(ctx, sshCmd, "-s", "--", host, "sftp")
 	c.Stderr = os.Stderr
 	r, err := c.StdoutPipe()
 	if err != nil {
@@ -81,7 +89,7 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions) (*SFTPStoreBase, erro
 		cancel()
 		return nil, errors.Wrapf(err, "failed to stat '%s'", path)
 	}
-	return &SFTPStoreBase{location, path, client, cancel, opt}, nil
+	return &SFTPStoreBase{location, path, client, cancel, opt, extension}, nil
 }
 
 // StoreObject adds a new object to a writable index or chunk store.
@@ -131,20 +139,20 @@ func (s *SFTPStoreBase) String() string {
 // Returns the path for a chunk
 func (s *SFTPStoreBase) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := s.path + sID[0:4] + "/" + sID
-	if s.opt.Uncompressed {
-		name += UncompressedChunkExt
-	} else {
-		name += CompressedChunkExt
-	}
+	name := s.path + sID[0:4] + "/" + sID + s.extension
 	return name
 }
 
 // NewSFTPStore initializes a chunk store using SFTP over SSH.
 func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
-	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N, opt.converters()}
+	converters, err := opt.StorageConverters()
+	if err != nil {
+		return nil, err
+	}
+	extension := converters.storageExtension()
+	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N, converters}
 	for i := 0; i < opt.N; i++ {
-		c, err := newSFTPStoreBase(location, opt)
+		c, err := newSFTPStoreBase(location, opt, extension)
 		if err != nil {
 			return nil, err
 		}
@@ -178,11 +186,20 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 func (s *SFTPStore) RemoveChunk(id ChunkID) error {
 	c := <-s.pool
 	defer func() { s.pool <- c }()
-	name := c.nameFromID(id)
-	if _, err := c.client.Stat(name); err != nil {
-		return ChunkMissing{id}
+	return c.removeChunk(id)
+}
+
+// removeChunk deletes a chunk over this connection. Returns ChunkMissing if
+// the chunk is not in the store.
+func (s *SFTPStoreBase) removeChunk(id ChunkID) error {
+	name := s.nameFromID(id)
+	if _, err := s.client.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return ChunkMissing{id}
+		}
+		return err
 	}
-	return c.client.Remove(name)
+	return s.client.Remove(name)
 }
 
 // StoreChunk adds a new chunk to the store
@@ -228,33 +245,18 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		if info.IsDir() { // Skip dirs
 			continue
 		}
-		path := walker.Path()
-		if !strings.HasSuffix(path, CompressedChunkExt) { // Skip files without chunk extension
+		// Skip files that aren't chunks matching the store's extension, they
+		// may use different compression or encryption settings
+		id, ok := chunkIDFromFilename(filepath.Base(walker.Path()), c.extension)
+		if !ok {
 			continue
 		}
-		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
-		var sID string
-		if c.opt.Uncompressed {
-			if !strings.HasSuffix(path, UncompressedChunkExt) {
-				return nil
-			}
-			sID = strings.TrimSuffix(filepath.Base(path), UncompressedChunkExt)
-		} else {
-			if !strings.HasSuffix(path, CompressedChunkExt) {
-				return nil
-			}
-			sID = strings.TrimSuffix(filepath.Base(path), CompressedChunkExt)
-		}
-		// Convert the name into a checksum, if that fails we're probably not looking
-		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(sID)
-		if err != nil {
-			continue
-		}
-		// See if the chunk we're looking at is in the list we want to keep, if not
-		// remove it.
+		// See if the chunk we're looking at is in the list we want to keep, if
+		// not remove it. Use the connection this iteration already holds,
+		// RemoveChunk would wait for another one from the pool, forever if
+		// the pool size is 1.
 		if _, ok := ids[id]; !ok {
-			if err = s.RemoveChunk(id); err != nil {
+			if err := c.removeChunk(id); err != nil {
 				return err
 			}
 		}

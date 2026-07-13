@@ -24,6 +24,9 @@ type chunkServerOptions struct {
 	skipVerifyWrite bool
 	uncompressed    bool
 	logFile         string
+	encryption      bool
+	encryptionAlg   string
+	encryptionKey   string
 }
 
 func newChunkServerCommand(ctx context.Context) *cobra.Command {
@@ -41,7 +44,11 @@ of chunks written to this server, avoiding the decompression step needed to
 calculate checksums, to improve performance. If -u is used, only uncompressed
 chunks are served (and accepted). If the upstream store serves compressed chunks,
 everything will have to be decompressed server-side so it's better to also read
-from uncompressed upstream stores.
+from uncompressed upstream stores. With --encryption, chunks are served (and
+accepted) encrypted, regardless of how they are stored in the upstream store.
+The key is read from the DESYNC_ENCRYPTION_KEY environment variable unless
+--encryption-key is used. The environment variable on its own does not enable
+encryption, one of the encryption flags is required.
 
 While --concurrency does not limit the number of clients that can be served
 concurrently, it does influence connection pools to remote upstream stores and
@@ -51,8 +58,10 @@ This command supports the --store-file option which can be used to define the st
 and caches in a JSON file. The config can then be reloaded by sending a SIGHUP without
 needing to restart the server. This can be done under load as well.
 `,
-		Example: `  desync chunk-server -s sftp://192.168.1.1/store -c /path/to/cache -l :8080`,
-		Args:    cobra.NoArgs,
+		Example: `  desync chunk-server -s sftp://192.168.1.1/store -c /path/to/cache -l :8080
+  desync chunk-server -s /path/to/store -w -l :8080
+  desync chunk-server -s /path/to/store --cert cert.pem --key key.pem -l :8443`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runChunkServer(ctx, opt, args)
 		},
@@ -62,7 +71,7 @@ needing to restart the server. This can be done under load as well.
 	flags.StringVar(&opt.storeFile, "store-file", "", "read store arguments from a file, supports reload on SIGHUP")
 	flags.StringSliceVarP(&opt.stores, "store", "s", nil, "upstream source store(s)")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
-	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address")
+	flags.StringSliceVarP(&opt.listenAddresses, "listen", "l", []string{":http"}, "listen address(es), can be repeated")
 	flags.BoolVarP(&opt.writable, "writable", "w", false, "support writing")
 	flags.BoolVar(&opt.writable, "writeable", false, "support writing")
 	_ = flags.MarkDeprecated("writeable", "use --writable instead")
@@ -70,6 +79,9 @@ needing to restart the server. This can be done under load as well.
 	flags.BoolVar(&opt.skipVerifyWrite, "skip-verify-write", true, "don't verify chunk data written to this server (faster)")
 	flags.BoolVarP(&opt.uncompressed, "uncompressed", "u", false, "serve uncompressed chunks")
 	flags.StringVar(&opt.logFile, "log", "", "request log file or - for STDOUT")
+	flags.BoolVar(&opt.encryption, "encryption", false, "serve chunks encrypted, expects the key in $DESYNC_ENCRYPTION_KEY unless --encryption-key is given")
+	flags.StringVar(&opt.encryptionKey, "encryption-key", "", "serve chunks encrypted with this hex-encoded 256-bit key, implies --encryption")
+	flags.StringVar(&opt.encryptionAlg, "encryption-algorithm", "", "encryption algorithm, xchacha20-poly1305 (default) or aes-256-gcm, implies --encryption")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	addServerOptions(&opt.cmdServerOptions, flags)
 	return cmd
@@ -84,6 +96,24 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	}
 	if opt.auth == "" {
 		opt.auth = os.Getenv("DESYNC_HTTP_AUTH")
+	}
+
+	// Build the converters for the format this server exchanges with its
+	// clients, before any upstream store is opened, so that invalid encryption
+	// options fail fast. Encryption needs to be requested explicitly with one
+	// of its flags. The env variable alone must not switch the wire format, it
+	// may be set for the sake of an encrypted store elsewhere in the config.
+	wireOpt := desync.StoreOptions{
+		Uncompressed:        opt.uncompressed,
+		Encryption:          opt.encryption,
+		EncryptionAlgorithm: opt.encryptionAlg,
+		EncryptionKey:       opt.encryptionKey,
+	}
+	wireOpt.Encryption = wireOpt.EncryptionConfigured()
+	wireOpt.EncryptionKey = encryptionKeyFallback(wireOpt.Encryption, wireOpt.EncryptionKey)
+	converters, err := wireOpt.StorageConverters()
+	if err != nil {
+		return err
 	}
 
 	addresses := opt.listenAddresses
@@ -128,11 +158,6 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 		}()
 	}
 	defer s.Close()
-
-	var converters desync.Converters
-	if !opt.uncompressed {
-		converters = desync.Converters{desync.Compressor{}}
-	}
 
 	handler := desync.NewHTTPHandler(s, opt.writable, opt.skipVerifyWrite, converters, opt.auth)
 

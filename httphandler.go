@@ -22,14 +22,13 @@ type HTTPHandler struct {
 	// Storage-side of the converters in this case is towards the client
 	converters Converters
 
-	// Use the file extension for compressed chunks
-	compressed bool
+	// Chunk file extension, derived from the converters at construction
+	extension string
 }
 
 // NewHTTPHandler initializes and returns a new HTTP handler for a chunks server.
 func NewHTTPHandler(s Store, writable, skipVerifyWrite bool, converters Converters, auth string) http.Handler {
-	compressed := converters.hasCompression()
-	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, converters, compressed}
+	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, converters, converters.storageExtension()}
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -117,14 +116,18 @@ func (h HTTPHandler) put(id ChunkID, w http.ResponseWriter, r *http.Request) {
 }
 
 func (h HTTPHandler) idFromPath(p string) (ChunkID, error) {
-	ext := CompressedChunkExt
-	if !h.compressed {
-		if strings.HasSuffix(p, CompressedChunkExt) {
-			return ChunkID{}, errors.New("compressed chunk requested from http chunk store serving uncompressed chunks")
-		}
-		ext = UncompressedChunkExt
+	ext := h.extension
+	if !strings.HasSuffix(p, ext) {
+		return ChunkID{}, errors.New("invalid chunk extension, verify compression and encryption settings")
 	}
 	sID := strings.TrimSuffix(path.Base(p), ext)
+	// Chunk IDs are hex-encoded and never contain a '.'. Any extension left
+	// after trimming means the client requested a chunk in a format this
+	// server doesn't serve. The suffix check above can't catch that when
+	// the server's own extension is empty (uncompressed, unencrypted).
+	if strings.Contains(sID, ".") {
+		return ChunkID{}, fmt.Errorf("requested chunk with an unexpected file extension, this server expects '<chunkid>%s', verify compression and encryption settings", ext)
+	}
 	if len(sID) < 4 {
 		return ChunkID{}, fmt.Errorf("expected format '/<prefix>/<chunkid>%s", ext)
 	}

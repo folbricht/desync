@@ -21,6 +21,12 @@ type RemoteSSH struct {
 
 // NewRemoteSSHStore establishes up to n connections with a casync chunk server
 func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) {
+	// The casync protocol always exchanges compressed chunks, storage
+	// options don't apply here. Reject encryption settings rather than
+	// silently ignoring them.
+	if opt.EncryptionConfigured() {
+		return nil, errors.New("encryption is not supported by casync protocol (ssh://) stores")
+	}
 	remote := RemoteSSH{location: location, pool: make(chan *Protocol, opt.N), n: opt.N}
 	// Start n sessions and put them into the pool (buffered channel)
 	for i := 0; i < remote.n; i++ {
@@ -88,8 +94,15 @@ func StartProtocol(u *url.URL) (*Protocol, error) {
 	if u.User != nil {
 		host = u.User.Username() + "@" + u.Host
 	}
+	// Reject destinations that ssh would parse as command-line options.
+	if err := validateSSHHost(host); err != nil {
+		return nil, err
+	}
 
-	c := exec.Command(sshCmd, host, fmt.Sprintf("%s pull - - - '%s'", remoteCmd, path))
+	// "--" terminates ssh's option parsing so the destination can't be read as a
+	// flag, and the path is shell-quoted so it can't break out of the remote
+	// command string.
+	c := exec.Command(sshCmd, "--", host, fmt.Sprintf("%s pull - - - %s", remoteCmd, shellQuote(path)))
 	c.Stderr = os.Stderr
 	r, err := c.StdoutPipe()
 	if err != nil {

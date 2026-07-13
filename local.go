@@ -29,6 +29,9 @@ type LocalStore struct {
 	Opt StoreOptions
 
 	converters Converters
+
+	// Chunk file extension, derived from the converters at construction
+	extension string
 }
 
 // NewLocalStore creates an instance of a local castore, it only checks presence
@@ -41,15 +44,22 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if !info.IsDir() {
 		return LocalStore{}, fmt.Errorf("%s is not a directory", dir)
 	}
-	return LocalStore{Base: dir, Opt: opt, converters: opt.converters()}, nil
+	converters, err := opt.StorageConverters()
+	if err != nil {
+		return LocalStore{}, err
+	}
+	return LocalStore{Base: dir, Opt: opt, converters: converters, extension: converters.storageExtension()}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
 func (s LocalStore) GetChunk(id ChunkID) (*Chunk, error) {
 	_, p := s.nameFromID(id)
 	b, err := os.ReadFile(p)
-	if os.IsNotExist(err) {
-		return nil, ChunkMissing{id}
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ChunkMissing{id}
+		}
+		return nil, err
 	}
 	return NewChunkFromStorage(id, b, s.converters, s.Opt.SkipVerify)
 }
@@ -135,23 +145,10 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 		if info.IsDir() { // Skip dirs
 			return nil
 		}
-		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
-		var sID string
-		if s.Opt.Uncompressed {
-			if !strings.HasSuffix(path, UncompressedChunkExt) {
-				return nil
-			}
-			sID = strings.TrimSuffix(filepath.Base(path), UncompressedChunkExt)
-		} else {
-			if !strings.HasSuffix(path, CompressedChunkExt) {
-				return nil
-			}
-			sID = strings.TrimSuffix(filepath.Base(path), CompressedChunkExt)
-		}
-		// Convert the name into a checksum, if that fails we're probably not looking
-		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(sID)
-		if err != nil {
+		// Skip files that aren't chunks matching the store's extension, they
+		// may use different compression or encryption settings
+		id, ok := chunkIDFromFilename(filepath.Base(path), s.extension)
+		if !ok {
 			return nil
 		}
 		// Feed the workers
@@ -186,24 +183,10 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			_ = os.Remove(path)
 			return nil
 		}
-
-		// Skip compressed chunks if this is running in uncompressed mode and vice-versa
-		var sID string
-		if s.Opt.Uncompressed {
-			if !strings.HasSuffix(path, UncompressedChunkExt) {
-				return nil
-			}
-			sID = strings.TrimSuffix(filepath.Base(path), UncompressedChunkExt)
-		} else {
-			if !strings.HasSuffix(path, CompressedChunkExt) {
-				return nil
-			}
-			sID = strings.TrimSuffix(filepath.Base(path), CompressedChunkExt)
-		}
-		// Convert the name into a checksum, if that fails we're probably not looking
-		// at a chunk file and should skip it.
-		id, err := ChunkIDFromString(sID)
-		if err != nil {
+		// Skip files that aren't chunks matching the store's extension, they
+		// may use different compression or encryption settings
+		id, ok := chunkIDFromFilename(filepath.Base(path), s.extension)
+		if !ok {
 			return nil
 		}
 		// See if the chunk we're looking at is in the list we want to keep, if not
@@ -251,11 +234,6 @@ func (s LocalStore) GetChunkSize(id ChunkID) (int64, error) {
 func (s LocalStore) nameFromID(id ChunkID) (dir, name string) {
 	sID := id.String()
 	dir = filepath.Join(s.Base, sID[0:4])
-	name = filepath.Join(dir, sID)
-	if s.Opt.Uncompressed {
-		name += UncompressedChunkExt
-	} else {
-		name += CompressedChunkExt
-	}
+	name = filepath.Join(dir, sID) + s.extension
 	return
 }

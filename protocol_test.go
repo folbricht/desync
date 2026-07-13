@@ -7,6 +7,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -89,8 +90,5 @@ func TestProtocol(t *testing.T) {
 	w1.Close()
 	w2.Close()
 
-	err := g.Wait()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, g.Wait())
 }

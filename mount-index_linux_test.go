@@ -1,7 +1,6 @@
 package desync
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"os"
@@ -9,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMountIndex(t *testing.T) {
@@ -17,27 +18,19 @@ func TestMountIndex(t *testing.T) {
 
 	// Define the store
 	s, err := NewLocalStore("testdata/blob1.store", StoreOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer s.Close()
 
 	// Read the index
 	f, err := os.Open("testdata/blob1.caibx")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 	index, err := IndexFromReader(f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Calculate the expected hash
 	b, err := os.ReadFile("testdata/blob1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	wantHash := sha256.Sum256(b)
 
 	// Make sure that the unmount happens on exit
@@ -59,19 +52,15 @@ func TestMountIndex(t *testing.T) {
 
 	select {
 	case err = <-c:
-		t.Fatal(err)
+		require.FailNow(t, "mount exited early", "%v", err)
 	case <-time.After(time.Second):
 	}
 
 	// Calculate the hash of the file in the mount point
 	b, err = os.ReadFile(filepath.Join(mnt, "blob1"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	gotHash := sha256.Sum256(b)
 
 	// Compare the checksums
-	if !bytes.Equal(gotHash[:], wantHash[:]) {
-		t.Fatalf("unexpected hash of mounted file. Want %x, got %x", gotHash, wantHash)
-	}
+	require.Equal(t, wantHash, gotHash)
 }

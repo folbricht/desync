@@ -19,6 +19,9 @@ type GCIndexStore struct {
 // NewGCIndexStore creates an index store with Google Storage backing. The URL
 // should be provided like this: gc://bucket/prefix
 func NewGCIndexStore(location *url.URL, opt StoreOptions) (s GCIndexStore, e error) {
+	if err := opt.ValidateIndexOptions(); err != nil {
+		return s, err
+	}
 	b, err := NewGCStoreBase(location, opt)
 	if err != nil {
 		return s, err

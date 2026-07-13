@@ -26,6 +26,10 @@ func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	indexName := path.Base(r.URL.Path)
+	if !validIndexName(indexName) {
+		http.Error(w, "invalid index name", http.StatusBadRequest)
+		return
+	}
 
 	switch r.Method {
 	case "GET":
@@ -62,12 +66,18 @@ func (h HTTPIndexHandler) get(indexName string, w http.ResponseWriter) {
 }
 
 func (h HTTPIndexHandler) head(indexName string, w http.ResponseWriter) {
-	_, err := h.s.GetIndexReader(indexName)
+	rdr, err := h.s.GetIndexReader(indexName)
 	if err != nil {
-		w.WriteHeader(http.StatusOK)
+		if os.IsNotExist(err) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "failed to retrieve index %s: %s\n", indexName, err)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	w.WriteHeader(http.StatusNotFound)
+	defer rdr.Close()
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h HTTPIndexHandler) put(indexName string, w http.ResponseWriter, r *http.Request) {

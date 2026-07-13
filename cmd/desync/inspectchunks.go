@@ -79,15 +79,34 @@ func runInspectChunks(ctx context.Context, opt inspectChunksOptions, args []stri
 		var ok bool
 		s, ok = sr.(desync.LocalStore)
 
+		// On Windows, storeFromLocation wraps local stores in a
+		// WriteDedupQueue, so unwrap it to reach the LocalStore.
+		if !ok {
+			if q, isQueue := sr.(*desync.WriteDedupQueue); isQueue {
+				s, ok = q.S.(desync.LocalStore)
+			}
+		}
+
 		if !ok {
 			return fmt.Errorf("'%s' is not a local store", opt.store)
 		}
 	}
 
+	// Get sizes in the store only if they differ from the plain size, i.e.
+	// a converter such as compression or encryption is configured. The
+	// store constructor already validated the options, so this can't fail.
+	var converted bool
+	if opt.store != "" {
+		converters, err := s.Opt.StorageConverters()
+		if err != nil {
+			return err
+		}
+		converted = len(converters) > 0
+	}
+
 	for _, chunk := range c.Chunks {
 		var size int64 = 0
-		// Get the compressed size only if the store actually has compressed chunks
-		if opt.store != "" && !s.Opt.Uncompressed {
+		if converted {
 			size, _ = s.GetChunkSize(chunk.ID)
 		}
 

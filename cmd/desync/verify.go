@@ -23,15 +23,16 @@ func newVerifyCommand(ctx context.Context) *cobra.Command {
 		Short: "Read chunks in a store and verify their integrity",
 		Long: `Reads all chunks in a local store and verifies their integrity. If -r is used,
 invalid chunks are deleted from the store.`,
-		Example: `  desync verify -s /path/to/store`,
-		Args:    cobra.NoArgs,
+		Example: `  desync verify -s /path/to/store
+  desync verify -s /path/to/store -r`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerify(ctx, opt, args)
 		},
 		SilenceUsage: true,
 	}
 	flags := cmd.Flags()
-	flags.StringVarP(&opt.store, "store", "s", "", "target store")
+	flags.StringVarP(&opt.store, "store", "s", "", "local store to verify")
 	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
 	flags.BoolVarP(&opt.repair, "repair", "r", false, "remove invalid chunks from the store")
 	return cmd

@@ -2,7 +2,9 @@ package desync
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -92,6 +94,13 @@ type StoreOptions struct {
 
 	// Store and read chunks uncompressed, without chunk file extension
 	Uncompressed bool `json:"uncompressed"`
+
+	// Encrypt chunks in storage. The key is expected to be a hex-encoded 256-bit
+	// key, for example generated with `openssl rand -hex 32`. Supported algorithms
+	// are xchacha20-poly1305 (default) and aes-256-gcm.
+	Encryption          bool   `json:"encryption,omitempty"`
+	EncryptionAlgorithm string `json:"encryption-algorithm,omitempty"`
+	EncryptionKey       string `json:"encryption-key,omitempty"`
 }
 
 // NewStoreOptionsWithDefaults creates a new StoreOptions struct with the default values set
@@ -109,15 +118,62 @@ func (o *StoreOptions) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, (*Alias)(o))
 }
 
-// Returns data converters that convert between plain and storage-format. Each layer
-// represents a modification such as compression or encryption and is applied in order
-// depending on the direction of data. If data is written to storage, the layer's toStorage
-// method is called in the order they are returned. If data is read, the fromStorage
-// method is called in reverse order.
-func (o *StoreOptions) converters() []converter {
-	var m []converter
+// StorageConverters returns data converters that convert between plain and
+// storage-format. Each layer represents a modification such as compression
+// or encryption and is applied in order depending on the direction of data.
+// If data is written to storage, the layer's toStorage method is called in
+// the order they are returned. If data is read, the fromStorage method is
+// called in reverse order.
+func (o StoreOptions) StorageConverters() (Converters, error) {
+	var c Converters
 	if !o.Uncompressed {
-		m = append(m, Compressor{})
+		c = append(c, Compressor{})
 	}
-	return m
+	if !o.Encryption && o.EncryptionConfigured() {
+		// Refuse configs that set a key or algorithm without turning encryption
+		// on. Silently writing plaintext chunks is the one failure mode this
+		// feature must not have.
+		return nil, errors.New("encryption-key or encryption-algorithm configured without setting encryption to true")
+	}
+	if o.Encryption {
+		if o.EncryptionKey == "" {
+			return nil, errors.New("no encryption key configured")
+		}
+		key, err := hex.DecodeString(o.EncryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("invalid encryption key, expected hex-encoded 256-bit key: %w", err)
+		}
+		newAEAD := NewXChaCha20Poly1305
+		switch o.EncryptionAlgorithm {
+		case "", "xchacha20-poly1305":
+		case "aes-256-gcm":
+			newAEAD = NewAES256GCM
+		default:
+			return nil, fmt.Errorf("unsupported encryption algorithm %q", o.EncryptionAlgorithm)
+		}
+		enc, err := newAEAD(key)
+		if err != nil {
+			return nil, err
+		}
+		c = append(c, enc)
+	}
+	return c, nil
+}
+
+// EncryptionConfigured returns true if any of the encryption options is set,
+// regardless of whether the combination is valid.
+func (o StoreOptions) EncryptionConfigured() bool {
+	return o.Encryption || o.EncryptionKey != "" || o.EncryptionAlgorithm != ""
+}
+
+// ValidateIndexOptions returns an error if the options contain settings that
+// don't apply to index stores. Encryption only covers chunks, indexes are
+// always stored in plain form. Index stores reject encryption options rather
+// than silently ignoring them, which could be mistaken for indexes being
+// stored encrypted.
+func (o StoreOptions) ValidateIndexOptions() error {
+	if o.EncryptionConfigured() {
+		return errors.New("encryption is not supported by index stores")
+	}
+	return nil
 }

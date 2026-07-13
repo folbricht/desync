@@ -1,12 +1,16 @@
 package desync
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPStoreURL(t *testing.T) {
@@ -32,13 +36,9 @@ func TestHTTPStoreURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = test.storePath
 			s, err := NewRemoteHTTPStore(u, StoreOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			s.GetChunk(chunkID)
-			if requestURI != test.serverPath {
-				t.Fatalf("got request uri '%s', want '%s'", requestURI, test.serverPath)
-			}
+			require.Equal(t, test.serverPath, requestURI)
 		})
 	}
 }
@@ -106,15 +106,17 @@ func TestHasChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
 			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			attemptCount = 0
 			hasChunk, err := s.HasChunk(test.chunkId)
-			if (hasChunk != test.hasChunk) || ((err != nil) != test.hasError) || (attemptCount != test.attemptCount) {
-				t.Errorf("expected hasChunk = %t / hasError = %t / attemptCount = %d, got %t / %t / %d", test.hasChunk, test.hasError, test.attemptCount, hasChunk, (err != nil), attemptCount)
+			assert.Equal(t, test.hasChunk, hasChunk)
+			if test.hasError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
+			assert.Equal(t, test.attemptCount, attemptCount)
 		})
 	}
 }
@@ -192,9 +194,7 @@ func TestGetChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
 			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			attemptCount = 0
 			content, err := s.GetChunk(test.chunkId)
@@ -203,9 +203,13 @@ func TestGetChunk(t *testing.T) {
 				uncompressedContent, _ := content.Data()
 				content_string = string(uncompressedContent)
 			}
-			if (content_string != test.content) || ((err != nil) != test.hasError) || (attemptCount != test.attemptCount) {
-				t.Errorf("expected content = \"%s\" / hasError = %t / attemptCount = %d, got \"%s\" / %t / %d", test.content, test.hasError, test.attemptCount, content_string, (err != nil), attemptCount)
+			assert.Equal(t, test.content, content_string)
+			if test.hasError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
+			assert.Equal(t, test.attemptCount, attemptCount)
 		})
 	}
 }
@@ -291,9 +295,7 @@ func TestPutChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u.Path = "/"
 			s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 5, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			attemptCount = 0
 			writtenContent = nil
@@ -303,9 +305,82 @@ func TestPutChunk(t *testing.T) {
 			if writtenContent != nil {
 				writtenContentString = string(writtenContent)
 			}
-			if ((err != nil) != test.hasError) || (attemptCount != test.attemptCount) || (writtenContentString != test.writtenContent) {
-				t.Errorf("expected writtenContent = \"%s\" / hasError = %t / attemptCount = %d, got \"%s\" / %t / %d", test.writtenContent, test.hasError, test.attemptCount, writtenContentString, (err != nil), attemptCount)
+			assert.Equal(t, test.writtenContent, writtenContentString)
+			if test.hasError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
+			assert.Equal(t, test.attemptCount, attemptCount)
 		})
 	}
+}
+
+// When retries are exhausted on a server error, the returned error must
+// reflect the actual status code and response body, not a synthetic status
+// code 0 or an empty message.
+func TestRetryExhaustedError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		io.WriteString(w, "service down for maintenance")
+	}))
+	defer ts.Close()
+	u, _ := url.Parse(ts.URL)
+
+	s, err := NewRemoteHTTPStore(u, StoreOptions{ErrorRetry: 2, ErrorRetryBaseInterval: time.Microsecond, Uncompressed: true})
+	require.NoError(t, err)
+
+	// GetChunk reports the real status code
+	_, err = s.GetChunk(ChunkID{0, 0, 0, 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
+
+	// HasChunk reports the real status code
+	_, err = s.HasChunk(ChunkID{0, 0, 0, 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
+
+	// StoreChunk reports the response body
+	chunk, err := NewChunkWithID(ChunkID{0, 0, 0, 1}, []byte("data"), true)
+	require.NoError(t, err)
+	err = s.StoreChunk(chunk)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "service down for maintenance")
+}
+
+func TestRemoteHTTPPutEncrypted(t *testing.T) {
+	body := new(bytes.Buffer)
+
+	// Setup a dummy server that records the request body (raw chunk data)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(body, r.Body)
+	}))
+	defer ts.Close()
+	u, _ := url.Parse(ts.URL)
+
+	// HTTP client store with encryption and compression
+	httpStore, err := NewRemoteHTTPStore(u, StoreOptions{
+		Uncompressed:  false,
+		Encryption:    true,
+		EncryptionKey: testEncryptionKey,
+	})
+	require.NoError(t, err)
+
+	// Prep a test chunk
+	dataIn := []byte("some data")
+	chunkIn := NewChunk(dataIn)
+
+	// Send the chunk over HTTP
+	err = httpStore.StoreChunk(chunkIn)
+	require.NoError(t, err)
+
+	// If everything worked, the request body should be the chunk data, first
+	// compressed, then encrypted. Unwind it manually to check the layers are in order.
+	dec, err := NewXChaCha20Poly1305(testKey(t, testEncryptionKey))
+	require.NoError(t, err)
+	decrypted, err := dec.fromStorage(body.Bytes())
+	require.NoError(t, err)
+	uncompressed, err := Decompress(nil, decrypted)
+	require.NoError(t, err)
+	require.Equal(t, dataIn, uncompressed)
 }

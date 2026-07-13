@@ -27,6 +27,7 @@ func IndexFromFile(ctx context.Context,
 ) (Index, ChunkingStats, error) {
 
 	stats := ChunkingStats{}
+	var wg sync.WaitGroup
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -116,19 +117,20 @@ func IndexFromFile(ctx context.Context,
 
 	// Link the workers, each one gets a pointer to the next, the last one gets nil
 	for i := 1; i < n; i++ {
-		worker[i-1].next = worker[i]
+		worker[i-1].next.Store(worker[i])
 	}
 
 	// Start the workers
 	for _, w := range worker {
-		go w.start(ctx)
-		defer w.stop() // shouldn't be necessary, but better be safe
+		wg.Go(func() { w.start(ctx) })
+		defer w.stop() // panic/return safety net (idempotent via once)
 	}
 
 	// Go through the workers, starting with the first one, taking all chunks
 	// from their bucket before moving on to the next. It's possible that a worker
 	// reaches the end of the stream before the following worker does (eof=true),
 	// don't advance to the next worker in that case.
+	var chunkErr error
 	for _, w := range worker {
 		for chunk := range w.results {
 			// Assemble the list of chunks in the index
@@ -138,7 +140,8 @@ func IndexFromFile(ctx context.Context,
 		}
 		// Done reading all chunks from this worker, check for any errors
 		if w.err != nil {
-			return index, stats, w.err
+			chunkErr = w.err
+			break
 		}
 		// Stop if this worker reached the end of the stream (it's not necessarily
 		// the last worker!)
@@ -146,7 +149,17 @@ func IndexFromFile(ctx context.Context,
 			break
 		}
 	}
-	return index, stats, nil
+
+	// Stop every worker and wait for all goroutines to fully exit before
+	// copying stats by value into the return. Otherwise the copy races the
+	// workers' atomic stats updates and the count would be incomplete.
+	cancel()
+	for _, w := range worker {
+		w.stop()
+	}
+	wg.Wait()
+
+	return index, stats, chunkErr
 }
 
 // Parallel chunk worker - Splits a stream and stores start, size and ID in
@@ -163,10 +176,15 @@ type pChunker struct {
 	// the absolute position of every boundary that is returned
 	offset uint64
 
-	once  sync.Once
-	done  chan struct{}
-	err   error
-	next  *pChunker
+	once sync.Once
+	done chan struct{}
+	err  error
+
+	// next worker in the chain. Written by this worker when skipping dead
+	// neighbors and read by the previous worker, which may happen concurrently
+	// since the main routine can stop workers mid-iteration.
+	next atomic.Pointer[pChunker]
+
 	eof   bool
 	sync  IndexChunk
 	stats *ChunkingStats
@@ -210,8 +228,9 @@ func (c *pChunker) start(ctx context.Context) {
 
 		// Check if the next worker already has this chunk, at which point we stop
 		// here and let the next continue
-		if c.next != nil {
-			inSync, zeroes := c.next.syncWith(chunk)
+		next := c.next.Load()
+		if next != nil {
+			inSync, zeroes := next.syncWith(chunk)
 			if inSync {
 				return
 			}
@@ -232,8 +251,8 @@ func (c *pChunker) start(ctx context.Context) {
 
 		// If the next worker has stopped and has no more chunks in its bucket,
 		// we want to skip that and try to sync with the one after
-		if c.next != nil && !c.next.active() && len(c.next.results) == 0 {
-			c.next = c.next.next
+		if next != nil && !next.active() && len(next.results) == 0 {
+			c.next.Store(next.next.Load())
 		}
 	}
 }

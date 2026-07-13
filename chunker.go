@@ -115,21 +115,19 @@ type Chunker struct {
 	backingBuf []byte // reusable backing buffer for fillBuffer
 	hitEOF     bool   // true once the reader returned EOF
 
-	// rolling hash values
-	hValue         uint32
-	hWindow        [ChunkerWindowSize]byte
-	hIdx           int
 	hDiscriminator uint32
 
-	// Precomputed values for Lemire's fast divisibility test.
-	// Tests "hValue % d == d-1" without hardware division by rewriting as
-	// "((hValue - (d-1)) >> trailShift) * inverseOdd < threshOdd"
-	// where d's power-of-2 factor is separated out.
+	// Precomputed constants for the boundary test "hValue % d == d-1",
+	// evaluated without hardware division as "hValue+1 is divisible by d".
+	// Factor d = oddPart * 2^k, then (Hacker's Delight §10-17):
+	//   v divisible by d  ⟺  rotr32(v*inverse(oddPart), k) <= (2^32-1)/d
+	// hValue+1 wraps to 0 for hValue == 2^32-1, where the true remainder is
+	// d-1 only if d is a power of two; hQBias shifts the comparison to
+	// exclude exactly that wrapped case when d has an odd factor.
 	hInverseOdd uint32 // modular inverse of odd part of hDiscriminator
-	hThreshOdd  uint32 // ceil(2^32 / odd part of hDiscriminator)
-	hDiscMinus1 uint32 // hDiscriminator - 1
-	hTrailShift uint   // number of trailing zeros in hDiscriminator
-	hTrailMask  uint32 // (1 << hTrailShift) - 1, for checking low bits
+	hQMax       uint32 // (2^32-1)/hDiscriminator - hQBias
+	hQBias      uint32 // 1 if hDiscriminator has an odd factor, else 0
+	hRot        int    // -k, right-rotation by the power-of-2 factor
 }
 
 // NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
@@ -148,15 +146,16 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 	}
 	disc := discriminatorFromAvg(avg)
 
-	// Precompute Lemire's fast divisibility constants.
-	// We want to test: hValue % disc == disc-1
-	// Rewritten as: (hValue - (disc-1)) is divisible by disc
-	// Factor disc = odd * 2^shift, then use modular inverse of odd part.
-	trailShift := uint(bits.TrailingZeros32(disc))
-	oddPart := disc >> trailShift
+	// Precompute the fast divisibility constants, see the Chunker struct
+	// for how they are used. We test "hValue % disc == disc-1" as
+	// "hValue+1 is divisible by disc" with disc = oddPart * 2^k.
+	k := uint(bits.TrailingZeros32(disc))
+	oddPart := disc >> k
 	inverseOdd := modInverse32(oddPart)
-	// threshOdd = ceil(2^32 / oddPart)
-	threshOdd := uint32(((1 << 32) + uint64(oddPart) - 1) / uint64(oddPart))
+	var qBias uint32
+	if oddPart > 1 {
+		qBias = 1
+	}
 
 	return Chunker{
 		r:              r,
@@ -165,10 +164,9 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 		max:            max,
 		hDiscriminator: disc,
 		hInverseOdd:    inverseOdd,
-		hThreshOdd:     threshOdd,
-		hDiscMinus1:    disc - 1,
-		hTrailShift:    trailShift,
-		hTrailMask:     (1 << trailShift) - 1,
+		hQMax:          ^uint32(0)/disc - qBias,
+		hQBias:         qBias,
+		hRot:           -int(k),
 	}, nil
 }
 
@@ -222,63 +220,60 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	// enough bytes in the buffer, or len(c.buf)
 	m := min(len(c.buf), int(c.max))
 
-	// Initialize the rolling hash window with the ChunkerWindowSize bytes
+	// Initialize the rolling hash over the ChunkerWindowSize bytes
 	// immediately prior to min size
-	window := c.buf[c.min-ChunkerWindowSize : c.min]
-	for i, b := range window {
-		c.hValue ^= bits.RotateLeft32(hashTable[b], ChunkerWindowSize-i-1)
+	var hValue uint32
+	for i, b := range c.buf[c.min-ChunkerWindowSize : c.min] {
+		hValue ^= bits.RotateLeft32(hashTable[b], ChunkerWindowSize-i-1)
 	}
-	copy(c.hWindow[:], window)
 
-	// Position the pointer at the minimum size
-	var pos = int(c.min)
+	// The window bytes all live in c.buf, so instead of maintaining a ring
+	// buffer, the byte leaving the window at position pos is simply
+	// c.buf[pos-ChunkerWindowSize]. in and out are the incoming and
+	// outgoing byte ranges, sliced to equal length n.
+	base := int(c.min)
+	n := m - base
+	in := c.buf[base : base+n]
+	out := c.buf[base-ChunkerWindowSize : base-ChunkerWindowSize+n]
 
-	// Hoist frequently accessed struct fields into locals to avoid
-	// repeated pointer dereferences in the hot loop.
-	hValue := c.hValue
-	hIdx := c.hIdx
-	buf := c.buf
-	win := &c.hWindow
+	// Hoist frequently accessed struct fields and the table addresses into
+	// locals to avoid repeated pointer dereferences in the hot loop.
 	inverseOdd := c.hInverseOdd
-	threshOdd := c.hThreshOdd
-	discMinus1 := c.hDiscMinus1
-	trailShift := c.hTrailShift
-	trailMask := c.hTrailMask
+	qMax := c.hQMax
+	qBias := c.hQBias
+	rot := c.hRot
+	ht := &hashTable
+	htr := &hashTableRotated
 
-	var out, in byte
-	for {
-		// Add a byte to the hash
-		in = buf[pos]
-		out = win[hIdx]
-		win[hIdx] = in
-		hIdx++
-		if hIdx >= ChunkerWindowSize {
-			hIdx = 0
+	// Process two bytes per iteration. Rolling one byte is
+	// h' = rol1(h) ^ a, with a = hashTableRotated[out] ^ hashTable[in].
+	// Rotation distributes over xor, so two bytes at once is
+	// h'' = rol2(h) ^ rol1(a0) ^ a1, which shortens the loop-carried
+	// dependency chain from two rotate+xor pairs to one rotate and two
+	// xors per two bytes; the table loads, the intermediate hash h1 and
+	// the boundary tests all run off the critical path.
+	//
+	// The boundary test "h % d == d-1" is evaluated as "h+1 divisible
+	// by d" using the multiply-and-rotate divisibility test; see the
+	// Chunker struct for the derivation of the constants.
+	for i := 0; i+1 < n; i += 2 {
+		a0 := htr[out[i]] ^ ht[in[i]]
+		a1 := htr[out[i+1]] ^ ht[in[i+1]]
+		h1 := bits.RotateLeft32(hValue, 1) ^ a0
+		hValue = bits.RotateLeft32(hValue, 2) ^ bits.RotateLeft32(a0, 1) ^ a1
+
+		if bits.RotateLeft32((h1+1)*inverseOdd, rot)-qBias <= qMax {
+			return c.split(base+i+1, nil)
 		}
-		hValue = bits.RotateLeft32(hValue, 1) ^
-			hashTableRotated[out] ^
-			hashTable[in]
-
-		pos++
-
-		// didn't find a boundary before reaching the max?
-		if pos >= m {
-			// Write locals back (split resets them, but keep state consistent)
-			c.hValue = hValue
-			c.hIdx = hIdx
-			return c.split(pos, nil)
-		}
-
-		// Did we find a boundary? Uses Lemire's fast divisibility test:
-		// "hValue % d == d-1" ⟺ "(hValue - (d-1)) is divisible by d"
-		// Factor d = oddPart * 2^trailShift, check 2-part divisibility.
-		adjusted := hValue - discMinus1
-		if adjusted&trailMask == 0 && (adjusted>>trailShift)*inverseOdd < threshOdd {
-			c.hValue = hValue
-			c.hIdx = hIdx
-			return c.split(pos, nil)
+		if bits.RotateLeft32((hValue+1)*inverseOdd, rot)-qBias <= qMax {
+			return c.split(base+i+2, nil)
 		}
 	}
+
+	// No boundary found before reaching the max chunk size. If n is odd, the
+	// leftover byte needs no processing: a boundary there would split at m
+	// anyway, and the hash state is discarded on split.
+	return c.split(m, nil)
 }
 
 func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
@@ -287,10 +282,6 @@ func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
 	b := c.buf[:i]
 	c.buf = c.buf[i:]
 	c.start += uint64(i)
-
-	// reset the hash
-	c.hIdx = 0
-	c.hValue = 0
 	return start, b, err
 }
 

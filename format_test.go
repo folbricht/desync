@@ -3,15 +3,14 @@ package desync
 import (
 	"bytes"
 	"os"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestFormatDecoder(t *testing.T) {
 	f, err := os.Open("testdata/flat.catar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	d := NewFormatDecoder(f)
@@ -49,46 +48,30 @@ func TestFormatDecoder(t *testing.T) {
 
 	for _, exp := range expected {
 		v, err := d.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if reflect.TypeOf(exp) != reflect.TypeOf(v) {
-			t.Fatalf("expected %s, got %s", reflect.TypeOf(exp), reflect.TypeOf(v))
-		}
+		require.NoError(t, err)
+		require.IsType(t, exp, v)
 	}
 }
 
 func TestIndexDecoder(t *testing.T) {
 	f, err := os.Open("testdata/index.caibx")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	d := NewFormatDecoder(f)
 
 	// The file should start with the index
 	e, err := d.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	index, ok := e.(FormatIndex)
-	if !ok {
-		t.Fatal("file doesn't start with an index")
-	}
-	if index.FeatureFlags != CaFormatSHA512256|CaFormatExcludeNoDump {
-		t.Fatal("index flags don't match expected")
-	}
+	require.True(t, ok, "file doesn't start with an index")
+	require.Equal(t, uint64(CaFormatSHA512256|CaFormatExcludeNoDump), index.FeatureFlags)
 
 	// Now get the table with the chunks
 	e, err = d.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	table, ok := e.(FormatTable)
-	if !ok {
-		t.Fatal("index table not found")
-	}
+	require.True(t, ok, "index table not found")
 
 	// Define the chunk IDs and the order they should be in the file
 	expected := []string{
@@ -97,15 +80,11 @@ func TestIndexDecoder(t *testing.T) {
 		"fadff4b303624f2be3d0e04c2f105306118a9f608ef1e4f83c1babbd23a2315f",
 	}
 	// Check the expected length of the table
-	if len(table.Items) != len(expected) {
-		t.Fatalf("expected %d chunks in index table, got %d", len(expected), len(table.Items))
-	}
+	require.Len(t, table.Items, len(expected))
 	// And then make sure the IDs and order match
 	for i := range expected {
 		id, _ := ChunkIDFromString(expected[i])
-		if table.Items[i].Chunk != id {
-			t.Fatalf("expected chunk %s, got %s", id, table.Items[i].Chunk)
-		}
+		require.Equal(t, id, table.Items[i].Chunk)
 	}
 }
 
@@ -118,9 +97,7 @@ func TestEncoder(t *testing.T) {
 	}
 	for _, name := range files {
 		in, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Decoder
 		d := NewFormatDecoder(bytes.NewReader(in))
@@ -133,26 +110,18 @@ func TestEncoder(t *testing.T) {
 		var total int64
 		for {
 			v, err := d.Next()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if v == nil {
 				break
 			}
 			n, err := e.Encode(v)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			total += n
 		}
 
 		// in/out should match
-		if !bytes.Equal(in, out.Bytes()) {
-			t.Fatalf("decoded/encoded don't match for file '%s'", name)
-		}
-		if total != int64(out.Len()) {
-			t.Fatalf("unexpected length for encoding of '%s'", name)
-		}
+		require.Equal(t, in, out.Bytes(), "decoded/encoded don't match for file '%s'", name)
+		require.Equal(t, int64(out.Len()), total, "unexpected length for encoding of '%s'", name)
 	}
 }
 
@@ -199,7 +168,5 @@ func TestGoodbyeBST(t *testing.T) {
 
 	out := makeGoodbyeBST(in)
 
-	if !reflect.DeepEqual(out, expected) {
-		t.Fatal("BST doesn't match expected")
-	}
+	require.Equal(t, expected, out)
 }

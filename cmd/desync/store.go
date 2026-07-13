@@ -99,7 +99,7 @@ func WritableStore(location string, cmdOpt cmdStoreOptions) (desync.WriteStore, 
 func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 	loc, err := url.Parse(location)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to parse store location %s : %s", location, err)
+		return nil, fmt.Errorf("unable to parse store location %s : %s", location, err)
 	}
 
 	// Get any store options from the config if present and overwrite with settings from
@@ -206,7 +206,7 @@ func writableIndexStore(location string, cmdOpt cmdStoreOptions) (desync.IndexWr
 func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.IndexStore, string, error) {
 	loc, err := url.Parse(location)
 	if err != nil {
-		return nil, "", fmt.Errorf("Unable to parse store location %s : %s", location, err)
+		return nil, "", fmt.Errorf("unable to parse store location %s : %s", location, err)
 	}
 
 	indexName := path.Base(loc.Path)
@@ -231,6 +231,14 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 		return nil, "", err
 	}
 	opt := cmdOpt.MergedWith(configOptions)
+
+	// The index store constructors reject encryption options themselves, but
+	// local and console index stores don't take any options. Check here so a
+	// config entry matching an index location fails uniformly for all backends
+	// instead of silently storing plaintext indexes.
+	if err := opt.ValidateIndexOptions(); err != nil {
+		return nil, "", fmt.Errorf("store options for %q: %w", location, err)
+	}
 
 	var s desync.IndexStore
 	switch loc.Scheme {

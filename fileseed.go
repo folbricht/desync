@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sync"
 )
 
@@ -135,10 +136,9 @@ func (s *FileSeed) maxMatchFrom(chunks []IndexChunk, p int, limit int) []IndexCh
 }
 
 type fileSeedSegment struct {
-	file           string
-	chunks         []IndexChunk
-	canReflink     bool
-	needValidation bool
+	file       string
+	chunks     []IndexChunk
+	canReflink bool
 }
 
 func newFileSeedSegment(file string, chunks []IndexChunk, canReflink bool) *fileSeedSegment {
@@ -181,12 +181,13 @@ func (s *fileSeedSegment) WriteInto(dst *os.File, offset, length, blocksize uint
 // Validate compares all chunks in this slice of the seed index to the underlying data
 // and fails if they don't match.
 func (s *fileSeedSegment) Validate(file *os.File) error {
+	var buf []byte
 	for _, c := range s.chunks {
-		b := make([]byte, c.Size)
-		if _, err := file.ReadAt(b, int64(c.Start)); err != nil {
+		buf = slices.Grow(buf[:0], int(c.Size))[:c.Size]
+		if _, err := file.ReadAt(buf, int64(c.Start)); err != nil {
 			return err
 		}
-		sum := Digest.Sum(b)
+		sum := Digest.Sum(buf)
 		if sum != c.ID {
 			return fmt.Errorf("seed index for %s doesn't match its data", s.file)
 		}
@@ -197,10 +198,10 @@ func (s *fileSeedSegment) Validate(file *os.File) error {
 // Performs a plain copy of everything in the seed to the target, not cloning
 // of blocks.
 func (s *fileSeedSegment) copy(dst, src *os.File, srcOffset, length, dstOffset uint64) (uint64, uint64, error) {
-	if _, err := dst.Seek(int64(dstOffset), os.SEEK_SET); err != nil {
+	if _, err := dst.Seek(int64(dstOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
-	if _, err := src.Seek(int64(srcOffset), os.SEEK_SET); err != nil {
+	if _, err := src.Seek(int64(srcOffset), io.SeekStart); err != nil {
 		return 0, 0, err
 	}
 
@@ -219,6 +220,18 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 
 	srcAlignStart := (srcOffset/blocksize + 1) * blocksize
 	srcAlignEnd := (srcOffset + srcLength) / blocksize * blocksize
+
+	// If the range is too small to contain a full aligned block, there is
+	// nothing that can be cloned. Copy the whole range instead. This also
+	// guards against srcAlignEnd-srcAlignStart underflowing, and against
+	// calling CloneRange with a zero length, which FICLONERANGE interprets
+	// as "clone to the end of the source file". Filesystems with large
+	// blocks, like ZFS with the default 128k recordsize, hit this case
+	// frequently.
+	if srcAlignEnd <= srcAlignStart {
+		return s.copy(dst, src, srcOffset, srcLength, dstOffset)
+	}
+
 	dstAlignStart := (dstOffset/blocksize + 1) * blocksize
 	alignLength := srcAlignEnd - srcAlignStart
 	dstAlignEnd := dstAlignStart + alignLength
@@ -237,5 +250,13 @@ func (s *fileSeedSegment) clone(dst, src *os.File, srcOffset, srcLength, dstOffs
 	}
 	copied += c2
 	// close the aligned blocks
-	return copied, alignLength, CloneRange(dst, src, srcAlignStart, alignLength, dstAlignStart)
+	if err := cloneRange(dst, src, srcAlignStart, alignLength, dstAlignStart); err != nil {
+		// Not every filesystem that passes the CanClone probe can clone every
+		// range. ZFS for example requires alignment to its record size and
+		// refuses to clone data that hasn't been committed to disk yet. Fall
+		// back to copying the blocks.
+		c3, _, err := s.copy(dst, src, srcAlignStart, alignLength, dstAlignStart)
+		return copied + c3, 0, err
+	}
+	return copied, alignLength, nil
 }

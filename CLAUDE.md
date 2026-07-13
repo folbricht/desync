@@ -71,7 +71,7 @@ Stores are composed for routing, caching, and failover:
 
 **Chunking:** `Chunker` (`chunker.go`) uses a rolling hash (SipHash, 48-byte window) for content-defined chunking with configurable min/avg/max sizes (default 16KB/64KB/256KB).
 
-**Converter pipeline** (`coverter.go`): Layered data transformations applied in order for writes, reverse for reads. Currently only compression (zstd via `Compressor`), but designed for adding encryption.
+**Converter pipeline** (`converter.go`): Layered data transformations applied in order for writes, reverse for reads: compression (zstd via `Compressor`) and optional encryption (`encrypt.go`, XChaCha20-Poly1305 or AES-256-GCM). Converter stacks determine the chunk file extension via `storageExtension()`.
 
 **Assembly:** `AssembleFile()` (`assemble.go`) reconstructs files from an index and chunk stores, supporting self-seeding and file seeds for efficient cloning with reflink support (Btrfs/XFS).
 
@@ -105,6 +105,11 @@ Key environment variables: `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `CASYN
 - **Context-based cancellation** — goroutine lifecycle via `context.Context`
 - **`t.Fatal()` restriction** — do not call `t.Fatal()`/`t.FailNow()` from non-main goroutines (see PR #291)
 - **Avoid recompression** — if a chunk already has compressed form, don't recompress (see PR #289)
+
+## Code Style
+
+- **Tests use testify** — write new (or modified) Go tests with `github.com/stretchr/testify`: `require` for fatal checks, `assert` for non-fatal. Don't hand-roll `if … { t.Fatalf(…) }` conditionals. Existing plain-`testing` tests don't need a mass rewrite — apply this to new tests and tests you're already changing. Note: `require.*` calls `FailNow()`, so per the non-main-goroutine `t.Fatal()` restriction in Key Patterns, only use `require.*` from the test goroutine — in spawned goroutines use `assert.*` or pass errors back over a channel.
+- **Build into the main package's directory** — always `go build -o cmd/desync/ ./cmd/desync`, never a bare `go build ./cmd/desync`. The bare form drops an untracked `desync` binary in the repo root (it is not git-ignored). Build artifacts belong next to their `main` package, never the project root.
 
 ## Module
 

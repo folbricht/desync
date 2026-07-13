@@ -59,13 +59,19 @@ func TestLocationEquality(t *testing.T) {
 	// Equal paths
 	require.True(t, locationMatch("/path", "/path/../path"))
 	require.True(t, locationMatch("//path", "//path"))
-	require.True(t, locationMatch("//path", "/path"))
 	require.True(t, locationMatch("./path", "./path"))
 	require.True(t, locationMatch("path", "path/"))
 	require.True(t, locationMatch("path/..", "."))
 	if runtime.GOOS == "windows" {
+		// locationMatch intentionally uses OS-native path semantics for
+		// local paths. On Windows a leading // is a UNC root, so //path
+		// and the drive-relative /path are different; on POSIX they are
+		// the same (asserted in the else branch).
+		require.False(t, locationMatch("//path", "/path"))
 		require.True(t, locationMatch("c:\\path\\to\\somewhere", "c:\\path\\to\\somewhere\\"))
 		require.True(t, locationMatch("/path/to/somewhere", "\\path\\to\\somewhere\\"))
+	} else {
+		require.True(t, locationMatch("//path", "/path"))
 	}
 
 	// Equal paths with globs
@@ -107,9 +113,13 @@ func TestLocationEquality(t *testing.T) {
 	require.False(t, locationMatch("/pat?", "/pat"))
 	require.False(t, locationMatch("/pat?", "/dir"))
 	if runtime.GOOS == "windows" {
-		require.True(t, locationMatch("c:\\path\\to\\*", "c:\\path\\to\\"))
-		require.True(t, locationMatch("/path/to/*", "\\path\\to\\"))
-		require.True(t, locationMatch("c:\\path\\to\\?", "c:\\path\\to\\123\\"))
-		require.True(t, locationMatch("/path/to/?", "\\path\\to\\123\\"))
+		// These belong with the "not equal" cases above, consistent with
+		// POSIX behaviour: dir\* does not match the bare dir (cf.
+		// "/path/*" vs "/path"), and ? matches exactly one character so
+		// it does not match the 3-character segment "123".
+		require.False(t, locationMatch("c:\\path\\to\\*", "c:\\path\\to\\"))
+		require.False(t, locationMatch("/path/to/*", "\\path\\to\\"))
+		require.False(t, locationMatch("c:\\path\\to\\?", "c:\\path\\to\\123\\"))
+		require.False(t, locationMatch("/path/to/?", "\\path\\to\\123\\"))
 	}
 }

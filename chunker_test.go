@@ -3,8 +3,12 @@ package desync
 import (
 	"bytes"
 	"crypto/sha512"
+	"math/bits"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -15,9 +19,7 @@ const (
 
 func TestChunkerLargeFile(t *testing.T) {
 	f, err := os.Open("testdata/chunker.input")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	expected := []struct {
@@ -48,73 +50,42 @@ func TestChunkerLargeFile(t *testing.T) {
 	}
 
 	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	for i, e := range expected {
 		start, buf, err := c.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		chunkID := ChunkID(sha512.Sum512_256(buf))
-		hash := (&chunkID).String()
-		if hash != e.ID {
-			t.Fatalf("chunk #%d, unexpected hash %s, expected %s", i+1, hash, e.ID)
-		}
-		if start != e.Start {
-			t.Fatalf("chunk #%d, unexpected start %d, expected %d", i+1, start, e.Start)
-		}
-		if uint64(len(buf)) != e.Size {
-			t.Fatalf("chunk #%d, unexpected size %d, expected %d", i+1, uint64(len(buf)), e.Size)
-		}
+		require.Equal(t, e.ID, chunkID.String(), "chunk #%d hash", i+1)
+		require.Equal(t, e.Start, start, "chunk #%d start", i+1)
+		require.Equal(t, e.Size, uint64(len(buf)), "chunk #%d size", i+1)
 	}
 	// Should get a size of 0 at the end
 	_, buf, err := c.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(buf) != 0 {
-		t.Fatalf("expected size 0 at the end, got %d", len(buf))
-	}
+	require.NoError(t, err)
+	require.Empty(t, buf, "expected size 0 at the end")
 }
 
 func TestChunkerEmptyFile(t *testing.T) {
 	r := bytes.NewReader([]byte{})
 	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	start, buf, err := c.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(buf) != 0 {
-		t.Fatalf("unexpected size %d, expected 0", len(buf))
-	}
-	if start != 0 {
-		t.Fatalf("unexpected start position %d, expected 0", start)
-	}
+	require.NoError(t, err)
+	require.Empty(t, buf)
+	require.Equal(t, uint64(0), start)
 }
 
 func TestChunkerSmallFile(t *testing.T) {
 	b := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	r := bytes.NewReader(b)
 	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	start, buf, err := c.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(buf) != len(b) {
-		t.Fatalf("unexpected size %d, expected %d", len(buf), len(b))
-	}
-	if start != 0 {
-		t.Fatalf("unexpected start position %d, expected 0", start)
-	}
+	require.NoError(t, err)
+	require.Len(t, buf, len(b))
+	require.Equal(t, uint64(0), start)
 }
 
 // There are no chunk boundaries when all data is nil, make sure we get the
@@ -123,23 +94,15 @@ func TestChunkerNoBoundary(t *testing.T) {
 	b := make([]byte, 1024*1024)
 	r := bytes.NewReader(b)
 	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for {
 		start, buf, err := c.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if len(buf) == 0 {
 			break
 		}
-		if uint64(len(buf)) != ChunkSizeMaxDefault {
-			t.Fatalf("unexpected size %d, expected %d", len(buf), ChunkSizeMaxDefault)
-		}
-		if start%ChunkSizeMaxDefault != 0 {
-			t.Fatalf("unexpected start position %d, expected 0", start)
-		}
+		require.Equal(t, ChunkSizeMaxDefault, uint64(len(buf)))
+		require.Zero(t, start%ChunkSizeMaxDefault, "unexpected start position %d", start)
 	}
 }
 
@@ -157,20 +120,12 @@ func TestChunkerBounds(t *testing.T) {
 			b := make([]byte, c.size)
 			r := bytes.NewReader(b)
 			c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			start, buf, err := c.Next()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(buf) != len(b) {
-				t.Fatalf("unexpected size %d, expected %d", len(buf), len(b))
-			}
-			if start != 0 {
-				t.Fatalf("unexpected start position %d, expected 0", start)
-			}
+			require.NoError(t, err)
+			require.Len(t, buf, len(b))
+			require.Equal(t, uint64(0), start)
 		})
 	}
 }
@@ -195,46 +150,28 @@ func TestChunkerAdvance(t *testing.T) {
 	input := join(nullChunk.Data, dataA, nullChunk.Data, dataB)
 
 	c, err := NewChunker(bytes.NewReader(input), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Chunk the first part, this should be a null chunk
 	_, buf, err := c.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(buf, nullChunk.Data) {
-		t.Fatal("expected null chunk")
-	}
+	require.NoError(t, err)
+	require.Equal(t, nullChunk.Data, buf, "expected null chunk")
 
 	// Now skip the dataA slice
-	if err := c.Advance(len(dataA)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, c.Advance(len(dataA)))
 
 	// Read the 2nd null chunk
 	_, buf, err = c.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(buf, nullChunk.Data) {
-		t.Fatal("expected null chunk")
-	}
+	require.NoError(t, err)
+	require.Equal(t, nullChunk.Data, buf, "expected null chunk")
 
 	// Skip over dataB
-	if err := c.Advance(len(dataB)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, c.Advance(len(dataB)))
 
 	// Should be at the end, nothing more to chunk
 	_, buf, err = c.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(buf) != 0 {
-		t.Fatal("expected end of input")
-	}
+	require.NoError(t, err)
+	require.Empty(t, buf, "expected end of input")
 }
 
 // Global vars used for results during the benchmark to prevent optimizer
@@ -243,6 +180,37 @@ var (
 	chunkStart uint64
 	chunkBuf   []byte
 )
+
+// TestChunkerBoundaryTest verifies that the division-free boundary test built
+// from the precomputed constants in NewChunker behaves exactly like the
+// plain "hValue % d == d-1" for all edge cases, in particular the values
+// where hValue+1 or hValue-(d-1) would wrap around 2^32. An earlier version
+// of the fast test declared a false boundary for one hash value per
+// discriminator (e.g. 14413 for the default 64KB average chunk size).
+func TestChunkerBoundaryTest(t *testing.T) {
+	for _, avg := range []uint64{16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024} {
+		c, err := NewChunker(bytes.NewReader(nil), avg/4, avg, avg*4)
+		require.NoError(t, err)
+		d := c.hDiscriminator
+
+		check := func(h uint32) {
+			want := h%d == d-1
+			got := bits.RotateLeft32((h+1)*c.hInverseOdd, c.hRot)-c.hQBias <= c.hQMax
+			if want != got {
+				assert.Equal(t, want, got, "hash value %d, discriminator %d", h, d)
+			}
+		}
+
+		// The low range covers the wrap-around of hValue-(d-1), the high
+		// range covers the wrap-around of hValue+1.
+		for h := uint32(0); h < 3*d; h++ {
+			check(h)
+		}
+		for h := ^uint32(0) - 3*d; h != 0; h++ {
+			check(h)
+		}
+	}
+}
 
 func BenchmarkChunker(b *testing.B) {
 	data, err := os.ReadFile("testdata/chunker.input")

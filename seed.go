@@ -8,6 +8,10 @@ import (
 // DefaultBlockSize is used when the actual filesystem block size cannot be determined automatically
 const DefaultBlockSize = 4096
 
+// cloneRange is an indirection over CloneRange that allows tests to simulate
+// filesystems where CanClone succeeds but actual cloning fails (e.g. ZFS).
+var cloneRange = CloneRange
+
 // Seed represent a source of chunks other than the store. Typically a seed is
 // another index+blob that present on disk already and is used to copy or clone
 // existing chunks or blocks into the target from.

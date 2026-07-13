@@ -20,21 +20,23 @@ func newPruneCommand(ctx context.Context) *cobra.Command {
 	var opt pruneOptions
 
 	cmd := &cobra.Command{
-		Use:   "prune <index> [<file>..]",
+		Use:   "prune <index> [<index>...]",
 		Short: "Remove unreferenced chunks from a store",
-		Long: `Read chunk IDs in from index files and delete any chunks from a store
-that are not referenced in the provided index files. Use '-' to read a single index
-from STDIN.`,
-		Example: `  desync prune -s /path/to/local --yes file.caibx`,
-		Args:    cobra.MinimumNArgs(1),
+		Long: `Read chunk IDs from index files and delete all chunks from a store
+that are not referenced in any of the provided index files. This is a
+destructive operation; a confirmation prompt is shown before any chunks are
+deleted unless --yes is used. Use '-' to read a single index from STDIN.`,
+		Example: `  desync prune -s /path/to/local --yes file.caibx
+  desync prune -s /path/to/local current.caibx previous.caibx`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPrune(ctx, opt, args)
 		},
 		SilenceUsage: true,
 	}
 	flags := cmd.Flags()
-	flags.StringVarP(&opt.store, "store", "s", "", "target store")
-	flags.BoolVarP(&opt.yes, "yes", "y", false, "do not ask for confirmation")
+	flags.StringVarP(&opt.store, "store", "s", "", "store to prune")
+	flags.BoolVarP(&opt.yes, "yes", "y", false, "do not ask for confirmation before deleting chunks")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
 }

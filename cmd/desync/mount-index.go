@@ -40,14 +40,14 @@ the index from STDIN.
 When a Copy-on-Read file is given (with --cor-file), the file is used as a fast cache.
 All chunks that are accessed by the mount are retrieved from the store and written into
 the file as read operations are performed. Once all chunks have been accessed, the COR
-file is fully populated. On termination, a <name>.state file is written containing
-information about which chunks of the index have or have not been read. A state file is
-only valid for one cache file and one index. When re-using it with a different index,
-data corruption can occur.
+file is fully populated. If --cor-state-save is given, a state file is written on
+termination (and on SIGHUP) containing information about which chunks of the index have
+or have not been read. A state file is only valid for one cache file and one index.
+When re-using it with a different index, data corruption can occur.
 
 This command supports the --store-file option which can be used to define the stores
 and caches in a JSON file. The config can then be reloaded by sending a SIGHUP without
-needing to restart the server. This can be done under load as well.
+having to unmount and remount. This can be done under load as well.
 `,
 		Example: `  desync mount-index -s http://192.168.1.1/ file.caibx /mnt/blob
   desync mount-index -s /path/to/store --cor-file /var/tmp/blob.cor blob.caibx /mnt/blob
@@ -63,8 +63,8 @@ needing to restart the server. This can be done under load as well.
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.StringVar(&opt.storeFile, "store-file", "", "read store arguments from a file, supports reload on SIGHUP")
 	flags.StringVarP(&opt.corFile, "cor-file", "", "", "use a copy-on-read sparse file as cache")
-	flags.StringVarP(&opt.StateSaveFile, "cor-state-save", "", "", "file to store the state for copy-on-read")
-	flags.StringVarP(&opt.StateInitFile, "cor-state-init", "", "", "copy-on-read state init file")
+	flags.StringVarP(&opt.StateSaveFile, "cor-state-save", "", "", "file to store the copy-on-read state in on exit or SIGHUP")
+	flags.StringVarP(&opt.StateInitFile, "cor-state-init", "", "", "state file to initialize the copy-on-read cache from")
 	flags.IntVarP(&opt.StateInitConcurrency, "cor-init-n", "", 10, "number of goroutines to use for initialization (with --cor-state-init)")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd

@@ -22,6 +22,9 @@ type S3IndexStore struct {
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3_SECRET_KEY, or via the desync config file.
 func NewS3IndexStore(location *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions, lookupType minio.BucketLookupType) (s S3IndexStore, e error) {
+	if err := opt.ValidateIndexOptions(); err != nil {
+		return s, err
+	}
 	b, err := NewS3StoreBase(location, s3Creds, region, opt, lookupType)
 	if err != nil {
 		return s, err

@@ -25,6 +25,9 @@ type S3StoreBase struct {
 	prefix     string
 	opt        StoreOptions
 	converters Converters
+
+	// Chunk file extension, derived from the converters at construction
+	extension string
 }
 
 // S3Store is a read-write store with S3 backing
@@ -34,8 +37,11 @@ type S3Store struct {
 
 // NewS3StoreBase initializes a base object used for chunk or index stores backed by S3.
 func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions, lookupType minio.BucketLookupType) (S3StoreBase, error) {
-	var err error
-	s := S3StoreBase{Location: u.String(), opt: opt, converters: opt.converters()}
+	converters, err := opt.StorageConverters()
+	if err != nil {
+		return S3StoreBase{}, err
+	}
+	s := S3StoreBase{Location: u.String(), opt: opt, converters: converters, extension: converters.storageExtension()}
 	if !strings.HasPrefix(u.Scheme, "s3+http") {
 		return s, fmt.Errorf("invalid scheme '%s', expected 's3+http' or 's3+https'", u.Scheme)
 	}
@@ -106,22 +112,24 @@ retry:
 
 	b, err := io.ReadAll(obj)
 	if err != nil {
+		// Don't retry if the chunk or the bucket doesn't exist, those aren't
+		// transient errors. A missing chunk in particular is a normal
+		// occurrence when this store is behind a router or cache.
+		if e, ok := err.(minio.ErrorResponse); ok {
+			switch e.Code {
+			case "NoSuchBucket":
+				return nil, fmt.Errorf("bucket '%s' does not exist", s.bucket)
+			case "NoSuchKey":
+				return nil, ChunkMissing{ID: id}
+			}
+		}
 		if attempt <= s.opt.ErrorRetry {
 			obj.Close()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
-		if e, ok := err.(minio.ErrorResponse); ok {
-			switch e.Code {
-			case "NoSuchBucket":
-				err = fmt.Errorf("bucket '%s' does not exist", s.bucket)
-			case "NoSuchKey":
-				err = ChunkMissing{ID: id}
-			default: // Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
-				err = errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
-			}
-		}
-		return nil, err
+		// Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
+		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
 	}
 
 	// A short read of the chunk body (e.g. flaky transport/endpoint) can leave us
@@ -195,7 +203,7 @@ func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		default:
 		}
 
-		id, err := s.idFromName(object.Key)
+		id, err := chunkIDFromObjectName(object.Key, s.prefix, s.extension)
 		if err != nil {
 			continue
 		}
@@ -212,36 +220,6 @@ func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 func (s S3Store) nameFromID(id ChunkID) string {
 	sID := id.String()
-	name := s.prefix + sID[0:4] + "/" + sID
-	if s.opt.Uncompressed {
-		name += UncompressedChunkExt
-	} else {
-		name += CompressedChunkExt
-	}
+	name := s.prefix + sID[0:4] + "/" + sID + s.extension
 	return name
-}
-
-func (s S3Store) idFromName(name string) (ChunkID, error) {
-	var n string
-	if s.opt.Uncompressed {
-		if !strings.HasSuffix(name, UncompressedChunkExt) {
-			return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
-		}
-		n = strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), UncompressedChunkExt)
-	} else {
-		if !strings.HasSuffix(name, CompressedChunkExt) {
-			return ChunkID{}, fmt.Errorf("object %s is not a chunk", name)
-		}
-		n = strings.TrimSuffix(strings.TrimPrefix(name, s.prefix), CompressedChunkExt)
-	}
-	fragments := strings.Split(n, "/")
-	if len(fragments) != 2 {
-		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
-	}
-	idx := fragments[0]
-	sid := fragments[1]
-	if !strings.HasPrefix(sid, idx) {
-		return ChunkID{}, fmt.Errorf("incorrect chunk name for object %s", name)
-	}
-	return ChunkIDFromString(sid)
 }
