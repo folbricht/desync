@@ -10,12 +10,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 
-	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/errgroup"
+	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
@@ -40,8 +41,17 @@ func retryPredicate(resp *http.Response, err error) (bool, error) {
 	return retry.DefaultPredicate(resp, nil)
 }
 
-var _ WriteStore = OCIStore{}
 var _ PruneStore = OCIStore{}
+
+// ociEmptyConfig is the config descriptor shared by all chunk manifests: the
+// spec's empty-JSON descriptor with the inline Data payload stripped so it is
+// never serialized into manifests. The payload itself is pushed as a regular
+// blob by ensureConfigBlob.
+var ociEmptyConfig = func() ocispec.Descriptor {
+	d := ocispec.DescriptorEmptyJSON
+	d.Data = nil
+	return d
+}()
 
 // OCIStore operates on chunks in an OCI registry. Every chunk is stored as its
 // own artifact: a blob holding the chunk in storage format (compressed and/or
@@ -54,14 +64,21 @@ var _ PruneStore = OCIStore{}
 // one repository. The manifest also keeps the blob referenced, protecting it
 // from registry garbage collection of unreferenced blobs.
 type OCIStore struct {
-	repo         *remote.Repository
-	location     string
-	opt          StoreOptions
-	converters   Converters
-	configPushed *atomic.Bool
+	repo       *remote.Repository
+	location   string
+	opt        StoreOptions
+	converters Converters
+	config     *ociConfigBlobState
 
 	// Chunk tag extension, derived from the converters at construction
 	extension string
+}
+
+// ociConfigBlobState tracks whether the shared empty config blob is known to
+// exist in the registry. Shared by all copies of a store value.
+type ociConfigBlobState struct {
+	mu     sync.Mutex
+	pushed bool
 }
 
 // NewOCIStore initializes a store using an OCI registry as backend.
@@ -115,12 +132,12 @@ func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCISt
 		return OCIStore{}, err
 	}
 	s := OCIStore{
-		repo:         repo,
-		location:     u.String(),
-		opt:          opt,
-		converters:   converters,
-		configPushed: &atomic.Bool{},
-		extension:    converters.storageExtension(),
+		repo:       repo,
+		location:   u.String(),
+		opt:        opt,
+		converters: converters,
+		config:     &ociConfigBlobState{},
+		extension:  converters.storageExtension(),
 	}
 	return s, nil
 }
@@ -143,9 +160,16 @@ func (s OCIStore) Close() error { return nil }
 // looked up by tag, then the blob it references is fetched.
 func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
 	ctx := context.Background()
-	blobDesc, err := s.resolveChunkBlob(ctx, id)
+	manifest, _, err := s.fetchChunkManifest(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if len(manifest.Layers) != 1 {
+		return nil, fmt.Errorf("manifest for chunk %s in %s references %d blobs, expected exactly one", id.String(), s, len(manifest.Layers))
+	}
+	blobDesc := manifest.Layers[0]
+	if blobDesc.Size < 0 || blobDesc.Size > maxOCIChunkBlobSize {
+		return nil, fmt.Errorf("manifest for chunk %s in %s references a blob of invalid size %d", id.String(), s, blobDesc.Size)
 	}
 	r, err := s.repo.Blobs().Fetch(ctx, blobDesc)
 	if err != nil {
@@ -164,13 +188,15 @@ func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
 	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
 }
 
-// HasChunk returns true if the chunk is in the store.
+// HasChunk returns true if the chunk is in the store. Like all other chunk
+// operations it goes through fetchChunkManifest, so a foreign artifact under
+// a chunk-ID-shaped tag doesn't count as the chunk being present.
 func (s OCIStore) HasChunk(id ChunkID) (bool, error) {
-	_, err := s.repo.Resolve(context.Background(), s.tagFromID(id))
+	_, _, err := s.fetchChunkManifest(context.Background(), id)
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, errdef.ErrNotFound):
+	case errors.Is(err, ChunkMissing{id}):
 		return false, nil
 	default:
 		return false, err
@@ -189,34 +215,25 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 	if err := s.ensureConfigBlob(ctx); err != nil {
 		return err
 	}
-	blobDesc := ocispec.Descriptor{
-		MediaType: "application/octet-stream",
-		Digest:    digest.FromBytes(b),
-		Size:      int64(len(b)),
-	}
+	blobDesc := content.NewDescriptorFromBytes("application/octet-stream", b)
 	if err := s.repo.Blobs().Push(ctx, blobDesc, bytes.NewReader(b)); err != nil {
 		return err
 	}
-	config := ocispec.DescriptorEmptyJSON
-	config.Data = nil
+	tag := s.tagFromID(id)
 	manifest := ocispec.Manifest{
 		Versioned:    specs.Versioned{SchemaVersion: 2},
 		MediaType:    ocispec.MediaTypeImageManifest,
 		ArtifactType: OCIChunkArtifactType,
-		Config:       config,
+		Config:       ociEmptyConfig,
 		Layers:       []ocispec.Descriptor{blobDesc},
-		Annotations:  map[string]string{ocispec.AnnotationTitle: s.tagFromID(id)},
+		Annotations:  map[string]string{ocispec.AnnotationTitle: tag},
 	}
 	mb, err := json.Marshal(manifest)
 	if err != nil {
 		return err
 	}
-	manifestDesc := ocispec.Descriptor{
-		MediaType: ocispec.MediaTypeImageManifest,
-		Digest:    digest.FromBytes(mb),
-		Size:      int64(len(mb)),
-	}
-	return s.repo.Manifests().PushReference(ctx, manifestDesc, bytes.NewReader(mb), s.tagFromID(id))
+	manifestDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, mb)
+	return s.repo.Manifests().PushReference(ctx, manifestDesc, bytes.NewReader(mb), tag)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the store.
@@ -242,11 +259,16 @@ func (s OCIStore) RemoveChunk(id ChunkID) error {
 // manifests are deleted, reclaiming the space of the now unreferenced blobs
 // is left to the registry's garbage collection.
 func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	return s.repo.Tags(ctx, "", func(tags []string) error {
+	// Each removal costs two network round-trips and they are independent of
+	// each other, so fan them out while the tag listing stays sequential. The
+	// group context also stops the listing once a removal has failed.
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(max(s.opt.N, 1))
+	tagsErr := s.repo.Tags(ctx, "", func(tags []string) error {
 		for _, tag := range tags {
 			// See if we're meant to stop
 			select {
-			case <-ctx.Done():
+			case <-gctx.Done():
 				return Interrupted{}
 			default:
 			}
@@ -258,30 +280,20 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 			// Drop the chunk if it's not on the list
 			if _, ok := ids[id]; !ok {
-				if err := s.RemoveChunk(id); err != nil && !errors.Is(err, ChunkMissing{id}) {
-					return err
-				}
+				g.Go(func() error {
+					if err := s.RemoveChunk(id); err != nil && !errors.Is(err, ChunkMissing{id}) {
+						return err
+					}
+					return nil
+				})
 			}
 		}
 		return nil
 	})
-}
-
-// resolveChunkBlob fetches the chunk's manifest by tag and returns the
-// descriptor of the blob holding the chunk data.
-func (s OCIStore) resolveChunkBlob(ctx context.Context, id ChunkID) (ocispec.Descriptor, error) {
-	manifest, _, err := s.fetchChunkManifest(ctx, id)
-	if err != nil {
-		return ocispec.Descriptor{}, err
+	if err := g.Wait(); err != nil {
+		return err
 	}
-	if len(manifest.Layers) != 1 {
-		return ocispec.Descriptor{}, fmt.Errorf("manifest for chunk %s in %s references %d blobs, expected exactly one", id.String(), s, len(manifest.Layers))
-	}
-	blobDesc := manifest.Layers[0]
-	if blobDesc.Size < 0 || blobDesc.Size > maxOCIChunkBlobSize {
-		return ocispec.Descriptor{}, fmt.Errorf("manifest for chunk %s in %s references a blob of invalid size %d", id.String(), s, blobDesc.Size)
-	}
-	return blobDesc, nil
+	return tagsErr
 }
 
 // fetchChunkManifest fetches the manifest tagged for the chunk and returns it
@@ -313,18 +325,26 @@ func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.M
 	return manifest, desc, nil
 }
 
-// ensureConfigBlob uploads the shared empty config blob that every chunk
-// manifest references. Registries accept re-pushes of existing blobs, so
-// the push is simply skipped once it has succeeded for this store instance.
+// ensureConfigBlob makes sure the shared empty config blob that every chunk
+// manifest references exists in the registry, pushing it if the registry
+// doesn't have it yet. The mutex single-flights the check, so of any number
+// of concurrent writers only the first talks to the registry, and later
+// calls return without network I/O once it has succeeded.
 func (s OCIStore) ensureConfigBlob(ctx context.Context) error {
-	if s.configPushed.Load() {
+	s.config.mu.Lock()
+	defer s.config.mu.Unlock()
+	if s.config.pushed {
 		return nil
 	}
-	desc := ocispec.DescriptorEmptyJSON
-	desc.Data = nil
-	if err := s.repo.Blobs().Push(ctx, desc, bytes.NewReader(ocispec.DescriptorEmptyJSON.Data)); err != nil {
+	exists, err := s.repo.Blobs().Exists(ctx, ociEmptyConfig)
+	if err != nil {
 		return err
 	}
-	s.configPushed.Store(true)
+	if !exists {
+		if err := s.repo.Blobs().Push(ctx, ociEmptyConfig, bytes.NewReader(ocispec.DescriptorEmptyJSON.Data)); err != nil {
+			return err
+		}
+	}
+	s.config.pushed = true
 	return nil
 }

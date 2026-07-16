@@ -46,6 +46,11 @@ func TestOCIStoreScheme(t *testing.T) {
 	}
 }
 
+// ociDigest returns the OCI digest string for the given content.
+func ociDigest(b []byte) string {
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(b))
+}
+
 // testOCIManifest is a manifest held by testOCIRegistry, stored under both its
 // tag and its digest.
 type testOCIManifest struct {
@@ -99,7 +104,7 @@ func (reg *testOCIRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		d := r.URL.Query().Get("digest")
-		if fmt.Sprintf("sha256:%x", sha256.Sum256(b)) != d {
+		if ociDigest(b) != d {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -140,7 +145,7 @@ func (reg *testOCIRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		m := testOCIManifest{
 			mediaType: r.Header.Get("Content-Type"),
-			digest:    fmt.Sprintf("sha256:%x", sha256.Sum256(b)),
+			digest:    ociDigest(b),
 			content:   b,
 		}
 		reg.manifests[strings.TrimPrefix(r.URL.Path, manifestPath)] = m
@@ -215,7 +220,7 @@ func TestOCIStoreRoundtrip(t *testing.T) {
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
 	assert.Contains(t, reg.manifests, id.String()+".cacnk")
-	compressed := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
+	compressed := ociDigest(data)
 	assert.NotContains(t, reg.blobs, compressed, "chunk blob should be compressed")
 }
 
@@ -265,7 +270,7 @@ func TestOCIStoreUncompressed(t *testing.T) {
 	// The blob in the registry should hold the chunk data as-is
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
-	assert.Contains(t, reg.blobs, fmt.Sprintf("sha256:%x", sha256.Sum256(data)))
+	assert.Contains(t, reg.blobs, ociDigest(data))
 }
 
 func TestOCIStoreRemoveChunk(t *testing.T) {
@@ -297,7 +302,7 @@ func TestOCIStorePrune(t *testing.T) {
 	foreignContent := []byte(`{"schemaVersion":2}`)
 	foreign := testOCIManifest{
 		mediaType: "application/vnd.oci.image.manifest.v1+json",
-		digest:    fmt.Sprintf("sha256:%x", sha256.Sum256(foreignContent)),
+		digest:    ociDigest(foreignContent),
 		content:   foreignContent,
 	}
 	// Also add a chunk in a different storage format, a bare chunk-ID tag as
@@ -347,7 +352,7 @@ func TestOCIStorePruneForeignArtifact(t *testing.T) {
 	foreignContent := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
 	foreign := testOCIManifest{
 		mediaType: "application/vnd.oci.image.manifest.v1+json",
-		digest:    fmt.Sprintf("sha256:%x", sha256.Sum256(foreignContent)),
+		digest:    ociDigest(foreignContent),
 		content:   foreignContent,
 	}
 	hexTag := strings.Repeat("0123", 16)
@@ -386,7 +391,7 @@ func TestOCIStoreInvalidChunk(t *testing.T) {
 
 	// Corrupt the blob in the registry without changing its size
 	reg.mu.Lock()
-	key := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
+	key := ociDigest(data)
 	corrupted := []byte(strings.ToUpper(string(data)))
 	reg.blobs[key] = corrupted
 	reg.mu.Unlock()
@@ -410,7 +415,7 @@ func TestOCIStoreInvalidBlobSize(t *testing.T) {
 			manifest := fmt.Sprintf(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":%q,"config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},"layers":[{"mediaType":"application/octet-stream","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":%d}]}`, OCIChunkArtifactType, size)
 			m := testOCIManifest{
 				mediaType: "application/vnd.oci.image.manifest.v1+json",
-				digest:    fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(manifest))),
+				digest:    ociDigest([]byte(manifest)),
 				content:   []byte(manifest),
 			}
 			reg.mu.Lock()

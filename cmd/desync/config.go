@@ -105,19 +105,9 @@ func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 		return staticCredentials(username, os.Getenv("DESYNC_OCI_PASSWORD")), nil
 	}
 
-	location := u.String()
-	var (
-		credsConfig OCICreds
-		found       bool
-	)
-	for k, v := range c.OCICredentials {
-		if locationMatch(k, location) {
-			if found {
-				return nil, fmt.Errorf("multiple oci-credentials entries match the location %q", location)
-			}
-			found = true
-			credsConfig = v
-		}
+	credsConfig, found, err := matchConfigEntry(c.OCICredentials, u.String(), "oci-credentials")
+	if err != nil {
+		return nil, err
 	}
 	if found {
 		return staticCredentials(credsConfig.Username, credsConfig.Secret), nil
@@ -133,20 +123,33 @@ func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 	return orascreds.Credential(store), nil
 }
 
+// matchConfigEntry finds the entry of a config section whose key, possibly a
+// glob pattern, matches the store location. An error is returned if more than
+// one entry matches; section names the config section in that error.
+func matchConfigEntry[V any](section map[string]V, location, sectionName string) (match V, found bool, err error) {
+	for k, v := range section {
+		if locationMatch(k, location) {
+			if found {
+				return match, false, fmt.Errorf("multiple %s entries match the location %q", sectionName, location)
+			}
+			found = true
+			match = v
+		}
+	}
+	return match, found, nil
+}
+
 // GetStoreOptionsFor returns optional config options for a specific store. Note that
 // an error will be returned if the location string matches multiple entries in the
 // config file.
 func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions, err error) {
-	found := false
 	options = desync.NewStoreOptionsWithDefaults()
-	for k, v := range c.StoreOptions {
-		if locationMatch(k, location) {
-			if found {
-				return options, fmt.Errorf("multiple configuration entries match the location %q", location)
-			}
-			found = true
-			options = v
-		}
+	opt, found, err := matchConfigEntry(c.StoreOptions, location, "store-options")
+	if err != nil {
+		return options, err
+	}
+	if found {
+		options = opt
 	}
 	options.EncryptionKey = encryptionKeyFallback(options.Encryption, options.EncryptionKey)
 	return options, nil
