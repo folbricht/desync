@@ -137,6 +137,10 @@ func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 		return err
 	}
 
+	if err := fs.completeDirs(n.Name); err != nil {
+		return err
+	}
+
 	if err := r.Remove(n.Name); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("%s: %w", n.Name, err)
 	}

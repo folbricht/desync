@@ -44,6 +44,13 @@ loop:
 			return err
 		}
 	}
+
+	// Filesystems that defer directory metadata (permissions, timestamps)
+	// until a directory has been fully populated need to be told that no
+	// further entries are coming.
+	if f, ok := fs.(interface{ Finalize() error }); ok {
+		return f.Finalize()
+	}
 	return nil
 }
 
