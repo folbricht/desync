@@ -32,7 +32,7 @@ func ChunkIDFromString(id string) (ChunkID, error) {
 	return ChunkIDFromSlice(b)
 }
 
-func (c *ChunkID) String() string {
+func (c ChunkID) String() string {
 	return hex.EncodeToString(c[:])
 }
 
@@ -69,7 +69,7 @@ func chunkIDFromObjectName(name, prefix, extension string) (ChunkID, error) {
 	return id, nil
 }
 
-func (c *ChunkID) MarshalJSON() ([]byte, error) {
+func (c ChunkID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.String())
 }
 
