@@ -19,6 +19,12 @@ func NewLocalFS(root string, opts LocalFSOptions) *LocalFS {
 	}
 }
 
+// prepareDirWrite does nothing on Windows. Permission attributes are ignored
+// here, and chmod'ing a directory would only clear the read-only attribute
+// that SetDirPermissions never restores.
+func (fs *LocalFS) prepareDirWrite(r *os.Root, n NodeDirectory, existing os.FileMode, created bool) {
+}
+
 func (fs *LocalFS) SetDirPermissions(n NodeDirectory) error {
 	// Permission attributes are ignored on Windows
 	return nil

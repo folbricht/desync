@@ -182,7 +182,10 @@ loop:
 				a.last = c
 				break loop
 			}
-			a.dir = filepath.Dir(a.dir)
+			// path.Dir, not filepath.Dir: node names are slash-separated
+			// (built with path.Join below) and have to stay that way on
+			// Windows too, where filepath.Dir would rewrite the separators.
+			a.dir = path.Dir(a.dir)
 		case nil:
 			return nil, nil
 

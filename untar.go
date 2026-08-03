@@ -12,6 +12,11 @@ import (
 
 // UnTar implements the untar command, decoding a catar file and writing the
 // contained tree to a target directory.
+//
+// Filesystems implementing FilesystemFinalizer have Finalize() called on them
+// once the end of the archive is reached. That doesn't happen when UnTar
+// returns an error, so the caller should still close the filesystem to have
+// any deferred operations applied to what was extracted.
 func UnTar(ctx context.Context, r io.Reader, fs FilesystemWriter) error {
 	dec := NewArchiveDecoder(r)
 loop:
@@ -48,7 +53,7 @@ loop:
 	// Filesystems that defer directory metadata (permissions, timestamps)
 	// until a directory has been fully populated need to be told that no
 	// further entries are coming.
-	if f, ok := fs.(interface{ Finalize() error }); ok {
+	if f, ok := fs.(FilesystemFinalizer); ok {
 		return f.Finalize()
 	}
 	return nil

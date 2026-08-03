@@ -56,6 +56,7 @@ type LocalFSOptions struct {
 
 var _ FilesystemWriter = &LocalFS{}
 var _ FilesystemReader = &LocalFS{}
+var _ FilesystemFinalizer = &LocalFS{}
 
 // writeRoot lazily creates the extraction root directory and opens an os.Root
 // handle anchored to it. Every write/metadata operation goes through the
@@ -124,10 +125,12 @@ func (fs *LocalFS) completeDirs(name string) error {
 		if contains(n.Name, name) {
 			return nil
 		}
-		fs.pending = fs.pending[:len(fs.pending)-1]
+		// Only drop it once it's done, so a failure here can still be retried
+		// by the best-effort Finalize() in Close().
 		if err := fs.applyDirMetadata(n); err != nil {
 			return err
 		}
+		fs.pending = fs.pending[:len(fs.pending)-1]
 	}
 	return nil
 }
@@ -160,32 +163,34 @@ func (fs *LocalFS) CreateDir(n NodeDirectory) error {
 	}
 
 	// Let's see if there is a dir with the same name already
-	var restricted bool
+	var (
+		created  bool
+		existing os.FileMode
+	)
 	if info, err := r.Lstat(n.Name); err == nil {
 		if !info.IsDir() {
 			return fmt.Errorf("%s exists and is not a directory", n.Name)
 		}
-		// An existing directory may not be writable or searchable by us.
-		restricted = info.Mode().Perm()&0300 != 0300
+		existing = info.Mode().Perm()
 	} else {
 		// Stat error'ed out, presumably because the dir doesn't exist. Create it.
 		// (n.Name == "." is the extraction root itself, which already exists.)
-		// The mode from the archive is not applied here, so whatever the umask
-		// allows of 0777 remains until the directory has been populated.
-		if err := r.Mkdir(n.Name, 0777); err != nil {
+		// The mode from the archive is the upper bound of what the directory
+		// gets here, so its contents are never written into a directory more
+		// permissive than the archive says. The exact mode, including any
+		// setuid/setgid/sticky bits, is applied by prepareDirWrite below and
+		// again by applyDirMetadata once the directory is complete.
+		mode := os.FileMode(0777)
+		if !fs.opts.NoSamePermissions {
+			mode = n.Mode.Perm() | 0700
+		}
+		if err := r.Mkdir(n.Name, mode); err != nil {
 			return fmt.Errorf("%s: %w", n.Name, err)
 		}
+		created = true
 	}
 
-	// The directory needs to be writable and searchable by us while its
-	// contents are being written. Temporarily grant ourselves those
-	// permissions, same as GNU tar does. Best-effort only, if this fails the
-	// write that needs it reports the real error. Not done when the archive
-	// permissions are ignored anyway, since there'd be nothing to restore the
-	// mode from later.
-	if restricted && !fs.opts.NoSamePermissions {
-		_ = r.Chmod(n.Name, n.Mode.Perm()|0700)
-	}
+	fs.prepareDirWrite(r, n, existing, created)
 
 	// The remaining metadata is applied once the directory is complete. Doing
 	// it now would not only prevent writing into a read-only directory, it'd

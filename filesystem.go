@@ -20,6 +20,16 @@ type FilesystemWriter interface {
 	CreateDevice(n NodeDevice) error
 }
 
+// FilesystemFinalizer is implemented by filesystems that defer part of their
+// work, such as directory metadata that can only be applied once a directory
+// has been populated, until the whole archive has been written. UnTar calls
+// Finalize when it reaches the end of the archive. It is not called when the
+// archive can't be read to the end, so implementations that leave the target
+// in an intermediate state until then should apply what they can on Close().
+type FilesystemFinalizer interface {
+	Finalize() error
+}
+
 // FilesystemReader is an interface for source filesystem to be used during
 // tar operations. Next() is expected to return files and directories in a
 // consistent and stable order and return io.EOF when no further files are available.
