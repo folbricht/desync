@@ -145,7 +145,9 @@ func (fs *LocalFS) applyDirMetadata(n NodeDirectory) error {
 	if err := fs.SetDirPermissions(n); err != nil {
 		return err
 	}
-	if n.MTime == time.Unix(0, 0) {
+	// Use Equal() rather than ==, which also compares the monotonic reading
+	// and the location and would miss an epoch mtime in a different location.
+	if n.MTime.Equal(time.Unix(0, 0)) {
 		return nil
 	}
 	return r.Chtimes(n.Name, n.MTime, n.MTime)
@@ -225,7 +227,7 @@ func (fs *LocalFS) CreateFile(n NodeFile) error {
 		return err
 	}
 
-	if n.MTime == time.Unix(0, 0) {
+	if n.MTime.Equal(time.Unix(0, 0)) {
 		return nil
 	}
 	return r.Chtimes(n.Name, n.MTime, n.MTime)
