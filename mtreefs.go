@@ -103,7 +103,7 @@ func mtreeFilename(s string) string {
 	for _, c := range []byte(s) {
 		switch {
 		case c == '\\' || c == '#' || c == ' ' || c < 32 || c > 126:
-			b.WriteString(fmt.Sprintf("\\%03o", c))
+			fmt.Fprintf(&b, "\\%03o", c)
 		default:
 			b.WriteByte(c)
 		}
