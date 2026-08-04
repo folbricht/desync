@@ -102,7 +102,6 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) (err error) 
 			return err
 		}
 		defer f.Close()
-		var r io.Reader = f
 		pb := desync.NewProgressBar("Unpacking ")
 		// Get the file size to initialize the progress bar
 		info, err := f.Stat()
@@ -112,8 +111,7 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) (err error) 
 		pb.SetTotal(int(info.Size()))
 		pb.Start()
 		defer pb.Finish()
-		r = io.TeeReader(f, pb)
-		return desync.UnTar(ctx, r, fs)
+		return desync.UnTar(ctx, io.TeeReader(f, pb), fs)
 	}
 
 	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
