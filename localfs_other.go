@@ -187,7 +187,7 @@ func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 			return fmt.Errorf("chmod %s: %w", n.Name, err)
 		}
 	}
-	if n.MTime == time.Unix(0, 0) {
+	if n.MTime.Equal(time.Unix(0, 0)) {
 		return nil
 	}
 	return r.Chtimes(n.Name, n.MTime, n.MTime)
