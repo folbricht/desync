@@ -53,7 +53,7 @@ the output can be set to GNU tar, either an archive or STDOUT with '-'.
 	return cmd
 }
 
-func runUntar(ctx context.Context, opt untarOptions, args []string) error {
+func runUntar(ctx context.Context, opt untarOptions, args []string) (err error) {
 	if err := opt.cmdStoreOptions.validate(); err != nil {
 		return err
 	}
@@ -65,14 +65,17 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) error {
 	target := args[1]
 
 	// Prepare output
-	var (
-		fs  desync.FilesystemWriter
-		err error
-	)
+	var fs desync.FilesystemWriter
 	switch opt.outFormat {
 	case "disk": // Local filesystem
 		lfs := desync.NewLocalFS(target, opt.LocalFSOptions)
-		defer lfs.Close()
+		// Closing applies any directory metadata that is still outstanding,
+		// which is the case when the extraction failed part-way through.
+		defer func() {
+			if cerr := lfs.Close(); cerr != nil && err == nil {
+				err = cerr
+			}
+		}()
 		fs = lfs
 	case "gnu-tar": // GNU tar, either file or STDOUT
 		var w *os.File

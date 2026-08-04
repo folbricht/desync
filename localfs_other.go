@@ -62,6 +62,29 @@ func (fs *LocalFS) setXattrsNoFollow(name string, xattrs Xattrs) error {
 	return nil
 }
 
+// prepareDirWrite gives us the permissions needed to populate a directory,
+// which the mode in the archive may not include. GNU tar does the same. The
+// mode from the archive is restored by applyDirMetadata() once the directory
+// is complete. Best-effort, if it fails the write that needs the permissions
+// reports the real error.
+func (fs *LocalFS) prepareDirWrite(r *os.Root, n NodeDirectory, existing os.FileMode, created bool) {
+	if fs.opts.NoSamePermissions {
+		// Nothing to restore later, so only relax what has to be relaxed.
+		// Newly created directories use the umask default and are writable.
+		if !created && existing&0300 != 0300 {
+			_ = r.Chmod(n.Name, existing|0700)
+		}
+		return
+	}
+	// Newly created directories are chmod'ed as well, both to undo a umask
+	// that stripped the bits we need and to set the setuid/setgid/sticky bits
+	// that mkdir doesn't apply. A setgid directory has to carry that bit while
+	// its contents are created for them to inherit the group.
+	if created || existing&0300 != 0300 {
+		_ = r.Chmod(n.Name, n.Mode|0700)
+	}
+}
+
 func (fs *LocalFS) SetDirPermissions(n NodeDirectory) error {
 	r, err := fs.writeRoot()
 	if err != nil {
@@ -134,6 +157,10 @@ func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
 func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 	r, err := fs.writeRoot()
 	if err != nil {
+		return err
+	}
+
+	if err := fs.completeDirs(n.Name); err != nil {
 		return err
 	}
 
