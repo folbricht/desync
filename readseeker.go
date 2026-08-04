@@ -122,7 +122,7 @@ func (ip *IndexPos) loadChunk() error {
 	// zero-progress loop. AssembleFile performs the same check.
 	if uint64(len(ip.curChunk)) != ip.Index.Chunks[ip.curChunkIdx].Size {
 		ip.curChunk = nil
-		return fmt.Errorf("unexpected size for chunk %s", ip.curChunkID.String())
+		return fmt.Errorf("unexpected size for chunk %s", ip.curChunkID)
 	}
 	return nil
 }

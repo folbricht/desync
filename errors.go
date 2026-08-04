@@ -13,7 +13,7 @@ type NoSuchObject struct {
 }
 
 func (e ChunkMissing) Error() string {
-	return fmt.Sprintf("chunk %s missing from store", e.ID.String())
+	return fmt.Sprintf("chunk %s missing from store", e.ID)
 }
 
 func (e NoSuchObject) Error() string {
@@ -33,9 +33,9 @@ type ChunkInvalid struct {
 
 func (e ChunkInvalid) Error() string {
 	if e.Err != nil {
-		return fmt.Sprintf("invalid chunk %s: %s", e.ID.String(), e.Err)
+		return fmt.Sprintf("invalid chunk %s: %s", e.ID, e.Err)
 	}
-	return fmt.Sprintf("chunk id %s does not match its hash %s", e.ID.String(), e.Sum.String())
+	return fmt.Sprintf("chunk id %s does not match its hash %s", e.ID, e.Sum)
 }
 
 func (e ChunkInvalid) Unwrap() error {
