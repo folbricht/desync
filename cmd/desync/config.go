@@ -17,6 +17,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	orascreds "oras.land/oras-go/v2/registry/remote/credentials"
 )
 
 // S3Creds holds credentials or references to an S3 credentials file.
@@ -32,8 +34,18 @@ type S3Creds struct {
 // Config is used to hold the global tool configuration. It's used to customize
 // store features and provide credentials where needed.
 type Config struct {
-	S3Credentials map[string]S3Creds             `json:"s3-credentials"`
-	StoreOptions  map[string]desync.StoreOptions `json:"store-options"`
+	S3Credentials  map[string]S3Creds             `json:"s3-credentials"`
+	OCICredentials map[string]OCICreds            `json:"oci-credentials"`
+	StoreOptions   map[string]desync.StoreOptions `json:"store-options"`
+}
+
+// OCICreds holds OCI credentials for a container registry store.
+type OCICreds struct {
+	// Username for OCI store authentication.
+	Username string `json:"username,omitempty"`
+
+	// Secret (password or token) for OCI store authentication.
+	Secret string `json:"secret,omitempty"`
 }
 
 // GetS3CredentialsFor attempts to find creds and region for an S3 location in the
@@ -73,20 +85,97 @@ func (c Config) GetS3CredentialsFor(u *url.URL) (*credentials.Credentials, strin
 	return creds, region
 }
 
+// GetOCICredentialsFor attempts to find credentials for an OCI location in the
+// environment and the config (the environment takes precedence). The config is
+// keyed by the store URL, e.g. "oci+https://ghcr.io/user/repo", and keys can
+// contain glob patterns, just like store-options keys. If nothing matches, the
+// Docker credential store is used, so registries logged into with
+// "docker login" or "oras login" work without desync configuration.
+func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
+	staticCredentials := func(username, secret string) auth.CredentialFunc {
+		return func(ctx context.Context, hostport string) (auth.Credential, error) {
+			return auth.Credential{
+				Username: username,
+				Password: secret,
+			}, nil
+		}
+	}
+
+	username, password := os.Getenv("DESYNC_OCI_USERNAME"), os.Getenv("DESYNC_OCI_PASSWORD")
+	if username == "" && password != "" {
+		// Some registries take a token as the password with any username, so
+		// setting only the password is an easy mistake to make. Say so here
+		// rather than let it fall through to the credential store and surface
+		// later as an unexplained 401 from the registry.
+		return nil, errors.New("DESYNC_OCI_PASSWORD is set without DESYNC_OCI_USERNAME")
+	}
+	if username != "" {
+		return staticCredentials(username, password), nil
+	}
+
+	credsConfig, found, err := matchConfigEntry(c.OCICredentials, u.String(), "oci-credentials")
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return staticCredentials(credsConfig.Username, credsConfig.Secret), nil
+	}
+
+	if !dockerConfigLocatable() {
+		// Without a config path there is nothing to load, and public
+		// repositories need no credentials at all. Anonymous access keeps
+		// those working where reporting an error would not.
+		return staticCredentials("", ""), nil
+	}
+	store, err := orascreds.NewStoreFromDocker(orascreds.StoreOptions{})
+	if err != nil {
+		// An absent Docker config simply yields an empty credential store,
+		// so an error here means the config exists but is unusable. Report
+		// it rather than silently degrading to anonymous access.
+		return nil, fmt.Errorf("failed to load docker credential config: %w", err)
+	}
+	return orascreds.Credential(store), nil
+}
+
+// dockerConfigLocatable reports whether the Docker config path can be
+// determined at all. The credential store resolves it from DOCKER_CONFIG or
+// the home directory, and neither is guaranteed to be set: containers running
+// as an arbitrary uid, systemd units and cron jobs routinely have no HOME.
+func dockerConfigLocatable() bool {
+	if os.Getenv("DOCKER_CONFIG") != "" {
+		return true
+	}
+	_, err := os.UserHomeDir()
+	return err == nil
+}
+
+// matchConfigEntry finds the entry of a config section whose key, possibly a
+// glob pattern, matches the store location. An error is returned if more than
+// one entry matches; section names the config section in that error.
+func matchConfigEntry[V any](section map[string]V, location, sectionName string) (match V, found bool, err error) {
+	for k, v := range section {
+		if locationMatch(k, location) {
+			if found {
+				return match, false, fmt.Errorf("multiple %s entries match the location %q", sectionName, location)
+			}
+			found = true
+			match = v
+		}
+	}
+	return match, found, nil
+}
+
 // GetStoreOptionsFor returns optional config options for a specific store. Note that
 // an error will be returned if the location string matches multiple entries in the
 // config file.
 func (c Config) GetStoreOptionsFor(location string) (options desync.StoreOptions, err error) {
-	found := false
 	options = desync.NewStoreOptionsWithDefaults()
-	for k, v := range c.StoreOptions {
-		if locationMatch(k, location) {
-			if found {
-				return options, fmt.Errorf("multiple configuration entries match the location %q", location)
-			}
-			found = true
-			options = v
-		}
+	opt, found, err := matchConfigEntry(c.StoreOptions, location, "store-options")
+	if err != nil {
+		return options, err
+	}
+	if found {
+		options = opt
 	}
 	options.EncryptionKey = encryptionKeyFallback(options.Encryption, options.EncryptionKey)
 	return options, nil

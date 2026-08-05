@@ -11,7 +11,7 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
 ## Key Features
 
 - **Parallel chunking** — identical output to casync, up to 10x faster
-- **Multiple store backends** — local, HTTP(S), S3/GCS, SFTP, SSH
+- **Multiple store backends** — local, HTTP(S), S3/GCS, SFTP, SSH, OCI registries
 - **Store chaining and caching** — combine stores with failover groups
 - **Seeds and reflinks** — clone blocks from existing files on Btrfs/XFS
 - **Built-in servers** — HTTP(S) chunk server and index server with proxy support
@@ -35,6 +35,7 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
   - [Chaining and Caching](#chaining-and-caching)
   - [Failover Groups](#failover-groups)
   - [S3 Store URLs](#s3-store-urls)
+  - [OCI Registry Stores](#oci-registry-stores)
   - [Compressed vs Uncompressed](#compressed-vs-uncompressed)
   - [Chunk Encryption](#chunk-encryption)
   - [Remote Indexes](#remote-indexes)
@@ -169,13 +170,13 @@ catar archives can also be extracted to GNU tar archive streams. All files in th
 
 ### Capabilities
 
-| Operation | Local | S3 | GCS | HTTP | SFTP | SSH (casync protocol) |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| Read chunks | yes | yes | yes | yes | yes | yes |
-| Write chunks | yes | yes | yes | yes | yes | no |
-| Use as cache | yes | yes | yes | yes | yes | no |
-| Prune | yes | yes | yes | no | yes | no |
-| Verify | yes | no | no | no | no | no |
+| Operation | Local | S3 | GCS | HTTP | SFTP | SSH (casync protocol) | OCI registry |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Read chunks | yes | yes | yes | yes | yes | yes | yes |
+| Write chunks | yes | yes | yes | yes | yes | no | yes |
+| Use as cache | yes | yes | yes | yes | yes | no | yes |
+| Prune | yes | yes | yes | no | yes | no | yes |
+| Verify | yes | no | no | no | no | no | no |
 
 ### Store Architecture
 
@@ -257,6 +258,127 @@ By default, the value of `?lookup=auto` is implied.
 s3+http://127.0.0.1:9000/bucket/prefix?lookup=path
 s3+https://s3.internal.company/bucket/prefix?lookup=dns
 s3+https://example.com/bucket/prefix?lookup=auto
+```
+
+</details>
+
+<details>
+<summary><h3>OCI Registry Stores</h3></summary>
+
+OCI container registries (ghcr.io, Docker Hub, Harbor, [zot](https://zothub.io), the [distribution registry](https://github.com/distribution/distribution), ...) can be used as chunk stores. Registries are widely available, often free or low cost, and typically sit behind a CDN, which makes them an attractive way to distribute chunks publicly without running any server infrastructure. Use the `oci+https` scheme when pointing at a registry, or `oci+http` for registries without TLS. The URL contains the registry host followed by the repository name, which must be lowercase:
+
+```text
+oci+https://ghcr.io/myuser/mystore
+oci+http://127.0.0.1:5000/test/store
+```
+
+An OCI store supports reading, writing, pruning, and use as a cache, so it works with `make`, `extract`, `chop`, `cache`, `info`, `prune` and every other command that takes a `-s` store. Note that index files (`.caibx`/`.caidx`) cannot be stored in a registry, only chunks — distribute the index via an [index store](#remote-indexes) or any other file transfer.
+
+#### How chunks are stored
+
+Every chunk is stored as its own small OCI artifact consisting of a blob holding the chunk data — compressed and/or encrypted according to the store options — and a manifest referencing that blob. The manifest is tagged with the chunk ID in hex followed by the storage extension, the same naming used for chunk files in other stores, e.g. `<id>.cacnk` for a compressed store or `<id>.cacnk.xchacha20-poly1305-<keyid>` for a compressed and encrypted one (see [Chunk Encryption](#chunk-encryption)). Chunks in different formats or with different encryption keys can therefore coexist in one repository, and `prune` only considers chunks matching the store's own configuration. A chunk artifact looks like this in the registry:
+
+```json
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "artifactType": "application/vnd.desync.chunk.v1",
+  "config": {
+    "mediaType": "application/vnd.oci.empty.v1+json",
+    "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "size": 2
+  },
+  "layers": [
+    {
+      "mediaType": "application/octet-stream",
+      "digest": "sha256:759129e4f837302163925898441ed7a7ce728e9340dc20c1109f7461a878dc39",
+      "size": 34806
+    }
+  ],
+  "annotations": {
+    "org.opencontainers.image.title": "cf16af015e294eb73277987c0f08f9c8157cb05425e52f5e8023749ac1279948.cacnk"
+  }
+}
+```
+
+This layout has a few important properties:
+
+- The chunk ID appears only in the tag, never as a blob digest. OCI blob digests must be SHA256, so this is what allows the store to work with desync's default SHA512/256 digest algorithm and lets it be combined freely with other stores, caches, and existing indexes. It is also what makes encryption possible: the registry digests and verifies the ciphertext.
+- Registries garbage-collect blobs that are not referenced by a manifest (and some, like ghcr.io, won't serve them at all). The tagged manifest keeps every chunk referenced and therefore safe.
+- Identical chunks pushed again reuse the same blob — registries deduplicate blobs by digest within a repository.
+
+Be aware that registry UIs show one tag (or "package version") per chunk, so a store with many chunks makes for a noisy listing. Using a repository dedicated to the chunk store is recommended, although unrelated artifacts sharing the repository are safe, even from `prune`.
+
+Reading a chunk takes two requests (manifest by tag, then blob), an existence check takes one, and writing takes three. desync requests chunks concurrently, which hides much of the added round-trip latency, but combining a registry store with a local cache (`-c`) is still more worthwhile than for most other store types.
+
+#### Authentication
+
+Credentials are looked up in the following order, first match wins:
+
+1. The `DESYNC_OCI_USERNAME` and `DESYNC_OCI_PASSWORD` environment variables. Convenient in CI, e.g. with the ephemeral `GITHUB_TOKEN` in GitHub Actions.
+2. The `oci-credentials` section of the config file (see [Configuration](#configuration)), keyed by the full store URL with glob support, the same format as `store-options` keys.
+3. The Docker credential store. If you're logged in with `docker login ghcr.io` or `oras login ghcr.io`, desync picks those credentials up without any configuration.
+
+Anonymous access works for public repositories, so extracting from a public store needs no credentials at all. For ghcr.io, pushing requires a token with the `write:packages` scope, and note that new ghcr.io packages default to private visibility.
+
+#### Store options
+
+The usual [store options](#configuration-reference) apply, keyed by the full store URL: `uncompressed` to store chunks in plain form, `timeout`, `error-retry`, `error-retry-base-interval`, `trust-insecure`, and `ca-cert`/`client-cert`/`client-key` for custom or mutual TLS.
+
+```json
+{
+  "store-options": {
+    "oci+https://registry.internal/desync/store": {
+      "uncompressed": true,
+      "error-retry": 2,
+      "ca-cert": "/path/to/internal-ca.crt"
+    }
+  }
+}
+```
+
+#### Pruning
+
+`desync prune` deletes the manifests of all chunks not referenced by the given indexes. Only tags that parse as chunk IDs are considered, and of those only manifests with the desync chunk artifact type are deleted, so an unrelated artifact tagged with a chunk-ID-shaped hex string is safe. Reclaiming the space held by the then-unreferenced blobs is left to the registry's own garbage collection. Manifest deletion is not supported by every registry: the distribution registry requires it to be enabled with `REGISTRY_STORAGE_DELETE_ENABLED=true`, and ghcr.io only supports deletion through the GitHub Packages API, not the registry API — for ghcr.io, use a cleanup action for untagged/unwanted versions instead.
+
+#### Examples
+
+Publish a file to ghcr.io, using credentials from a previous `docker login`:
+
+```sh
+desync make -s oci+https://ghcr.io/myuser/mystore file.iso.caibx file.iso
+```
+
+Reassemble the file on another machine, keeping a local cache of chunks:
+
+```sh
+desync extract -s oci+https://ghcr.io/myuser/mystore -c /var/tmp/cache file.iso.caibx file.iso
+```
+
+The same, in CI with credentials from the environment:
+
+```sh
+DESYNC_OCI_USERNAME=myuser DESYNC_OCI_PASSWORD=$GITHUB_TOKEN \
+  desync make -s oci+https://ghcr.io/myuser/mystore file.iso.caibx file.iso
+```
+
+See how much of an updated image is already covered by the chunks in the registry:
+
+```sh
+desync info -s oci+https://ghcr.io/myuser/mystore file-v2.iso.caibx
+```
+
+Remove all chunks no longer referenced by the current set of indexes:
+
+```sh
+desync prune -s oci+https://registry.internal/desync/store file-v2.iso.caibx
+```
+
+Run a local throwaway registry for testing:
+
+```sh
+podman run -d --rm -p 5000:5000 -e REGISTRY_STORAGE_DELETE_ENABLED=true docker.io/library/registry:2
+desync make -s oci+http://127.0.0.1:5000/test/store file.iso.caibx file.iso
 ```
 
 </details>
@@ -463,6 +585,7 @@ Not all options apply to all commands.
 | `CASYNC_SSH_PATH` | Overrides the default `ssh` command when connecting to remote SSH or SFTP chunk stores. |
 | `CASYNC_REMOTE_PATH` | Defines the command to run on the chunk store when using SSH. Default: `casync`. |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_SESSION_TOKEN`, `S3_REGION` | S3 store credentials when using a single store. If `S3_ACCESS_KEY` and `S3_SECRET_KEY` are not defined, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` are also considered. These take precedence over config file values. |
+| `DESYNC_OCI_USERNAME`, `DESYNC_OCI_PASSWORD` | OCI registry store credentials. These take precedence over config file values and the Docker credential store. |
 | `DESYNC_PROGRESSBAR_ENABLED` | Enables the progress bar if set to any non-empty value. By default, the progress bar is only shown when STDERR is a terminal. |
 | `DESYNC_ENABLE_PARSABLE_PROGRESS` | Prints operation name, completion percentage, and estimated remaining time to STDERR. Similar to the default progress bar but without the visual bar. |
 | `DESYNC_HTTP_AUTH` | Sets the expected `Authorization` header value from clients when using `chunk-server` or `index-server`. Needs the full string including type and encoding, e.g. `"Basic dXNlcjpwYXNzd29yZAo="`. Command-line values take precedence. |
@@ -496,6 +619,8 @@ This can be combined with store failover by providing the same syntax as used in
 <summary><h3>Configuration Reference</h3></summary>
 
 - **`s3-credentials`** — Credentials for S3 stores. The key must be the URL scheme and host used for the store, excluding the path, but including the port if used in the store URL. Keys can contain glob patterns (`*`, `?`, `[…]`). See [filepath.Match](https://pkg.go.dev/path/filepath#Match) for wildcard details. Standard [AWS credentials files](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) are also supported.
+
+- **`oci-credentials`** — Credentials for OCI registry stores. The key must be the store URL, e.g. `oci+https://ghcr.io/myuser/repo`, the same format as `store-options` keys. Keys can contain glob patterns. If no entry matches and no credentials are set in the environment, the Docker credential store is used, so registries logged into with `docker login` or `oras login` are picked up automatically.
 
 - **`store-options`** — Per-store customization of compression, timeouts, retry behavior, and keys. Not all options apply to every store type. The store location in the command line must match the key exactly for options to apply. Glob patterns are also supported; a config file where more than one key matches a single store is considered invalid.
 
@@ -542,6 +667,12 @@ This can be combined with store failover by providing the same syntax as used in
            "aws-region": "us-west-2",
            "aws-profile": "profile_refreshable"
        }
+  },
+  "oci-credentials": {
+    "oci+https://ghcr.io/myuser/repo": {
+      "username": "myuser",
+      "secret": "MYSECRET"
+    }
   },
   "store-options": {
     "https://192.168.1.1/store": {

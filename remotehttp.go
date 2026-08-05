@@ -2,17 +2,13 @@ package desync
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"strings"
 	"time"
-
-	"crypto/x509"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -48,29 +44,9 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		location.Path = location.Path + "/"
 	}
 
-	// Build a TLS client config
-	tlsConfig := &tls.Config{InsecureSkipVerify: opt.TrustInsecure}
-
-	// Add client key/cert if provided
-	if opt.ClientCert != "" && opt.ClientKey != "" {
-		certificate, err := tls.LoadX509KeyPair(opt.ClientCert, opt.ClientKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load client certificate from %s", opt.ClientCert)
-		}
-		tlsConfig.Certificates = []tls.Certificate{certificate}
-	}
-
-	// Load custom CA set if provided
-	if opt.CACert != "" {
-		certPool := x509.NewCertPool()
-		b, err := os.ReadFile(opt.CACert)
-		if err != nil {
-			return nil, err
-		}
-		if ok := certPool.AppendCertsFromPEM(b); !ok {
-			return nil, errors.New("no CA certificates found in ca-cert file")
-		}
-		tlsConfig.RootCAs = certPool
+	tlsConfig, err := opt.tlsClientConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	tr := &http.Transport{
@@ -82,15 +58,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		ForceAttemptHTTP2:   true,
 	}
 
-	// If no timeout was given in config (set to 0), then use 1 minute. If timeout is negative, use 0 to
-	// set an infinite timeout.
-	timeout := opt.Timeout
-	if timeout == 0 {
-		timeout = time.Minute
-	} else if timeout < 0 {
-		timeout = 0
-	}
-	client := &http.Client{Transport: tr, Timeout: timeout}
+	client := &http.Client{Transport: tr, Timeout: opt.effectiveTimeout()}
 
 	converters, err := opt.StorageConverters()
 	if err != nil {

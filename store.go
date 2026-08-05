@@ -2,11 +2,14 @@ package desync
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 )
 
@@ -176,4 +179,47 @@ func (o StoreOptions) ValidateIndexOptions() error {
 		return errors.New("encryption is not supported by index stores")
 	}
 	return nil
+}
+
+// tlsClientConfig builds the TLS client configuration for network stores from
+// the trust, client certificate, and CA options.
+func (o StoreOptions) tlsClientConfig() (*tls.Config, error) {
+	tlsConfig := &tls.Config{InsecureSkipVerify: o.TrustInsecure}
+
+	// Add client key/cert if provided
+	if o.ClientCert != "" && o.ClientKey != "" {
+		certificate, err := tls.LoadX509KeyPair(o.ClientCert, o.ClientKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate from %s: %w", o.ClientCert, err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{certificate}
+	}
+
+	// Load custom CA set if provided
+	if o.CACert != "" {
+		certPool := x509.NewCertPool()
+		b, err := os.ReadFile(o.CACert)
+		if err != nil {
+			return nil, err
+		}
+		if ok := certPool.AppendCertsFromPEM(b); !ok {
+			return nil, errors.New("no CA certificates found in ca-cert file")
+		}
+		tlsConfig.RootCAs = certPool
+	}
+	return tlsConfig, nil
+}
+
+// effectiveTimeout returns the HTTP client timeout for a network store. If no
+// timeout was given in config (set to 0), then use 1 minute. If timeout is
+// negative, use 0 to set an infinite timeout.
+func (o StoreOptions) effectiveTimeout() time.Duration {
+	switch {
+	case o.Timeout == 0:
+		return time.Minute
+	case o.Timeout < 0:
+		return 0
+	default:
+		return o.Timeout
+	}
 }
