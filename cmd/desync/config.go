@@ -101,8 +101,16 @@ func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 		}
 	}
 
-	if username := os.Getenv("DESYNC_OCI_USERNAME"); username != "" {
-		return staticCredentials(username, os.Getenv("DESYNC_OCI_PASSWORD")), nil
+	username, password := os.Getenv("DESYNC_OCI_USERNAME"), os.Getenv("DESYNC_OCI_PASSWORD")
+	if username == "" && password != "" {
+		// Some registries take a token as the password with any username, so
+		// setting only the password is an easy mistake to make. Say so here
+		// rather than let it fall through to the credential store and surface
+		// later as an unexplained 401 from the registry.
+		return nil, errors.New("DESYNC_OCI_PASSWORD is set without DESYNC_OCI_USERNAME")
+	}
+	if username != "" {
+		return staticCredentials(username, password), nil
 	}
 
 	credsConfig, found, err := matchConfigEntry(c.OCICredentials, u.String(), "oci-credentials")
@@ -113,6 +121,12 @@ func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 		return staticCredentials(credsConfig.Username, credsConfig.Secret), nil
 	}
 
+	if !dockerConfigLocatable() {
+		// Without a config path there is nothing to load, and public
+		// repositories need no credentials at all. Anonymous access keeps
+		// those working where reporting an error would not.
+		return staticCredentials("", ""), nil
+	}
 	store, err := orascreds.NewStoreFromDocker(orascreds.StoreOptions{})
 	if err != nil {
 		// An absent Docker config simply yields an empty credential store,
@@ -121,6 +135,18 @@ func (c Config) GetOCICredentialsFor(u *url.URL) (auth.CredentialFunc, error) {
 		return nil, fmt.Errorf("failed to load docker credential config: %w", err)
 	}
 	return orascreds.Credential(store), nil
+}
+
+// dockerConfigLocatable reports whether the Docker config path can be
+// determined at all. The credential store resolves it from DOCKER_CONFIG or
+// the home directory, and neither is guaranteed to be set: containers running
+// as an arbitrary uid, systemd units and cron jobs routinely have no HOME.
+func dockerConfigLocatable() bool {
+	if os.Getenv("DOCKER_CONFIG") != "" {
+		return true
+	}
+	_, err := os.UserHomeDir()
+	return err == nil
 }
 
 // matchConfigEntry finds the entry of a config section whose key, possibly a

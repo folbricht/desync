@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,12 +60,21 @@ type testOCIManifest struct {
 	content   []byte
 }
 
+// testOCITagPageSize is the number of tags the fake registry serves per
+// listing page. Registries are free to return fewer tags than asked for, and
+// keeping this well below what any test stores exercises the client's
+// pagination on every prune.
+const testOCITagPageSize = 2
+
 // testOCIRegistry implements just enough of the OCI distribution API to serve
 // as a chunk store for a single repository named "user/repo".
 type testOCIRegistry struct {
 	mu        sync.Mutex
 	blobs     map[string][]byte
 	manifests map[string]testOCIManifest
+
+	// Page sizes the client asked for, one entry per tag listing request
+	tagListPageSizes []string
 }
 
 func newTestOCIRegistry() *testOCIRegistry {
@@ -111,6 +121,7 @@ func (reg *testOCIRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reg.blobs[d] = b
 		w.WriteHeader(http.StatusCreated)
 	case r.Method == http.MethodGet && r.URL.Path == "/v2/user/repo/tags/list":
+		reg.tagListPageSizes = append(reg.tagListPageSizes, r.URL.Query().Get("n"))
 		tags := []string{}
 		for k := range reg.manifests {
 			if !strings.HasPrefix(k, "sha256:") {
@@ -118,6 +129,23 @@ func (reg *testOCIRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		sort.Strings(tags)
+		// Serve the listing one page at a time, pointing at the next page with
+		// a Link header as the distribution spec does.
+		if last := r.URL.Query().Get("last"); last != "" {
+			i := sort.SearchStrings(tags, last)
+			if i < len(tags) && tags[i] == last {
+				i++
+			}
+			tags = tags[i:]
+		}
+		if len(tags) > testOCITagPageSize {
+			tags = tags[:testOCITagPageSize]
+			next := *r.URL
+			q := next.Query()
+			q.Set("last", tags[len(tags)-1])
+			next.RawQuery = q.Encode()
+			w.Header().Set("Link", `<`+next.String()+`>; rel="next"`)
+		}
 		b, err := json.Marshal(map[string]any{"name": "user/repo", "tags": tags})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -333,6 +361,41 @@ func TestOCIStorePrune(t *testing.T) {
 	defer reg.mu.Unlock()
 	assert.Contains(t, reg.manifests, "latest")
 	assert.Contains(t, reg.manifests, otherFormatID.String(), "chunk in a different storage format was pruned")
+}
+
+// Prune has to page through the tag listing. Without a page size the client
+// asks for every tag in one response, and oras reads that under a 4MB
+// metadata limit a store of a few tens of thousands of chunks already blows
+// past, making prune fail outright rather than return partial results.
+func TestOCIStorePruneTagPagination(t *testing.T) {
+	s, reg := newTestOCIStore(t, StoreOptions{})
+
+	chunks := make([]*Chunk, testOCITagPageSize*3)
+	for i := range chunks {
+		chunks[i] = NewChunk(fmt.Appendf(nil, "paginated chunk data %d", i))
+		require.NoError(t, s.StoreChunk(chunks[i]))
+	}
+
+	// Prune everything but the first chunk, which spans several tag pages
+	id := chunks[0].ID()
+	require.NoError(t, s.Prune(context.Background(), map[ChunkID]struct{}{id: {}}))
+
+	reg.mu.Lock()
+	pageSizes := slices.Clone(reg.tagListPageSizes)
+	reg.mu.Unlock()
+	assert.Greater(t, len(pageSizes), 1, "tag listing wasn't paginated")
+	for _, n := range pageSizes {
+		assert.Equal(t, strconv.Itoa(ociTagListPageSize), n, "client asked for an unbounded tag listing")
+	}
+
+	hasChunk, err := s.HasChunk(id)
+	require.NoError(t, err)
+	assert.True(t, hasChunk)
+	for _, chunk := range chunks[1:] {
+		hasChunk, err := s.HasChunk(chunk.ID())
+		require.NoError(t, err)
+		assert.False(t, hasChunk, "chunk on a later tag page survived the prune")
+	}
 }
 
 // With an uncompressed, unencrypted store the tag extension is empty, so any

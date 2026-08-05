@@ -31,6 +31,13 @@ const OCIChunkArtifactType = "application/vnd.desync.chunk.v1"
 // driving a huge or invalid allocation before the blob is even fetched.
 const maxOCIChunkBlobSize = 1 << 30
 
+// ociTagListPageSize bounds the tag listing used by Prune. Without it oras
+// sends no page size and registries answer with the complete tag list, which
+// it then reads under a 4MB metadata limit. A chunk tag costs about 72 bytes
+// there, so a store of more than roughly 57k chunks - well under 4GB at the
+// default chunk size - would fail to prune at all.
+const ociTagListPageSize = 1000
+
 // retryPredicate retries any transport error, matching the error-retry
 // behavior of the other network stores. Response codes are left to the
 // default predicate, which retries 408, 429, and 5xx.
@@ -95,6 +102,7 @@ func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCISt
 	// can never have anything to do. Declaring the capability stops it from
 	// fetching every manifest ahead of a delete just to look for a subject.
 	repo.SetReferrersCapability(true)
+	repo.TagListPageSize = ociTagListPageSize
 
 	tlsConfig, err := opt.tlsClientConfig()
 	if err != nil {

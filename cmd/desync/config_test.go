@@ -55,6 +55,7 @@ func TestGetOCICredentials(t *testing.T) {
 	// Make sure credentials aren't picked up from the environment or the
 	// user's Docker config
 	t.Setenv("DESYNC_OCI_USERNAME", "")
+	t.Setenv("DESYNC_OCI_PASSWORD", "")
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
 
 	config := Config{OCICredentials: map[string]OCICreds{
@@ -123,4 +124,41 @@ func TestGetOCICredentials(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "envuser", cred.Username)
 	require.Equal(t, "envpass", cred.Password)
+}
+
+// Registries that take a token as the password accept it with any username,
+// which makes setting only DESYNC_OCI_PASSWORD an easy mistake. It has to be
+// reported here, or the variable is ignored and the registry answers with a
+// 401 that points at nothing.
+func TestGetOCICredentialsPasswordWithoutUsername(t *testing.T) {
+	t.Setenv("DESYNC_OCI_USERNAME", "")
+	t.Setenv("DESYNC_OCI_PASSWORD", "token")
+
+	u, err := url.Parse("oci+https://ghcr.io/user/repo")
+	require.NoError(t, err)
+	_, err = Config{}.GetOCICredentialsFor(u)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "DESYNC_OCI_USERNAME")
+}
+
+// The Docker config path can only be resolved from DOCKER_CONFIG or a home
+// directory, and containers running as an arbitrary uid, systemd units and
+// cron jobs have neither. Public repositories need no credentials at all, so
+// that has to degrade to anonymous access instead of failing the operation.
+func TestGetOCICredentialsWithoutDockerConfigPath(t *testing.T) {
+	t.Setenv("DESYNC_OCI_USERNAME", "")
+	t.Setenv("DESYNC_OCI_PASSWORD", "")
+	t.Setenv("DOCKER_CONFIG", "")
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+
+	u, err := url.Parse("oci+https://ghcr.io/public/repo")
+	require.NoError(t, err)
+	credFunc, err := Config{}.GetOCICredentialsFor(u)
+	require.NoError(t, err)
+	require.NotNil(t, credFunc)
+	cred, err := credFunc(context.Background(), "")
+	require.NoError(t, err)
+	require.Empty(t, cred.Username)
+	require.Empty(t, cred.Password)
 }
