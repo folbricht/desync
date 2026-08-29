@@ -88,14 +88,17 @@ type ociConfigBlobState struct {
 	pushed bool
 }
 
-// NewOCIStore initializes a store using an OCI registry as backend.
-func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCIStore, error) {
+// newOCIRepository builds the oras repository client for a store location,
+// applying the TLS, retry, timeout and credential settings from opt. Shared by
+// the chunk and index stores, which differ only in what they put in the
+// repository.
+func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (*remote.Repository, error) {
 	if u.Scheme != "oci+https" && u.Scheme != "oci+http" {
-		return OCIStore{}, fmt.Errorf("unsupported scheme %s, expected oci+https or oci+http", u.Scheme)
+		return nil, fmt.Errorf("unsupported scheme %s, expected oci+https or oci+http", u.Scheme)
 	}
 	repo, err := remote.NewRepository(strings.TrimSuffix(u.Host+u.Path, "/"))
 	if err != nil {
-		return OCIStore{}, fmt.Errorf("failed to initialize oci registry store: %w", err)
+		return nil, fmt.Errorf("failed to initialize oci registry store: %w", err)
 	}
 	// Chunk manifests never carry a subject, so the client-side referrers
 	// indexing oras-go falls back to on registries without referrers support
@@ -106,7 +109,7 @@ func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCISt
 
 	tlsConfig, err := opt.tlsClientConfig()
 	if err != nil {
-		return OCIStore{}, err
+		return nil, err
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -134,7 +137,15 @@ func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCISt
 	client.SetUserAgent("desync")
 	repo.Client = client
 	repo.PlainHTTP = u.Scheme == "oci+http"
+	return repo, nil
+}
 
+// NewOCIStore initializes a store using an OCI registry as backend.
+func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCIStore, error) {
+	repo, err := newOCIRepository(u, creds, opt)
+	if err != nil {
+		return OCIStore{}, err
+	}
 	converters, err := opt.StorageConverters()
 	if err != nil {
 		return OCIStore{}, err
