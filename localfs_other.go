@@ -6,6 +6,7 @@ package desync
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pkg/xattr"
+	"golang.org/x/sys/unix"
 )
 
 // NewLocalFS initializes a new instance of a local filesystem that
@@ -193,12 +195,14 @@ func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 	return r.Chtimes(n.Name, n.MTime, n.MTime)
 }
 
-func mkdev(major, minor uint64) uint64 {
-	dev := (major & 0x00000fff) << 8
-	dev |= (major & 0xfffff000) << 32
-	dev |= (minor & 0x000000ff) << 0
-	dev |= (minor & 0xffffff00) << 12
-	return dev
+// mkdev encodes a major/minor pair from a catar into a device number. The
+// layout of dev_t differs between operating systems, so this defers to
+// x/sys/unix rather than hard-coding one platform's encoding.
+func mkdev(major, minor uint64) (uint64, error) {
+	if major > math.MaxUint32 || minor > math.MaxUint32 {
+		return 0, fmt.Errorf("device number %d:%d out of range", major, minor)
+	}
+	return unix.Mkdev(uint32(major), uint32(minor)), nil
 }
 
 // Next returns the next filesystem entry or io.EOF when done. The caller is responsible
@@ -224,8 +228,11 @@ func (fs *LocalFS) Next() (*File, error) {
 	case *syscall.Stat_t:
 		uid = int(sys.Uid)
 		gid = int(sys.Gid)
-		major = uint64((sys.Rdev >> 8) & 0xfff)
-		minor = (uint64(sys.Rdev) % 256) | ((uint64(sys.Rdev) & 0xfff00000) >> 12)
+		// As with mkdev, the split of dev_t into major/minor is
+		// platform-specific. Both accessors mask the value, so the
+		// sign-extension of the signed dev_t on Darwin is harmless.
+		major = uint64(unix.Major(uint64(sys.Rdev)))
+		minor = uint64(unix.Minor(uint64(sys.Rdev)))
 	default:
 		panic("unsupported platform")
 	}
