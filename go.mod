@@ -8,7 +8,7 @@ require (
 	github.com/dchest/siphash v1.2.3
 	github.com/folbricht/tempfile v0.0.1
 	github.com/go-ini/ini v1.67.0
-	github.com/hanwen/go-fuse/v2 v2.2.0
+	github.com/hanwen/go-fuse/v2 v2.11.0
 	github.com/klauspost/compress v1.16.4
 	github.com/minio/minio-go/v6 v6.0.57
 	github.com/opencontainers/image-spec v1.1.1
