@@ -20,6 +20,20 @@ builds:
     goarch:
       - amd64
       - arm64
+      # 32-bit ARM and RISC-V for the embedded/appliance case, which is where
+      # image updates tend to land. Linux only: the other platforms either
+      # don't support these architectures at all, or (freebsd/arm) are too
+      # niche to be worth an artifact nobody exercises.
+      - arm
+      - riscv64
+    # Both ARM variants: v6 runs anywhere 32-bit ARM does, v7 is faster on
+    # hardware that supports it, which matters for chunking throughput.
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: freebsd
+        goarch: arm
 
 checksum:
   name_template: 'checksums.txt'
