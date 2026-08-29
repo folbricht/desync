@@ -36,11 +36,28 @@ func NewS3IndexStore(location *url.URL, s3Creds *credentials.Credentials, region
 // GetIndexReader returns a reader for an index from an S3 store. Fails if the specified index
 // file does not exist.
 func (s S3IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
-	obj, err := s.client.GetObject(context.Background(), s.bucket, s.prefix+name, minio.GetObjectOptions{})
+	// The index is read by the caller, after this returns, so the timeout has
+	// to cover the lifetime of the reader rather than just this call. Tie the
+	// context to Close instead of cancelling it here.
+	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	obj, err := s.client.GetObject(ctx, s.bucket, s.prefix+name, minio.GetObjectOptions{})
 	if err != nil {
+		cancel()
 		return r, errors.Wrap(err, s.String())
 	}
-	return obj, nil
+	return cancelOnClose{ReadCloser: obj, cancel: cancel}, nil
+}
+
+// cancelOnClose releases a context when the reader it guards is closed.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c cancelOnClose) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
 }
 
 // GetIndex returns an Index structure from the store
@@ -63,6 +80,9 @@ func (s S3IndexStore) StoreIndex(name string, idx Index) error {
 		idx.WriteTo(w)
 	}()
 
-	_, err := s.client.PutObject(context.Background(), s.bucket, s.prefix+name, r, -1, minio.PutObjectOptions{ContentType: contentType})
+	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	defer cancel()
+
+	_, err := s.client.PutObject(ctx, s.bucket, s.prefix+name, r, -1, minio.PutObjectOptions{ContentType: contentType})
 	return errors.Wrap(err, path.Base(s.Location))
 }
