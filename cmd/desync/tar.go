@@ -80,6 +80,13 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	output := args[0]
 	source := args[1]
 
+	// Only an index is written to a store; a catar goes to a local file.
+	if opt.createIndex {
+		if err := validateIndexLocation(output); err != nil {
+			return err
+		}
+	}
+
 	// Prepare input
 	var (
 		fs  desync.FilesystemReader

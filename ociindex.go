@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 
@@ -58,7 +57,7 @@ func NewOCIIndexStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (
 	if err := opt.ValidateIndexOptions(); err != nil {
 		return OCIIndexStore{}, err
 	}
-	repo, err := newOCIRepository(u, creds, opt)
+	repo, err := newOCIRepository(u, creds, opt, true)
 	if err != nil {
 		return OCIIndexStore{}, err
 	}
@@ -75,11 +74,23 @@ func (s OCIIndexStore) String() string { return s.location }
 // Close the store. NOP operation but needed to implement the store interface.
 func (s OCIIndexStore) Close() error { return nil }
 
-// tagFromName returns the manifest tag for an index, which is the index name
-// itself. Not every valid filename is a valid tag.
-func (s OCIIndexStore) tagFromName(name string) (string, error) {
+// ValidateOCIIndexName reports whether an index can be stored in an OCI
+// registry under this name. The name is used as the manifest tag, so it has to
+// fit the OCI tag grammar, which not every valid filename does. Exported so
+// commands can reject a name before doing the work that precedes writing the
+// index.
+func ValidateOCIIndexName(name string) error {
 	if !ociTagRegexp.MatchString(name) {
-		return "", fmt.Errorf("index name %q cannot be used in %s: an OCI tag must match %s", name, s, ociTagRegexp)
+		return fmt.Errorf("index name %q cannot be used in an OCI registry: a tag must match %s", name, ociTagRegexp)
+	}
+	return nil
+}
+
+// tagFromName returns the manifest tag for an index, which is the index name
+// itself.
+func (s OCIIndexStore) tagFromName(name string) (string, error) {
+	if err := ValidateOCIIndexName(name); err != nil {
+		return "", fmt.Errorf("%s: %w", s, err)
 	}
 	return name, nil
 }
@@ -134,10 +145,16 @@ func (s OCIIndexStore) GetIndex(name string) (i Index, e error) {
 	return IndexFromReader(r)
 }
 
+// maxInMemoryIndex is the largest index serialized into memory for a push.
+// Below it the blob is pushed from a bytes.Reader, which http.NewRequest can
+// rewind, so the retry and re-authentication paths work. Above it the index is
+// streamed instead, trading those for bounded memory.
+var maxInMemoryIndex int64 = 32 << 20
+
 // StoreIndex writes the index to the OCI registry. A registry blob has to be
 // pushed with its digest and size known upfront, and an index of a large blob
-// can run to hundreds of megabytes, so the index is serialized to a temporary
-// file and hashed on the way rather than held in memory.
+// can run to hundreds of megabytes, so the index is serialized twice rather
+// than buffered: once to size and digest it, then again into the push.
 func (s OCIIndexStore) StoreIndex(name string, idx Index) error {
 	ctx := context.Background()
 	tag, err := s.tagFromName(name)
@@ -145,21 +162,10 @@ func (s OCIIndexStore) StoreIndex(name string, idx Index) error {
 		return err
 	}
 
-	tmp, err := os.CreateTemp("", "desync-index")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		tmp.Close()
-		os.Remove(tmp.Name())
-	}()
-
+	// First pass, storing nothing, to learn the size and digest.
 	h := sha256.New()
-	n, err := idx.WriteTo(io.MultiWriter(tmp, h))
+	n, err := idx.WriteTo(h)
 	if err != nil {
-		return err
-	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	blobDesc := ocispec.Descriptor{
@@ -171,8 +177,28 @@ func (s OCIIndexStore) StoreIndex(name string, idx Index) error {
 	if err := s.ensureConfigBlob(ctx); err != nil {
 		return err
 	}
-	if err := s.repo.Blobs().Push(ctx, blobDesc, tmp); err != nil {
-		return err
+
+	// Second pass, into the push.
+	if n <= maxInMemoryIndex {
+		b := bytes.NewBuffer(make([]byte, 0, n))
+		if _, err := idx.WriteTo(b); err != nil {
+			return err
+		}
+		if err := s.repo.Blobs().Push(ctx, blobDesc, bytes.NewReader(b.Bytes())); err != nil {
+			return err
+		}
+	} else {
+		pr, pw := io.Pipe()
+		go func() {
+			_, err := idx.WriteTo(pw)
+			pw.CloseWithError(err)
+		}()
+		err := s.repo.Blobs().Push(ctx, blobDesc, pr)
+		// Unblocks the writer if the push stopped reading early.
+		pr.Close()
+		if err != nil {
+			return err
+		}
 	}
 
 	manifest := ocispec.Manifest{

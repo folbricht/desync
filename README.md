@@ -332,7 +332,7 @@ Indexes are stored as their own artifact, a blob holding the index referenced by
 
 Indexes and chunks can share a repository. `prune` only ever deletes chunk artifacts, so indexes in the same repository are left alone, and a chunk lookup is never satisfied by an index. Keeping them in separate repositories is still tidier, since registry UIs list one version per tag:
 
-```text
+```sh
 desync make -s oci+https://ghcr.io/myuser/chunks \
   oci+https://ghcr.io/myuser/indexes/file.iso.caibx file.iso
 ```
@@ -340,6 +340,8 @@ desync make -s oci+https://ghcr.io/myuser/chunks \
 Because the index name is used as a tag it has to fit the OCI tag grammar: word characters, dots and dashes, not starting with a dot or dash, at most 128 characters. `file.iso.caibx` and `rootfs-v2.caidx` are fine, a name containing `/` is not. Note also that pushing an index that already exists overwrites the tag, which registries configured for immutable tags will reject, and that removing an index needs the same manifest deletion support described under [Pruning](#pruning).
 
 Storing an index in a registry does not keep its chunks alive there. It doesn't need to: every chunk already has its own tagged manifest holding a reference to its blob.
+
+Two things to be aware of when indexes and chunks share a repository. Store options are looked up by location, so a `store-options` entry for the repository applies to the index as well as the chunks; if that entry enables encryption, index operations fail, as described under [Chunk Encryption](#chunk-encryption). Keep the indexes in a separate repository in that case, or add a more specific entry without encryption for them. The `timeout` option is applied differently too: for indexes it bounds the wait for a response rather than the whole transfer, so a large index isn't cut off part way through by the one minute default.
 
 #### Authentication
 

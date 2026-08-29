@@ -186,6 +186,24 @@ func readCaibxFile(location string, cmdOpt cmdStoreOptions) (c desync.Index, err
 	return idx, errors.Wrap(err, location)
 }
 
+// validateIndexLocation reports whether an index can be written to this
+// location, without opening the store. Commands that write an index do so as
+// their last step, after chunking and uploading, so a name the destination
+// can't represent is worth catching before all that work rather than after.
+func validateIndexLocation(location string) error {
+	loc, err := url.Parse(location)
+	if err != nil {
+		// Not a URL, so it's a local path and the store will report any
+		// problem with it when the time comes.
+		return nil
+	}
+	switch loc.Scheme {
+	case "oci+https", "oci+http":
+		return desync.ValidateOCIIndexName(path.Base(loc.Path))
+	}
+	return nil
+}
+
 func storeCaibxFile(idx desync.Index, location string, cmdOpt cmdStoreOptions) error {
 	is, indexName, err := writableIndexStore(location, cmdOpt)
 	if err != nil {

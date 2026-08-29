@@ -90,9 +90,15 @@ type ociConfigBlobState struct {
 
 // newOCIRepository builds the oras repository client for a store location,
 // applying the TLS, retry, timeout and credential settings from opt. Shared by
-// the chunk and index stores, which differ only in what they put in the
-// repository.
-func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (*remote.Repository, error) {
+// the chunk and index stores.
+//
+// largeObjects changes how the timeout option is applied. http.Client.Timeout
+// bounds the whole exchange including the transfer of the body, which suits
+// chunks, at most a few hundred KB. An index can run to hundreds of megabytes,
+// where a one minute default would abort a transfer that is progressing
+// normally, so index stores bound the wait for response headers instead. A
+// stalled server still fails, a slow one is allowed to finish.
+func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, largeObjects bool) (*remote.Repository, error) {
 	if u.Scheme != "oci+https" && u.Scheme != "oci+http" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected oci+https or oci+http", u.Scheme)
 	}
@@ -100,10 +106,10 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize oci registry store: %w", err)
 	}
-	// Chunk manifests never carry a subject, so the client-side referrers
-	// indexing oras-go falls back to on registries without referrers support
-	// can never have anything to do. Declaring the capability stops it from
-	// fetching every manifest ahead of a delete just to look for a subject.
+	// Neither chunk nor index manifests carry a subject, so the client-side
+	// referrers indexing oras-go falls back to on registries without referrers
+	// support can never have anything to do. Declaring the capability stops it
+	// from fetching every manifest ahead of a delete just to look for a subject.
 	repo.SetReferrersCapability(true)
 	repo.TagListPageSize = ociTagListPageSize
 
@@ -115,6 +121,12 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
 	transport.MaxIdleConnsPerHost = opt.N
+
+	clientTimeout := opt.effectiveTimeout()
+	if largeObjects {
+		transport.ResponseHeaderTimeout = clientTimeout
+		clientTimeout = 0
+	}
 
 	var rt http.RoundTripper = transport
 	if opt.ErrorRetry > 0 {
@@ -130,7 +142,7 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (
 	}
 
 	client := &auth.Client{
-		Client:     &http.Client{Transport: rt, Timeout: opt.effectiveTimeout()},
+		Client:     &http.Client{Transport: rt, Timeout: clientTimeout},
 		Cache:      auth.NewCache(),
 		Credential: creds,
 	}
@@ -142,7 +154,7 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (
 
 // NewOCIStore initializes a store using an OCI registry as backend.
 func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCIStore, error) {
-	repo, err := newOCIRepository(u, creds, opt)
+	repo, err := newOCIRepository(u, creds, opt, false)
 	if err != nil {
 		return OCIStore{}, err
 	}
