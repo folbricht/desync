@@ -10,7 +10,7 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
 
 ## Key Features
 
-- **Parallel chunking** — identical output to casync, up to 10x faster
+- **Parallel chunking** — byte-identical output to casync, several times faster given enough cores
 - **Multiple store backends** — local, HTTP(S), S3/GCS, SFTP, SSH, OCI registries
 - **Store chaining and caching** — combine stores with failover groups
 - **Seeds and reflinks** — clone blocks from existing files on Btrfs/XFS
@@ -113,12 +113,14 @@ One of the significant differences to casync is that desync attempts to make chu
 
 While in most cases this process achieves significantly reduced chunking times at the cost of CPU, there are edge cases where chunking is only about as fast as upstream casync (with more CPU usage). This is the case if no split points can be found in the data between min and max chunk size as is the case if most or all of the file consists of 0-bytes. In this situation, the concurrent chunking processes for each part will not align with each other and a lot of effort is wasted.
 
+The speedup scales with the number of cores made available through `-n`, since the parts are chunked concurrently — reaching the higher multiples needs a correspondingly high core count. On a 4-core machine, `make` measured between 1.8x and 3.6x faster than casync 2 depending on the data, with both tools writing zstd-compressed chunks to a local store. Run single-threaded (`-n 1`), desync is in the same range as casync and can be slightly slower: its rolling hash is pure Go against casync's optimized C, so the advantage comes from concurrency rather than from a faster inner loop.
+
 | Command | Mostly/All 0-bytes | Typical data |
 | --- | --- | --- |
-| `make` | Slow (worst-case) — likely comparable to casync | Fast — parallel chunking |
+| `make` | Less benefit from parallelism — the concurrent chunkers can't align, so some work is wasted | Fast — parallel chunking |
 | `extract` | Extremely fast — effectively the speed of a `truncate()` syscall | Fast — done in parallel, usually limited by I/O |
 
-While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes larger than the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync: min 16KB, avg 64KB, max 256KB.
+While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes of at least the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync: min 16KB, avg 64KB, max 256KB.
 
 ### Seeds and Reflinks
 
@@ -575,7 +577,7 @@ Not all options apply to all commands.
 | --- | --- |
 | `-r` | Repair a local store by removing invalid chunks. Only valid for `verify`. |
 | `-y` | Answer with `yes` when asked for confirmation. Only supported by `prune`. |
-| `-f` / `--format <format>` | Output format for `info`: `plain` (default) or `json`. |
+| `-f` / `--format <format>` | Output format for `info`: `json` (default) or `plain`. |
 
 </details>
 
@@ -628,7 +630,7 @@ This can be combined with store failover by providing the same syntax as used in
 
   | Option | Description | Default |
   | --- | --- | --- |
-  | `timeout` | Time limit for chunk read/write in nanoseconds. Negative = infinite. | 1 minute |
+  | `timeout` | Time limit for chunk read/write in nanoseconds. Negative = infinite. Applies to HTTP(S), S3 and OCI stores. | 1 minute |
   | `error-retry` | Number of times to retry failed chunk requests. | 0 |
   | `error-retry-base-interval` | Nanoseconds to wait before first retry. Attempt N waits N times this interval. | 0 |
   | `client-cert` | Certificate file for mutual SSL. | — |
@@ -1088,7 +1090,7 @@ desync info --seed local_index.caibx --format=json update.caibx
 | Platform | Status | Notes |
 | --- | --- | --- |
 | Linux | Full support | All features including FUSE, reflinks (Btrfs/XFS) |
-| macOS | Supported | Minor incompatibilities possible when exchanging catar files with Linux (devices, filemodes) |
+| macOS | Supported | Minor incompatibilities possible when exchanging catar files with Linux (filemodes) |
 | Windows | Partial | Subset of commands. Device entries unsupported in tar; `--no-same-owner` and `--no-same-permissions` ignored in `untar`. |
 | FreeBSD | Supported | Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
 | Other BSD | Unsupported | NetBSD, OpenBSD and DragonFly are not supported by the FUSE library desync uses. |
