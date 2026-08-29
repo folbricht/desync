@@ -63,6 +63,7 @@ func main() {
 		newVerifyCommand(ctx),
 		newVerifyIndexCommand(ctx),
 		newMtreeCommand(ctx),
+		newVersionCommand(),
 		newManpageCommand(ctx, rootCmd),
 	)
 

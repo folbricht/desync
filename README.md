@@ -502,6 +502,7 @@ The CLI tool uses the desync library and makes most features available in a cons
 | Command | Description |
 | --- | --- |
 | `config` | Show or write the config file |
+| `version` | Show the version, commit and build details. `--version` prints just the version |
 | `manpage` | Generate manpages for desync |
 
 <details>
@@ -516,6 +517,7 @@ Not all options apply to all commands.
 | `--config <file>` | Path to config file. Default: `$HOME/.config/desync/config.json`. |
 | `--digest <algorithm>` | Digest algorithm: `sha512-256` (default) or `sha256`. |
 | `--verbose` | Enable verbose/debug logging. |
+| `--version` | Print the version and exit. See the `version` command for build details. |
 
 **Store options:**
 

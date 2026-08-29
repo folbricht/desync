@@ -7,6 +7,11 @@ before:
 
 builds:
   - main: ./cmd/desync
+    ldflags:
+      - -s -w
+      - -X main.version={{.Tag}}
+      - -X main.commit={{.FullCommit}}
+      - -X main.date={{.Date}}
     goos:
       - linux
       - darwin
