@@ -1,14 +1,15 @@
 package desync
 
 import (
+	"context"
 	"io"
 
 	"path"
 
 	"net/url"
 
-	"github.com/minio/minio-go/v6"
-	"github.com/minio/minio-go/v6/pkg/credentials"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
 )
 
@@ -35,7 +36,7 @@ func NewS3IndexStore(location *url.URL, s3Creds *credentials.Credentials, region
 // GetIndexReader returns a reader for an index from an S3 store. Fails if the specified index
 // file does not exist.
 func (s S3IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
-	obj, err := s.client.GetObject(s.bucket, s.prefix+name, minio.GetObjectOptions{})
+	obj, err := s.client.GetObject(context.Background(), s.bucket, s.prefix+name, minio.GetObjectOptions{})
 	if err != nil {
 		return r, errors.Wrap(err, s.String())
 	}
@@ -62,6 +63,6 @@ func (s S3IndexStore) StoreIndex(name string, idx Index) error {
 		idx.WriteTo(w)
 	}()
 
-	_, err := s.client.PutObject(s.bucket, s.prefix+name, r, -1, minio.PutObjectOptions{ContentType: contentType})
+	_, err := s.client.PutObject(context.Background(), s.bucket, s.prefix+name, r, -1, minio.PutObjectOptions{ContentType: contentType})
 	return errors.Wrap(err, path.Base(s.Location))
 }

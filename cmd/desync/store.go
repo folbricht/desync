@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/folbricht/desync"
-	minio "github.com/minio/minio-go/v6"
+	minio "github.com/minio/minio-go/v7"
 	"github.com/pkg/errors"
 )
 
