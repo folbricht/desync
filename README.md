@@ -1088,7 +1088,8 @@ desync info --seed local_index.caibx --format=json update.caibx
 | Linux | Full support | All features including FUSE, reflinks (Btrfs/XFS) |
 | macOS | Supported | Minor incompatibilities possible when exchanging catar files with Linux (devices, filemodes) |
 | Windows | Partial | Subset of commands. Device entries unsupported in tar; `--no-same-owner` and `--no-same-permissions` ignored in `untar`. |
-| BSD | Untested | Expected to work |
+| FreeBSD | Supported | Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
+| Other BSD | Unsupported | NetBSD, OpenBSD and DragonFly are not supported by the FUSE library desync uses. |
 
 ## Design Philosophy
 
