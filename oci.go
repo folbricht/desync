@@ -31,6 +31,13 @@ const OCIChunkArtifactType = "application/vnd.desync.chunk.v1"
 // driving a huge or invalid allocation before the blob is even fetched.
 const maxOCIChunkBlobSize = 1 << 30
 
+// maxOCIManifestSize bounds a manifest read. oras hands back the raw response
+// body from FetchReference without applying the MaxMetadataBytes limit it uses
+// on the paths that fetch other metadata, so a registry answering a manifest
+// request with an endless body would otherwise be read until memory ran out.
+// Mirrors oras' own 4MiB default, far above any manifest desync writes.
+const maxOCIManifestSize = 4 << 20
+
 // ociTagListPageSize bounds the tag listing used by Prune. Without it oras
 // sends no page size and registries answer with the complete tag list, which
 // it then reads under a 4MB metadata limit. A chunk tag costs about 72 bytes
@@ -333,6 +340,25 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 // the tag alone can't be trusted, an unrelated artifact sharing the repository
 // may sit under a chunk-ID-shaped tag, especially when the storage extension
 // is empty (uncompressed, unencrypted stores).
+// readOCIManifest reads a manifest body under the size limit and decodes it.
+// The whole body is decoded rather than streamed off the reader so that
+// anything trailing the manifest is rejected instead of ignored; at these
+// sizes there is nothing to gain from streaming.
+func readOCIManifest(r io.Reader) (ocispec.Manifest, error) {
+	mb, err := io.ReadAll(io.LimitReader(r, maxOCIManifestSize+1))
+	if err != nil {
+		return ocispec.Manifest{}, err
+	}
+	if len(mb) > maxOCIManifestSize {
+		return ocispec.Manifest{}, fmt.Errorf("manifest exceeds %d bytes", maxOCIManifestSize)
+	}
+	var manifest ocispec.Manifest
+	if err := json.Unmarshal(mb, &manifest); err != nil {
+		return ocispec.Manifest{}, err
+	}
+	return manifest, nil
+}
+
 func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.Manifest, ocispec.Descriptor, error) {
 	desc, r, err := s.repo.FetchReference(ctx, s.tagFromID(id))
 	if err != nil {
@@ -342,12 +368,8 @@ func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.M
 		return ocispec.Manifest{}, ocispec.Descriptor{}, err
 	}
 	defer r.Close()
-	mb, err := io.ReadAll(r)
+	manifest, err := readOCIManifest(r)
 	if err != nil {
-		return ocispec.Manifest{}, ocispec.Descriptor{}, err
-	}
-	var manifest ocispec.Manifest
-	if err := json.Unmarshal(mb, &manifest); err != nil {
 		return ocispec.Manifest{}, ocispec.Descriptor{}, fmt.Errorf("invalid manifest for chunk %s in %s: %w", id.String(), s, err)
 	}
 	if manifest.ArtifactType != OCIChunkArtifactType {

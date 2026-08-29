@@ -134,3 +134,20 @@ func TestOCIIndexStoreRejects(t *testing.T) {
 	_, err = NewOCIIndexStore(u, nil, StoreOptions{Encryption: true})
 	require.Error(t, err)
 }
+
+// oras returns the manifest response body unbounded, so an endless or
+// oversized body has to be cut off rather than read until memory runs out.
+func TestOCIManifestSizeLimit(t *testing.T) {
+	// A body larger than the limit is rejected rather than consumed.
+	huge := strings.NewReader("{" + strings.Repeat(" ", maxOCIManifestSize+16) + "}")
+	_, err := readOCIManifest(huge)
+	require.ErrorContains(t, err, "exceeds")
+
+	// Anything trailing a valid manifest is rejected too.
+	_, err = readOCIManifest(strings.NewReader(`{"schemaVersion":2} trailing`))
+	require.Error(t, err)
+
+	m, err := readOCIManifest(strings.NewReader(`{"schemaVersion":2,"artifactType":"` + OCIIndexArtifactType + `"}`))
+	require.NoError(t, err)
+	assert.Equal(t, OCIIndexArtifactType, m.ArtifactType)
+}

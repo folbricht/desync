@@ -109,13 +109,9 @@ func (s OCIIndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
 		}
 		return nil, err
 	}
-	mb, err := io.ReadAll(r)
+	manifest, err := readOCIManifest(r)
 	r.Close()
 	if err != nil {
-		return nil, err
-	}
-	var manifest ocispec.Manifest
-	if err := json.Unmarshal(mb, &manifest); err != nil {
 		return nil, fmt.Errorf("invalid manifest for index %s in %s: %w", name, s, err)
 	}
 	// The tag alone can't be trusted: an unrelated artifact may sit under it.
