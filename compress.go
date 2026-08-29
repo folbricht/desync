@@ -1,6 +1,3 @@
-//go:build !datadog
-// +build !datadog
-
 package desync
 
 import "github.com/klauspost/compress/zstd"
