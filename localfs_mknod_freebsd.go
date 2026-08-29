@@ -16,10 +16,14 @@ import (
 // name that has no path separators, so it cannot escape Root. FreeBSD's
 // mknodat takes the device number as uint64, unlike the int taken on Linux.
 func (fs *LocalFS) createDeviceNode(r *os.Root, n NodeDevice) error {
+	dev, err := mkdev(n.Major, n.Minor)
+	if err != nil {
+		return err
+	}
 	df, err := r.Open(path.Dir(n.Name))
 	if err != nil {
 		return err
 	}
 	defer df.Close()
-	return unix.Mknodat(int(df.Fd()), path.Base(n.Name), FilemodeToStatMode(n.Mode)|0666, mkdev(n.Major, n.Minor))
+	return unix.Mknodat(int(df.Fd()), path.Base(n.Name), FilemodeToStatMode(n.Mode)|0666, dev)
 }
