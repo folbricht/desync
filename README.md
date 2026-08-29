@@ -6,7 +6,7 @@ Content-addressed binary distribution, reimplemented in Go.
 [![CI](https://github.com/folbricht/desync/actions/workflows/validate.yaml/badge.svg)](https://github.com/folbricht/desync/actions/workflows/validate.yaml)
 [![License](https://img.shields.io/github/license/folbricht/desync)](LICENSE)
 
-desync is a Go library and CLI tool that re-implements [casync](https://github.com/systemd/casync) features for content-addressed binary distribution. It chunks large files using a rolling hash, deduplicates and compresses chunks with [zstd](https://github.com/facebook/zstd), and distributes them via multiple store backends. It maintains compatibility with casync's data structures, protocols and types (chunk stores, index files, archives) to function as a drop-in replacement.
+desync is a Go library and CLI tool that re-implements [casync](https://github.com/systemd/casync) features for content-addressed binary distribution. It chunks large files using a rolling hash, deduplicates and compresses chunks with [zstd](https://github.com/facebook/zstd), and distributes them via multiple store backends. It maintains compatibility with casync's data structures, protocols and types (chunk stores, index files, archives), so both tools can be used against the same data. It is not a drop-in replacement on the command line: the options differ, and desync has commands casync doesn't.
 
 ## Key Features
 
@@ -1101,7 +1101,7 @@ desync info --seed local_index.caibx --format=json update.caibx
 - **Cross-platform over platform-specific features** — where upstream casync takes full advantage of Linux platform features, desync implements a minimum feature set. High-value platform-specific features (such as Btrfs reflinks) are added while maintaining the ability to build on other platforms.
 - **Hash functions** — both SHA512/256 and SHA256 are supported.
 - **Compression** — only zstd compression and uncompressed stores are supported.
-- **casync as drop-in replacement** — desync can serve as a drop-in replacement for casync on SSH servers for read-only chunk serving. Set `CASYNC_REMOTE_PATH=desync` on the client.
+- **Serving casync clients** — desync can stand in for the casync binary on SSH servers for read-only chunk serving. Set `CASYNC_REMOTE_PATH=desync` on the client.
 - **catar limitations** — SELinux and ACLs in existing catar files are ignored and won't be present in newly created catars. FCAPs are supported only as a verbatim copy of the `security.capability` XAttr.
 
 ## Links
