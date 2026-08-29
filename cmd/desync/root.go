@@ -24,7 +24,12 @@ Store locations, used with options like -s/--store and -c/--cache, can be:
 Commands that accept multiple stores try them in the order given. Several
 stores can also be combined into one failover group by separating them with
 '|', for example -s "http://server1/store|http://server2/store".`,
+		// Makes cobra provide --version. The 'version' command prints more.
+		Version: currentBuild().Version,
 	}
+	// Registered here so cobra doesn't claim -v as its shorthand, which users
+	// would reasonably expect to mean --verbose.
+	cmd.Flags().Bool("version", false, "print the version and exit")
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default $HOME/.config/desync/config.json)")
 	cmd.PersistentFlags().StringVar(&digestAlgorithm, "digest", "sha512-256", "digest algorithm, sha512-256 or sha256")
 	cmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "verbose mode")
