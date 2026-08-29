@@ -39,7 +39,7 @@ func IndexFromFile(ctx context.Context,
 
 	index := Index{
 		Index: FormatIndex{
-			FeatureFlags: CaFormatExcludeNoDump | digestFlag,
+			FeatureFlags: CaFormatExcludeFile | CaFormatExcludeNoDump | digestFlag,
 			ChunkSizeMin: min,
 			ChunkSizeAvg: avg,
 			ChunkSizeMax: max,

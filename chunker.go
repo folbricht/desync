@@ -245,6 +245,15 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	ht := &hashTable
 	htr := &hashTableRotated
 
+	// The window seeded above ends exactly at the min chunk size, and casync
+	// tests it before rolling any further byte, so a boundary there produces a
+	// chunk of exactly min. Test it here too: without this the smallest chunk
+	// desync can produce is min+1, and the two disagree whenever a boundary
+	// falls on min.
+	if bits.RotateLeft32((hValue+1)*inverseOdd, rot)-qBias <= qMax {
+		return c.split(base, nil)
+	}
+
 	// Process two bytes per iteration. Rolling one byte is
 	// h' = rol1(h) ^ a, with a = hashTableRotated[out] ^ hashTable[in].
 	// Rotation distributes over xor, so two bytes at once is
