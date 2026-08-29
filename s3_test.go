@@ -445,3 +445,49 @@ func TestS3StoreGetMissingChunk(t *testing.T) {
 	require.ErrorAs(t, err, &missing)
 	require.EqualValues(t, 1, atomic.LoadInt32(&requests), "missing chunk should not be retried")
 }
+
+// A store configured with a timeout must give up on an endpoint that never
+// responds. S3 stores previously ignored the timeout option entirely and would
+// block for as long as the server held the connection open.
+func TestS3StoreTimeout(t *testing.T) {
+	chunkId, err := ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
+	require.NoError(t, err)
+	provider := MockCredProvider{}
+
+	release := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	// Unblock the handler before shutting the server down, since Close waits
+	// for outstanding requests.
+	defer ts.Close()
+	defer close(release)
+
+	u, err := url.Parse(ts.URL)
+	require.NoError(t, err)
+
+	endpoint := url.URL{Scheme: "s3+http", Host: u.Host, Path: "/doomsdaydevices/blob1.store/"}
+	store, err := NewS3Store(&endpoint, credentials.New(&provider), "vertucon-central",
+		StoreOptions{Timeout: 100 * time.Millisecond}, minio.BucketLookupAuto)
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.GetChunk(chunkId)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "expected the request to be cut short by the timeout")
+	case <-time.After(30 * time.Second):
+		require.FailNow(t, "GetChunk did not observe the store timeout")
+	}
+
+	// A negative timeout means infinite, which must produce a context with no
+	// deadline rather than one that has already expired.
+	ctx, cancel := StoreOptions{Timeout: -1}.contextWithTimeout(context.Background())
+	defer cancel()
+	_, hasDeadline := ctx.Deadline()
+	require.False(t, hasDeadline, "a negative timeout means no deadline")
+}

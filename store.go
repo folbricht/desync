@@ -210,6 +210,18 @@ func (o StoreOptions) tlsClientConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
+// contextWithTimeout derives a context bound to the store's timeout option,
+// for clients that take a context per operation rather than a timeout on the
+// HTTP client. A store configured for an infinite timeout gets a context that
+// is only cancellable. The returned cancel function must always be called.
+func (o StoreOptions) contextWithTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := o.effectiveTimeout()
+	if timeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
 // effectiveTimeout returns the HTTP client timeout for a network store. If no
 // timeout was given in config (set to 0), then use 1 minute. If timeout is
 // negative, use 0 to set an infinite timeout.

@@ -100,9 +100,16 @@ func (s S3Store) GetChunk(id ChunkID) (*Chunk, error) {
 	var attempt int
 retry:
 	attempt++
-	obj, err := s.client.GetObject(context.Background(), s.bucket, name, minio.GetObjectOptions{})
+	// The context bounds the whole attempt, not just the request setup: the
+	// object body is read below, and GetObject only issues the request on the
+	// first read. Each attempt gets its own, mirroring the per-request timeout
+	// the HTTP stores get from their client.
+	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	defer cancel()
+	obj, err := s.client.GetObject(ctx, s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
 		if attempt <= s.opt.ErrorRetry {
+			cancel()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
@@ -125,6 +132,7 @@ retry:
 		}
 		if attempt <= s.opt.ErrorRetry {
 			obj.Close()
+			cancel()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
@@ -144,6 +152,7 @@ retry:
 				"attempt": attempt,
 			}).WithError(err).Info("chunk failed validation, retrying")
 			obj.Close()
+			cancel()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
@@ -163,9 +172,12 @@ func (s S3Store) StoreChunk(chunk *Chunk) error {
 	var attempt int
 retry:
 	attempt++
-	_, err = s.client.PutObject(context.Background(), s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
+	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	defer cancel()
+	_, err = s.client.PutObject(ctx, s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	if err != nil {
 		if attempt < s.opt.ErrorRetry {
+			cancel()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
@@ -176,7 +188,9 @@ retry:
 // HasChunk returns true if the chunk is in the store
 func (s S3Store) HasChunk(id ChunkID) (bool, error) {
 	name := s.nameFromID(id)
-	_, err := s.client.StatObject(context.Background(), s.bucket, name, minio.StatObjectOptions{})
+	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	defer cancel()
+	_, err := s.client.StatObject(ctx, s.bucket, name, minio.StatObjectOptions{})
 	return err == nil, nil
 }
 
@@ -184,7 +198,9 @@ func (s S3Store) HasChunk(id ChunkID) (bool, error) {
 // Used when verifying and repairing caches.
 func (s S3Store) RemoveChunk(id ChunkID) error {
 	name := s.nameFromID(id)
-	return s.client.RemoveObject(context.Background(), s.bucket, name, minio.RemoveObjectOptions{})
+	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	defer cancel()
+	return s.client.RemoveObject(ctx, s.bucket, name, minio.RemoveObjectOptions{})
 }
 
 // Prune removes any chunks from the store that are not contained in a list (map)
