@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-ini/ini"
-	"github.com/minio/minio-go/v6/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
 )
 
@@ -39,6 +39,13 @@ func (cp *StaticCredentialsProvider) IsExpired() bool {
 // Retrieve returns credentials
 func (cp *StaticCredentialsProvider) Retrieve() (credentials.Value, error) {
 	return cp.creds, nil
+}
+
+// RetrieveWithCredContext returns credentials. The context carries the HTTP
+// client used by providers that fetch credentials remotely, which these static
+// ones do not need.
+func (cp *StaticCredentialsProvider) RetrieveWithCredContext(_ *credentials.CredContext) (credentials.Value, error) {
+	return cp.Retrieve()
 }
 
 // NewStaticCredentials initializes a new set of S3 credentials
@@ -112,6 +119,13 @@ func (p *RefreshableSharedCredentialsProvider) Retrieve() (credentials.Value, er
 	// After retrieving the credentials, reset the expiration time.
 	p.exp = p.now().Add(time.Minute)
 	return creds, nil
+}
+
+// RetrieveWithCredContext reads the shared credentials. The context carries the
+// HTTP client used by providers that fetch credentials remotely, which reading
+// a local file does not need.
+func (p *RefreshableSharedCredentialsProvider) RetrieveWithCredContext(_ *credentials.CredContext) (credentials.Value, error) {
+	return p.Retrieve()
 }
 
 // loadProfiles loads from the file pointed to by shared credentials filename for profile.

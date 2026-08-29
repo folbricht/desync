@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	minio "github.com/minio/minio-go/v6"
-	"github.com/minio/minio-go/v6/pkg/credentials"
+	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -34,6 +34,10 @@ func (p *MockCredProvider) Retrieve() (credentials.Value, error) {
 		SessionToken:    "youdontneedtoken",
 		SignerType:      credentials.SignatureDefault,
 	}, nil
+}
+
+func (p *MockCredProvider) RetrieveWithCredContext(_ *credentials.CredContext) (credentials.Value, error) {
+	return p.Retrieve()
 }
 
 func (p *MockCredProvider) IsExpired() bool {

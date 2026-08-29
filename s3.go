@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	minio "github.com/minio/minio-go/v6"
-	"github.com/minio/minio-go/v6/pkg/credentials"
+	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -63,7 +63,7 @@ func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string,
 		s.prefix += "/"
 	}
 
-	s.client, err = minio.NewWithOptions(u.Host, &minio.Options{
+	s.client, err = minio.New(u.Host, &minio.Options{
 		Creds:        s3Creds,
 		Secure:       useSSL,
 		Region:       region,
@@ -100,7 +100,7 @@ func (s S3Store) GetChunk(id ChunkID) (*Chunk, error) {
 	var attempt int
 retry:
 	attempt++
-	obj, err := s.client.GetObject(s.bucket, name, minio.GetObjectOptions{})
+	obj, err := s.client.GetObject(context.Background(), s.bucket, name, minio.GetObjectOptions{})
 	if err != nil {
 		if attempt <= s.opt.ErrorRetry {
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
@@ -163,7 +163,7 @@ func (s S3Store) StoreChunk(chunk *Chunk) error {
 	var attempt int
 retry:
 	attempt++
-	_, err = s.client.PutObject(s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
+	_, err = s.client.PutObject(context.Background(), s.bucket, name, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: contentType})
 	if err != nil {
 		if attempt < s.opt.ErrorRetry {
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
@@ -176,7 +176,7 @@ retry:
 // HasChunk returns true if the chunk is in the store
 func (s S3Store) HasChunk(id ChunkID) (bool, error) {
 	name := s.nameFromID(id)
-	_, err := s.client.StatObject(s.bucket, name, minio.StatObjectOptions{})
+	_, err := s.client.StatObject(context.Background(), s.bucket, name, minio.StatObjectOptions{})
 	return err == nil, nil
 }
 
@@ -184,14 +184,16 @@ func (s S3Store) HasChunk(id ChunkID) (bool, error) {
 // Used when verifying and repairing caches.
 func (s S3Store) RemoveChunk(id ChunkID) error {
 	name := s.nameFromID(id)
-	return s.client.RemoveObject(s.bucket, name)
+	return s.client.RemoveObject(context.Background(), s.bucket, name, minio.RemoveObjectOptions{})
 }
 
 // Prune removes any chunks from the store that are not contained in a list (map)
 func (s S3Store) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	doneCh := make(chan struct{})
-	defer close(doneCh)
-	objectCh := s.client.ListObjectsV2(s.bucket, s.prefix, true, doneCh)
+	// The listing is bound to ctx, so cancelling it also stops the goroutine
+	// feeding the channel.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	objectCh := s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: s.prefix, Recursive: true})
 	for object := range objectCh {
 		if object.Err != nil {
 			return object.Err
