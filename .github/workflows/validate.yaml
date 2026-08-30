@@ -80,6 +80,31 @@ jobs:
         with:
           version: v2.12
 
+      # The reference under docs/cli is generated, so it can only be wrong by
+      # being stale. Regenerating and diffing is what keeps it honest.
+      - name: CLI reference is current
+        run: |
+          go run ./cmd/desync gendocs docs/cli
+          git add -N docs/cli
+          git diff --exit-code docs/cli
+
+      # The README documents options in its own words, which the generated
+      # reference can't check. This at least catches a flag that doesn't
+      # exist: it shipped a `--writeable` that was really `--writable`, in a
+      # command meant to be copied and pasted.
+      - name: README flags exist
+        run: |
+          allow='--hard-dereference|--rm'
+          missing=""
+          for f in $(grep -ohE -- '--[a-z0-9][a-z0-9-]+' README.md | sort -u); do
+            echo "$f" | grep -qE "^($allow)$" && continue
+            grep -qhE -- "\\$f([^a-z0-9-]|$)" docs/cli/*.md || missing="$missing $f"
+          done
+          if [ -n "$missing" ]; then
+            echo "README documents flags that no command defines:$missing"
+            exit 1
+          fi
+
   # govulncheck reports only vulnerabilities the code actually reaches, so a
   # finding here is worth acting on rather than triaging away. It runs on the
   # current stable toolchain rather than the go.mod version: most findings are

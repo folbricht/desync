@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -27,12 +28,19 @@ func newManpageCommand(ctx context.Context, root *cobra.Command) *cobra.Command 
 	}
 	flags := cmd.Flags()
 	flags.StringVar(&opt.Title, "title", "desync", "title")
-	flags.StringVar(&opt.Section, "section", "3", "section")
-	flags.StringVar(&opt.Source, "source", "", "source")
+	// Section 1 is user commands. Section 3 is library calls, which is where
+	// these were being written, so an installed page went somewhere `man
+	// desync` would not look.
+	flags.StringVar(&opt.Section, "section", "1", "section")
+	flags.StringVar(&opt.Source, "source", "desync", "source")
 	flags.StringVar(&opt.Manual, "manual", "", "manual")
 	return cmd
 }
 
 func runManpage(ctx context.Context, opt manpageOptions, root *cobra.Command, args []string) error {
+	// cobra writes the pages but won't create the directory to put them in.
+	if err := os.MkdirAll(args[0], 0755); err != nil {
+		return err
+	}
 	return doc.GenManTree(root, &opt.GenManHeader, args[0])
 }
