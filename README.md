@@ -1,12 +1,56 @@
 # desync
 
-Content-addressed binary distribution, reimplemented in Go.
+Distribute large files and images by transferring only the parts that changed.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/folbricht/desync.svg)](https://pkg.go.dev/github.com/folbricht/desync)
 [![CI](https://github.com/folbricht/desync/actions/workflows/validate.yaml/badge.svg)](https://github.com/folbricht/desync/actions/workflows/validate.yaml)
 [![License](https://img.shields.io/github/license/folbricht/desync)](LICENSE)
 
-desync is a Go library and CLI tool that re-implements [casync](https://github.com/systemd/casync) features for content-addressed binary distribution. It chunks large files using a rolling hash, deduplicates and compresses chunks with [zstd](https://github.com/facebook/zstd), and distributes them via multiple store backends. It maintains compatibility with casync's data structures, protocols and types (chunk stores, index files, archives), so both tools can be used against the same data. It is not a drop-in replacement on the command line: the options differ, and desync has commands casync doesn't.
+desync splits a file into content-defined chunks, stores each distinct chunk once, and writes an index listing the chunks that make up the file. A client that already holds an older version reuses the chunks it has and downloads only the ones it is missing. Chunks are ordinary files addressed by their hash, so a chunk store is any static file host: a web server, an S3 bucket, an OCI registry, or a directory on disk. Nothing on the server computes a delta, which means one published copy serves every client no matter which version they are coming from.
+
+It implements the [casync](https://github.com/systemd/casync) format and interoperates with it — same index files, archives and chunk stores — with parallel chunking, more store backends and a Go library API. It is not a drop-in replacement on the command line: the options differ, and desync has commands casync doesn't.
+
+## What it's for
+
+- **A/B image updates for appliances and embedded devices.** The device has the running partition on disk. It seeds from that and pulls only the difference.
+- **VM and container image distribution.** Publish each build to the same chunk store; unchanged parts of the filesystem are stored and transferred once across all of them.
+- **Shipping large assets over a CDN.** Chunks are immutable, hash-named static files, which is the friendliest possible thing to cache.
+- **CI artifact caching.** Deduplicate build outputs and toolchains between runs instead of re-fetching whole tarballs.
+
+## What it saves
+
+Two adjacent Debian point releases, exported as container root filesystems and published to the same chunk store. The client already has 12.7 on disk and uses it as a seed:
+
+| | |
+| --- | --- |
+| Image size (12.8, uncompressed) | 125.2 MB |
+| Full download, compressed | 50.4 MB |
+| **Download with 12.7 as a seed** | **18.4 MB** |
+| Chunks reused from 12.7 | 1121 of 1570 |
+| Store holding both versions | 68.8 MB, against 100.8 MB for two independent copies |
+
+```bash
+mkdir store
+desync make -s store v12.7.caibx v12.7.tar          # publish the old version
+desync make -s store v12.8.caibx v12.8.tar          # publish the new one
+desync inspect-chunks -s store v12.8.caibx > chunks.json
+desync info --seed v12.7.caibx --chunks-info chunks.json -s store v12.8.caibx
+```
+
+How much you save depends entirely on how much actually changed between versions; a rebuild that shifts every file will save nothing. Measure your own data with `desync info` before committing to a design — that is what the command is for.
+
+## How it compares
+
+| | desync | casync | rsync | zsync | OCI / ORAS |
+| --- | --- | --- | --- | --- | --- |
+| Reuses local data as a seed | yes | yes | yes, the destination file | yes | no |
+| Server-side work per client | none | none | delta computed per transfer | none | none |
+| Server requirement | any static file host | any static file host | rsync daemon or SSH | static host with range requests | registry |
+| Deduplication across versions in the store | yes | yes | no | no | whole layers only |
+| Directory trees | catar archives | catar archives | yes | no, single file | yes, as layers |
+| FUSE mount of a published image | yes | yes | no | no | no |
+
+rsync is the right tool when both ends are machines you control and the destination is a live filesystem. desync and casync are for publishing an artifact once to a dumb file host and letting many clients, at many different starting versions, update from it. [bita](https://github.com/oll3/bita) solves a similar problem in Rust with self-contained archives rather than a shared chunk store.
 
 ## Key Features
 
@@ -22,6 +66,10 @@ desync is a Go library and CLI tool that re-implements [casync](https://github.c
 
 ## Table of Contents
 
+- [What it's for](#what-its-for)
+- [What it saves](#what-it-saves)
+- [How it compares](#how-it-compares)
+- [Key Features](#key-features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Concepts](#concepts)
