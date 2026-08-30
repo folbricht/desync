@@ -186,6 +186,24 @@ func readCaibxFile(location string, cmdOpt cmdStoreOptions) (c desync.Index, err
 	return idx, errors.Wrap(err, location)
 }
 
+// validateIndexLocation reports whether an index can be written to this
+// location, without opening the store. Commands that write an index do so as
+// their last step, after chunking and uploading, so a name the destination
+// can't represent is worth catching before all that work rather than after.
+func validateIndexLocation(location string) error {
+	loc, err := url.Parse(location)
+	if err != nil {
+		// Nothing here can name an index store, opening the location will
+		// fail with a better message than this check could give.
+		return nil
+	}
+	switch loc.Scheme {
+	case "oci+https", "oci+http":
+		return desync.ValidateOCIIndexName(path.Base(loc.Path))
+	}
+	return nil
+}
+
 func storeCaibxFile(idx desync.Index, location string, cmdOpt cmdStoreOptions) error {
 	is, indexName, err := writableIndexStore(location, cmdOpt)
 	if err != nil {
@@ -254,7 +272,14 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	case "ssh":
 		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
 	case "oci+https", "oci+http":
-		return nil, "", errors.New("Index storage is not supported by oci registry stores")
+		creds, cerr := cfg.GetOCICredentialsFor(&p)
+		if cerr != nil {
+			return nil, "", cerr
+		}
+		s, err = desync.NewOCIIndexStore(&p, creds, opt)
+		if err != nil {
+			return nil, "", err
+		}
 	case "sftp":
 		s, err = desync.NewSFTPIndexStore(&p, opt)
 		if err != nil {

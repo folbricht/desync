@@ -520,3 +520,44 @@ func TestOCIStoreRetry(t *testing.T) {
 	assert.False(t, hasChunk)
 	assert.True(t, dropped.Load())
 }
+
+// The guard has to tell a transfer that is merely slow from one that has
+// stopped altogether.
+func TestOCIIdleTimeout(t *testing.T) {
+	const timeout = 200 * time.Millisecond
+	stall := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "4")
+		w.WriteHeader(http.StatusOK)
+		for range 3 {
+			w.Write([]byte("x"))
+			w.(http.Flusher).Flush()
+			// Under the timeout individually, over it in total.
+			time.Sleep(timeout * 3 / 4)
+		}
+		if r.URL.Path == "/stall" {
+			<-stall
+		}
+		w.Write([]byte("x"))
+	}))
+	defer srv.Close()
+	// Runs before srv.Close, which waits for the stalled handler.
+	defer close(stall)
+
+	client := &http.Client{Transport: &idleTimeoutTransport{base: http.DefaultTransport, timeout: timeout}}
+
+	// A slow but progressing transfer runs longer than the timeout and finishes.
+	resp, err := client.Get(srv.URL + "/slow")
+	require.NoError(t, err)
+	b, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	require.NoError(t, err)
+	require.Equal(t, "xxxx", string(b))
+
+	// One that stops moving fails rather than hanging.
+	resp, err = client.Get(srv.URL + "/stall")
+	require.NoError(t, err)
+	_, err = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	require.Error(t, err)
+}

@@ -57,6 +57,10 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 	indexFile := args[0]
 	dataFile := args[1]
 
+	if err := validateIndexLocation(indexFile); err != nil {
+		return err
+	}
+
 	// Open the target store if one was given
 	var s desync.WriteStore
 	if opt.store != "" {

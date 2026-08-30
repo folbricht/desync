@@ -179,6 +179,7 @@ catar archives can also be extracted to GNU tar archive streams. All files in th
 | Use as cache | yes | yes | yes | yes | yes | no | yes |
 | Prune | yes | yes | yes | no | yes | no | yes |
 | Verify | yes | no | no | no | no | no | no |
+| Store indexes | yes | yes | yes | yes | yes | no | yes |
 
 ### Store Architecture
 
@@ -274,7 +275,7 @@ oci+https://ghcr.io/myuser/mystore
 oci+http://127.0.0.1:5000/test/store
 ```
 
-An OCI store supports reading, writing, pruning, and use as a cache, so it works with `make`, `extract`, `chop`, `cache`, `info`, `prune` and every other command that takes a `-s` store. Note that index files (`.caibx`/`.caidx`) cannot be stored in a registry, only chunks — distribute the index via an [index store](#remote-indexes) or any other file transfer.
+An OCI store supports reading, writing, pruning, and use as a cache, so it works with `make`, `extract`, `chop`, `cache`, `info`, `prune` and every other command that takes a `-s` store. Indexes can be kept in a registry too, so a registry can hold everything needed to distribute a file — see [Indexes in a registry](#indexes-in-a-registry) below.
 
 #### How chunks are stored
 
@@ -312,6 +313,37 @@ This layout has a few important properties:
 Be aware that registry UIs show one tag (or "package version") per chunk, so a store with many chunks makes for a noisy listing. Using a repository dedicated to the chunk store is recommended, although unrelated artifacts sharing the repository are safe, even from `prune`.
 
 Reading a chunk takes two requests (manifest by tag, then blob), an existence check takes one, and writing takes three. desync requests chunks concurrently, which hides much of the added round-trip latency, but combining a registry store with a local cache (`-c`) is still more worthwhile than for most other store types.
+
+#### Indexes in a registry
+
+Indexes can be stored in a registry as well, which means a registry can hold everything needed to distribute a file, with no other server or file transfer involved. The index location is the repository followed by the index name, and the name becomes the tag:
+
+```sh
+# Chunk the file, storing chunks and the index in the registry
+desync make -s oci+https://ghcr.io/myuser/mystore \
+  oci+https://ghcr.io/myuser/mystore/file.iso.caibx file.iso
+
+# On another machine, reassemble it from the registry alone
+desync extract -s oci+https://ghcr.io/myuser/mystore \
+  oci+https://ghcr.io/myuser/mystore/file.iso.caibx file.iso
+```
+
+Indexes are stored as their own artifact, a blob holding the index referenced by a manifest tagged with the index name and carrying the artifact type `application/vnd.desync.index.v1`. The manifest also records the number of chunks, the size of the indexed blob, and the chunk sizes as annotations, so the shape of an index can be read without fetching it.
+
+Indexes and chunks can share a repository. `prune` only ever deletes chunk artifacts, so indexes in the same repository are left alone, and a chunk lookup is never satisfied by an index. Keeping them in separate repositories is still tidier, since registry UIs list one version per tag:
+
+```sh
+desync make -s oci+https://ghcr.io/myuser/chunks \
+  oci+https://ghcr.io/myuser/indexes/file.iso.caibx file.iso
+```
+
+Because the index name is used as a tag it has to fit the OCI tag grammar: word characters, dots and dashes, not starting with a dot or dash, at most 128 characters. `file.iso.caibx` and `rootfs-v2.caidx` are fine, a name containing `/` is not. Note also that pushing an index that already exists overwrites the tag, which registries configured for immutable tags will reject, and that removing an index needs the same manifest deletion support described under [Pruning](#pruning).
+
+Storing an index in a registry does not keep its chunks alive there. It doesn't need to: every chunk already has its own tagged manifest holding a reference to its blob.
+
+Two things to be aware of when indexes and chunks share a repository. Store options are looked up by location, so a `store-options` entry for the repository applies to the index as well as the chunks; if that entry enables encryption, index operations fail, as described under [Chunk Encryption](#chunk-encryption). Keep the indexes in a separate repository in that case, or add a more specific entry without encryption for them. The `timeout` option is applied differently too: for indexes it bounds how long a transfer may make no progress rather than how long it may take, so a large index isn't cut off part way through by the one minute default while a registry that stops responding mid-transfer still fails.
+
+Indexes over 32 MiB, which is about 840,000 chunks, roughly a 50 GB blob at the default chunk size, are streamed to the registry rather than serialized into memory first. The request body can't be rewound in that case, so `error-retry` doesn't apply to the upload and an access token that expires part way through surfaces as a `401` instead of being renewed. Registry tokens are often short-lived, so for indexes that big prefer credentials that don't expire mid-push, or split the input across several smaller indexes.
 
 #### Authentication
 
@@ -439,7 +471,7 @@ Encryption provides confidentiality, while integrity comes from desync's regular
 
 ### Remote Indexes
 
-Indexes can be stored and retrieved from remote locations via SFTP, S3, and HTTP. Storing indexes remotely is optional and deliberately separate from chunk storage. While it's possible to store indexes in the same location as chunks in the case of SFTP and S3, this should only be done in secured environments. The built-in HTTP chunk store (`chunk-server` command) can not be used as index server. Use the `index-server` command instead to start an index server that serves indexes and can optionally store them as well (with `-w`).
+Indexes can be stored and retrieved from remote locations via SFTP, S3, GCS, HTTP, and OCI registries. Storing indexes remotely is optional and deliberately separate from chunk storage. While it's possible to store indexes in the same location as chunks in the case of SFTP, S3 and OCI registries, this should only be done in secured environments. The built-in HTTP chunk store (`chunk-server` command) can not be used as index server. Use the `index-server` command instead to start an index server that serves indexes and can optionally store them as well (with `-w`).
 
 Using remote indexes, it is possible to use desync completely file-less. For example when wanting to share a large file with `mount-index`, one could read the index from an index store like this:
 
