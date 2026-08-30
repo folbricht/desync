@@ -153,7 +153,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	var tarErr error
 	go func() {
 		tarErr = desync.Tar(ctx, w, fs)
-		w.Close()
+		w.CloseWithError(tarErr)
 	}()
 
 	// Read from the pipe, split the stream and store the chunks. This should

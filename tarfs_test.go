@@ -33,7 +33,7 @@ func TestGnuTarWrite(t *testing.T) {
 	if err := UnTar(context.Background(), r, fs); err != nil {
 		t.Fatal(err)
 	}
-	fs.Close()
+	_ = fs.Close()
 
 	// Compare to expected
 	if !bytes.Equal(b.Bytes(), exp) {

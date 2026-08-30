@@ -29,7 +29,8 @@ func TestCacheCommand(t *testing.T) {
 
 			// Redirect the command's output to turn off the progressbar and run it
 			stderr = io.Discard
-			cmd.SetOutput(io.Discard)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 

@@ -155,8 +155,9 @@ func writeWithTmpFile(ctx context.Context, name string, idx desync.Index, s desy
 	if err != nil {
 		return stats, err
 	}
-	tmp.Close()
-	defer os.Remove(tmp.Name())
+	// Reopened by name below, so nothing is lost by discarding these.
+	_ = tmp.Close()
+	defer func() { _ = os.Remove(tmp.Name()) }()
 
 	// Build the blob from the chunks, writing everything into the tempfile
 	if stats, err = writeInplace(ctx, tmp.Name(), idx, s, seeds, assembleOpt); err != nil {

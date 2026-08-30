@@ -110,7 +110,7 @@ func (s OCIIndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	manifest, err := readOCIManifest(r)
-	r.Close()
+	_ = r.Close()
 	if err != nil {
 		return nil, fmt.Errorf("invalid manifest for index %s in %s: %w", name, s, err)
 	}
@@ -191,7 +191,7 @@ func (s OCIIndexStore) StoreIndex(name string, idx Index) error {
 		}()
 		err := s.repo.Blobs().Push(ctx, blobDesc, pr)
 		// Unblocks the writer if the push stopped reading early.
-		pr.Close()
+		_ = pr.Close()
 		if err != nil {
 			return err
 		}

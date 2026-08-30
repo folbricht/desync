@@ -32,7 +32,7 @@ func TestTar(t *testing.T) {
 		"dir1/sub11/f12",
 	}
 	for i, name := range files {
-		os.WriteFile(filepath.Join(base, name), fmt.Appendf(nil, "filecontent%d", i), 0644)
+		require.NoError(t, os.WriteFile(filepath.Join(base, name), fmt.Appendf(nil, "filecontent%d", i), 0644))
 	}
 
 	require.NoError(t, os.Symlink("dir1", filepath.Join(base, "symlink")))

@@ -132,7 +132,9 @@ func MountIndex(ctx context.Context, idx Index, ifs MountFS, path string, s Stor
 		if err := ifs.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, "error during unmount:", err)
 		}
-		server.Unmount()
+		if err := server.Unmount(); err != nil {
+			fmt.Fprintln(os.Stderr, "error during unmount:", err)
+		}
 	}()
 	server.Wait()
 	return nil

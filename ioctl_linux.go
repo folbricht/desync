@@ -27,13 +27,13 @@ func CanClone(dstFile, srcFile string) bool {
 	if err != nil {
 		return false
 	}
-	defer os.Remove(dst.Name())
+	defer func() { _ = os.Remove(dst.Name()) }()
 	defer dst.Close()
 	src, err := os.CreateTemp(filepath.Dir(srcFile), ".tmp")
 	if err != nil {
 		return false
 	}
-	defer os.Remove(src.Name())
+	defer func() { _ = os.Remove(src.Name()) }()
 	defer src.Close()
 	err = CloneRange(dst, src, 0, 0, 0)
 	return err == nil
@@ -50,10 +50,10 @@ func CloneRange(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) error
 	//     __u64 dest_offset;
 	// };
 	arg := new(bytes.Buffer)
-	binary.Write(arg, binary.LittleEndian, uint64(src.Fd()))
-	binary.Write(arg, binary.LittleEndian, srcOffset)
-	binary.Write(arg, binary.LittleEndian, srcLength)
-	binary.Write(arg, binary.LittleEndian, dstOffset)
+	_ = binary.Write(arg, binary.LittleEndian, uint64(src.Fd()))
+	_ = binary.Write(arg, binary.LittleEndian, srcOffset)
+	_ = binary.Write(arg, binary.LittleEndian, srcLength)
+	_ = binary.Write(arg, binary.LittleEndian, dstOffset)
 	err := ioctl(dst.Fd(), fiCloneRange, uintptr(unsafe.Pointer(&arg.Bytes()[0])))
 	return errors.Wrapf(err, "failure cloning blocks from %s to %s", src.Name(), dst.Name())
 }

@@ -59,7 +59,7 @@ func IndexFromFile(ctx context.Context,
 			index.Index.FeatureFlags |= t.FeatureFlags
 		}
 	}
-	f.Close()
+	_ = f.Close()
 
 	size, err := GetFileSize(name)
 	if err != nil {

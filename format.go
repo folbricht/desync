@@ -147,8 +147,11 @@ func (d *FormatDecoder) Next() (any, error) {
 	// If we previously returned a reader, make sure we advance all the way in
 	// case the caller didn't read it all.
 	if d.advance != nil {
-		io.Copy(io.Discard, d.advance)
+		_, err := io.Copy(io.Discard, d.advance)
 		d.advance = nil
+		if err != nil {
+			return nil, err
+		}
 	}
 	hdr, err := d.r.ReadHeader()
 	if err != nil {

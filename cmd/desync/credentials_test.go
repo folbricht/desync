@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var now = time.Now
@@ -22,7 +23,8 @@ func TestNewRefreshableSharedCredentials(t *testing.T) {
 
 	assert.True(t, c.IsExpired(), "Expect creds to be expired before retrieve")
 
-	_, err := c.Get()
+	// The provider ignores the credential context, so nil is fine here.
+	_, err := c.GetWithContext(nil)
 	assert.Nil(t, err, "Expect no error")
 
 	assert.False(t, c.IsExpired(), "Expect creds to not be expired after retrieve")
@@ -62,7 +64,7 @@ func TestRefreshableSharedCredentialsProviderIsExpired(t *testing.T) {
 func TestRefreshableSharedCredentialsProviderWithAWS_SHARED_CREDENTIALS_FILE(t *testing.T) {
 	defer restoreEnv(os.Environ())
 	os.Clearenv()
-	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", "testdata/example.ini")
+	require.NoError(t, os.Setenv("AWS_SHARED_CREDENTIALS_FILE", "testdata/example.ini"))
 
 	p := RefreshableSharedCredentialsProvider{exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
@@ -80,7 +82,7 @@ func TestRefreshableSharedCredentialsProviderWithAWS_SHARED_CREDENTIALS_FILEAbsP
 
 	wd, err := os.Getwd()
 	assert.NoError(t, err)
-	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(wd, "testdata/example.ini"))
+	require.NoError(t, os.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(wd, "testdata/example.ini")))
 	p := RefreshableSharedCredentialsProvider{exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
 	assert.Nil(t, err, "Expect no error")
@@ -93,7 +95,7 @@ func TestRefreshableSharedCredentialsProviderWithAWS_SHARED_CREDENTIALS_FILEAbsP
 func TestRefreshableSharedCredentialsProviderWithAWS_PROFILE(t *testing.T) {
 	defer restoreEnv(os.Environ())
 	os.Clearenv()
-	os.Setenv("AWS_PROFILE", "no_token")
+	require.NoError(t, os.Setenv("AWS_PROFILE", "no_token"))
 
 	p := RefreshableSharedCredentialsProvider{Filename: "testdata/example.ini", Profile: "", exp: now().Add(time.Minute), now: now}
 	creds, err := p.Retrieve()
@@ -133,8 +135,8 @@ func TestRefreshableSharedCredentialsProviderColonInCredFile(t *testing.T) {
 func TestRefreshableSharedCredentialsProvider_DefaultFilename(t *testing.T) {
 	defer restoreEnv(os.Environ())
 	os.Clearenv()
-	os.Setenv("USERPROFILE", "profile_dir")
-	os.Setenv("HOME", "home_dir")
+	require.NoError(t, os.Setenv("USERPROFILE", "profile_dir"))
+	require.NoError(t, os.Setenv("HOME", "home_dir"))
 
 	// default filename and profile
 	p := RefreshableSharedCredentialsProvider{exp: now().Add(time.Minute), now: now}
@@ -154,6 +156,6 @@ func TestRefreshableSharedCredentialsProvider_DefaultFilename(t *testing.T) {
 func restoreEnv(env []string) {
 	for _, e := range env {
 		kv := strings.SplitN(e, "=", 2)
-		os.Setenv(kv[0], kv[1])
+		_ = os.Setenv(kv[0], kv[1])
 	}
 }

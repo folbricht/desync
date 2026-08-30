@@ -51,8 +51,8 @@ func (r *RemoteHTTPIndex) StoreIndex(name string, idx Index) error {
 
 		rdr, w := io.Pipe()
 		go func() {
-			defer w.Close()
-			idx.WriteTo(w)
+			_, err := idx.WriteTo(w)
+			w.CloseWithError(err)
 		}()
 		return rdr
 	}

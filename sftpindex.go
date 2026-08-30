@@ -55,8 +55,8 @@ func (s *SFTPIndexStore) StoreIndex(name string, idx Index) error {
 	r, w := io.Pipe()
 
 	go func() {
-		defer w.Close()
-		idx.WriteTo(w)
+		_, err := idx.WriteTo(w)
+		w.CloseWithError(err)
 	}()
 	return s.StoreObject(s.pathFromName(name), r)
 }

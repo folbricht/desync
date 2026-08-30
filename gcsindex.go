@@ -83,7 +83,7 @@ func (s GCIndexStore) StoreIndex(name string, idx Index) error {
 
 	if err != nil {
 		log.WithError(err).Error("Error when copying data from local filesystem to object in GCS bucket")
-		w.Close()
+		_ = w.Close()
 		return errors.Wrap(err, path.Base(s.Location))
 	}
 

@@ -30,7 +30,8 @@ func TestChopCommand(t *testing.T) {
 
 		// Redirect the command's output to turn off the progressbar and run it
 		stderr = io.Discard
-		cmd.SetOutput(io.Discard)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
 		_, err := cmd.ExecuteC()
 		require.NoError(t, err)
 
@@ -53,7 +54,8 @@ func TestChopErrors(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := newChopCommand(context.Background())
-			cmd.SetOutput(io.Discard)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			cmd.SetArgs(test.args)
 			_, err := cmd.ExecuteC()
 			require.Error(t, err)

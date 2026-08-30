@@ -113,7 +113,8 @@ func TestInfoCommand(t *testing.T) {
 
 			// Redirect the command's output
 			stdout = b
-			cmd.SetOutput(io.Discard)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			_, err = cmd.ExecuteC()
 			require.NoError(t, err)
 

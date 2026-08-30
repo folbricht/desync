@@ -23,7 +23,8 @@ func TestIndexServerReadCommand(t *testing.T) {
 	listCmd := newListCommand(context.Background())
 	listCmd.SetArgs([]string{fmt.Sprintf("http://%s/blob1.caibx", addr)})
 	stdout = io.Discard
-	listCmd.SetOutput(io.Discard)
+	listCmd.SetOut(io.Discard)
+	listCmd.SetErr(io.Discard)
 	_, err := listCmd.ExecuteC()
 	require.NoError(t, err)
 
@@ -32,14 +33,15 @@ func TestIndexServerReadCommand(t *testing.T) {
 	// the server.
 	resp, err := http.Get(fmt.Sprintf("http://%s/blob1", addr))
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	// This server shouldn't allow writing. Confirm by trying to chunk a file with
 	// the "make" command and storing a new index on the index server.
 	makeCmd := newMakeCommand(context.Background())
 	makeCmd.SetArgs([]string{fmt.Sprintf("http://%s/new.caibx", addr), "testdata/blob1"})
-	makeCmd.SetOutput(io.Discard)
+	makeCmd.SetOut(io.Discard)
+	makeCmd.SetErr(io.Discard)
 	_, err = makeCmd.ExecuteC()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "writing to upstream")
@@ -57,7 +59,8 @@ func TestIndexServerWriteCommand(t *testing.T) {
 	// the "make" command and storing a new index on the index server.
 	makeCmd := newMakeCommand(context.Background())
 	makeCmd.SetArgs([]string{fmt.Sprintf("http://%s/new.caibx", addr), "testdata/blob1"})
-	makeCmd.SetOutput(io.Discard)
+	makeCmd.SetOut(io.Discard)
+	makeCmd.SetErr(io.Discard)
 	_, err := makeCmd.ExecuteC()
 	require.NoError(t, err)
 
@@ -65,7 +68,7 @@ func TestIndexServerWriteCommand(t *testing.T) {
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("http://%s/invalid.caibx", addr), strings.NewReader("invalid"))
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusUnsupportedMediaType, resp.StatusCode)
 }
 
@@ -95,7 +98,7 @@ func TestIndexServerPathTraversal(t *testing.T) {
 	req, _ := http.NewRequest("PUT", traversalURL, strings.NewReader("not-a-real-index"))
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoFileExists(t, target)
 
@@ -103,13 +106,13 @@ func TestIndexServerPathTraversal(t *testing.T) {
 	// information (no 404-vs-400 oracle).
 	resp, err = http.Get(traversalURL)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	req, _ = http.NewRequest("HEAD", traversalURL, nil)
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
@@ -125,14 +128,14 @@ func TestIndexServerHead(t *testing.T) {
 	req, _ := http.NewRequest("HEAD", fmt.Sprintf("http://%s/blob1.caibx", addr), nil)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Missing index -> 404 Not Found
 	req, _ = http.NewRequest("HEAD", fmt.Sprintf("http://%s/does-not-exist.caibx", addr), nil)
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 

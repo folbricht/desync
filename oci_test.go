@@ -502,7 +502,7 @@ func TestOCIStoreRetry(t *testing.T) {
 		if dropped.CompareAndSwap(false, true) {
 			conn, _, err := w.(http.Hijacker).Hijack()
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 			}
 			return
 		}
@@ -550,7 +550,7 @@ func TestOCIIdleTimeout(t *testing.T) {
 	resp, err := client.Get(srv.URL + "/slow")
 	require.NoError(t, err)
 	b, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.NoError(t, err)
 	require.Equal(t, "xxxx", string(b))
 
@@ -558,6 +558,6 @@ func TestOCIIdleTimeout(t *testing.T) {
 	resp, err = client.Get(srv.URL + "/stall")
 	require.NoError(t, err)
 	_, err = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Error(t, err)
 }

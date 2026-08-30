@@ -31,7 +31,7 @@ func TestWriteDedupQueueParallelReadWrite(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			q.GetChunk(c.ID())
+			_, _ = q.GetChunk(c.ID())
 		}()
 		<-sleeping
 
