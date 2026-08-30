@@ -65,6 +65,7 @@ func main() {
 		newMtreeCommand(ctx),
 		newVersionCommand(),
 		newManpageCommand(ctx, rootCmd),
+		newGendocsCommand(rootCmd),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

@@ -4,6 +4,10 @@ before:
   hooks:
     - go mod tidy
     - go generate ./...
+    # Man pages are a build artifact rather than source, so they're generated
+    # here instead of being committed. The manpage command has existed for a
+    # while but releases only ever shipped the binary (#225).
+    - go run ./cmd/desync manpage man
 
 builds:
   - main: ./cmd/desync
@@ -34,6 +38,15 @@ builds:
     ignore:
       - goos: freebsd
         goarch: arm
+
+archives:
+  # Declaring files at all replaces goreleaser's default list, so the license
+  # and readme have to be named again alongside the man pages.
+  - files:
+      - LICENSE*
+      - README*
+      - src: man/*
+        dst: man
 
 checksum:
   name_template: 'checksums.txt'

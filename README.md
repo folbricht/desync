@@ -533,6 +533,8 @@ No file would need to be stored on disk in this case.
 
 The CLI tool uses the desync library and makes most features available in a consistent fashion. It does not match upstream casync's syntax exactly, but tries to be similar.
 
+Every command's full flag list, with defaults, is in [docs/cli](docs/cli), generated from the commands themselves. The tables below cover the options that need more explanation than their help text gives.
+
 ### Commands
 
 #### Chunking and Extraction
@@ -641,7 +643,7 @@ Not all options apply to all commands.
 | Option | Description |
 | --- | --- |
 | `-l <address>` | Listening address for the HTTP chunk server. Can be used multiple times for more than one interface or port. |
-| `-w` / `--writeable` | Enable write support. Applies to `chunk-server` and `index-server`. |
+| `-w` / `--writable` | Enable write support. Applies to `chunk-server` and `index-server`. |
 | `-u` / `--uncompressed` | Serve uncompressed chunks. Applies to `chunk-server`. |
 | `--store-file <file>` | Read store arguments from a JSON file; supports SIGHUP reload. Applies to `chunk-server` and `mount-index`. |
 | `--key <file>` | Key file in PEM format for HTTPS `chunk-server` and `index-server`. Requires `--cert`. |
@@ -1018,7 +1020,7 @@ killall -1 desync
 Start a writable index server, chunk a file and store the index.
 
 ```text
-server# desync index-server -s /mnt/indexes --writeable -l :8080
+server# desync index-server -s /mnt/indexes --writable -l :8080
 
 client# desync make -s /some/store http://192.168.1.1:8080/file.vmdk.caibx file.vmdk
 ```
