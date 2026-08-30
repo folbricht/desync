@@ -61,6 +61,41 @@ jobs:
           test -z "$(gofmt -l .)" || { echo "Files need gofmt:"; gofmt -l .; exit 1; }
           go mod tidy -diff
 
+  # Separate from the build matrix so lint failures and test failures are
+  # reported side by side rather than one hiding the other.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Runs errcheck, govet, ineffassign, staticcheck and unused; see
+      # .golangci.yml for what is enabled and why.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12
+
+  # govulncheck reports only vulnerabilities the code actually reaches, so a
+  # finding here is worth acting on rather than triaging away. It runs on the
+  # current stable toolchain rather than the go.mod version: most findings are
+  # in the standard library, and the fix for those is a Go upgrade, which is
+  # exactly what this should be telling us.
+  vulncheck:
+    name: Vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   # FreeBSD has no GitHub-hosted runner, so the tests run in a VM on the Linux
   # runner. Booting it costs a few minutes, hence the separate job.
   freebsd:

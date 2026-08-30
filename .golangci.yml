@@ -1,0 +1,59 @@
+version: "2"
+
+# Report every finding. The defaults cap output at 50 per linter and 3 per
+# distinct message, which silently hides the rest of a repeated problem.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck and unused.
+  default: standard
+
+  settings:
+    errcheck:
+      # Writes to a console stream or to an http.ResponseWriter have nowhere
+      # to report a failure to. Excluding them keeps the linter pointed at
+      # unchecked errors a caller could actually act on.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (net/http.ResponseWriter).Write
+
+    staticcheck:
+      # The QF ("quickfix") checks propose refactorings rather than report
+      # defects: dropping an embedded type from a selector that names it for
+      # clarity, applying De Morgan's law to a condition that reads better as
+      # written. Style is not what this gate is for.
+      checks:
+        - all
+        - -QF1001
+        - -QF1006
+        - -QF1008
+        # golangci-lint leaves these off by default: naming and comment-style
+        # conventions this codebase has never followed. Turning them on would
+        # mean renaming exported identifiers for no benefit.
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1023
+
+  exclusions:
+    rules:
+      # A deferred Close has nowhere to report to, the function it defers in
+      # has already decided what to return. A Close called outright is a
+      # different matter: on a writer it is where the write actually fails,
+      # so those stay flagged.
+      - linters: [errcheck]
+        source: '^\s*defer .*[Cc]lose\(\)'
+
+      # The point of these two assertions is what fmt does with a ChunkID
+      # value versus a pointer, given String() has a pointer receiver. Calling
+      # String() directly, as the check suggests, would test nothing.
+      - path: types_test\.go
+        text: "S1025"
+        linters: [staticcheck]
