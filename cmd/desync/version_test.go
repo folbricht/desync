@@ -20,7 +20,8 @@ func TestVersionCommand(t *testing.T) {
 		cmd.SetArgs(args)
 		b := new(bytes.Buffer)
 		stdout = b
-		cmd.SetOutput(io.Discard)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
 		_, err := cmd.ExecuteC()
 		require.NoError(t, err)
 		return b.String()

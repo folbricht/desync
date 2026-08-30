@@ -118,7 +118,9 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		if err != nil {
 			return stats, err
 		}
-		f.Close()
+		if err := f.Close(); err != nil {
+			return stats, err
+		}
 		isBlank = true
 	case err != nil: // Some other error => bail
 		return stats, err

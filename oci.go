@@ -116,7 +116,9 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 	// referrers indexing oras-go falls back to on registries without referrers
 	// support can never have anything to do. Declaring the capability stops it
 	// from fetching every manifest ahead of a delete just to look for a subject.
-	repo.SetReferrersCapability(true)
+	if err := repo.SetReferrersCapability(true); err != nil {
+		return nil, err
+	}
 	repo.TagListPageSize = ociTagListPageSize
 
 	tlsConfig, err := opt.tlsClientConfig()

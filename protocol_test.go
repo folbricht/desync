@@ -85,10 +85,10 @@ func TestProtocol(t *testing.T) {
 
 	<-gCtx.Done()
 	// unblock client/server in case of an error
-	r1.Close()
-	r2.Close()
-	w1.Close()
-	w2.Close()
+	_ = r1.Close()
+	_ = r2.Close()
+	_ = w1.Close()
+	_ = w2.Close()
 
 	require.NoError(t, g.Wait())
 }

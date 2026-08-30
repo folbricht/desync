@@ -131,7 +131,7 @@ retry:
 			}
 		}
 		if attempt <= s.opt.ErrorRetry {
-			obj.Close()
+			_ = obj.Close()
 			cancel()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
@@ -151,7 +151,7 @@ retry:
 				"object":  name,
 				"attempt": attempt,
 			}).WithError(err).Info("chunk failed validation, retrying")
-			obj.Close()
+			_ = obj.Close()
 			cancel()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry

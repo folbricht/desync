@@ -19,9 +19,9 @@ import (
 func makeWritableOnCleanup(t *testing.T, root string) {
 	t.Helper()
 	t.Cleanup(func() {
-		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err == nil && d.IsDir() {
-				os.Chmod(path, 0755)
+				_ = os.Chmod(path, 0755)
 			}
 			return nil
 		})

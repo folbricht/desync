@@ -107,7 +107,7 @@ retry:
 		// errors since that could be racy and fail if another goroutine does the
 		// same.
 		if errCount < 1 {
-			s.client.Mkdir(d)
+			_ = s.client.Mkdir(d)
 			errCount++
 			goto retry
 		}
@@ -115,7 +115,7 @@ retry:
 	}
 
 	if _, err := io.Copy(f, r); err != nil {
-		s.client.Remove(tmpfile)
+		_ = s.client.Remove(tmpfile)
 		return errors.Wrap(err, "sftp:copying chunk data to "+tmpfile)
 	}
 	if err = f.Close(); err != nil {

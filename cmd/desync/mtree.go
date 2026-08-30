@@ -79,7 +79,7 @@ func runMtree(ctx context.Context, opt mtreeOptions, args []string) error {
 		var tarErr error
 		go func() {
 			tarErr = desync.Tar(ctx, w, inFS)
-			w.Close()
+			w.CloseWithError(tarErr)
 		}()
 		untarErr := desync.UnTar(ctx, r, mtreeFS)
 

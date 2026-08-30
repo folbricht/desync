@@ -89,7 +89,8 @@ func TestExtractCommand(t *testing.T) {
 
 			// Redirect the command's output and run it
 			stderr = io.Discard
-			cmd.SetOutput(io.Discard)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			_, err := cmd.ExecuteC()
 			require.NoError(t, err)
 
@@ -117,7 +118,8 @@ func TestExtractWithFailover(t *testing.T) {
 
 	// Redirect the command's output and run it
 	stderr = io.Discard
-	cmd.SetOutput(io.Discard)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
 	_, err := cmd.ExecuteC()
 	require.NoError(t, err)
 }
@@ -152,7 +154,8 @@ func TestExtractWithInvalidSeeds(t *testing.T) {
 
 			// Redirect the command's output and run it
 			stderr = io.Discard
-			cmd.SetOutput(io.Discard)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
 			_, err := cmd.ExecuteC()
 			require.Error(t, err)
 		})

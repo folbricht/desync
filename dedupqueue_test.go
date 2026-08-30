@@ -63,7 +63,7 @@ func TestDedupQueueParallel(t *testing.T) {
 		for range 10 {
 			wg.Go(func() {
 				<-start
-				q.GetChunk(ChunkID{0})
+				_, _ = q.GetChunk(ChunkID{0})
 			})
 		}
 

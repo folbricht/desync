@@ -19,11 +19,11 @@ func TestProtocolServer(t *testing.T) {
 	chunkIn := NewChunk(uncompressed)
 	id := chunkIn.ID()
 	store := &TestStore{}
-	store.StoreChunk(chunkIn)
+	require.NoError(t, store.StoreChunk(chunkIn))
 
 	ps := NewProtocolServer(r2, w1, store)
 
-	go ps.Serve(context.Background())
+	go func() { _ = ps.Serve(context.Background()) }()
 
 	// Client
 	flags, err := server.Initialize(CaProtocolPullChunks)

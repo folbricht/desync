@@ -1,6 +1,7 @@
 package desync
 
 import (
+	stderrors "errors"
 	"fmt"
 
 	"github.com/pkg/errors"
@@ -58,8 +59,7 @@ func (c Cache) String() string {
 
 // Close the underlying writable chunk store
 func (c Cache) Close() error {
-	c.l.Close()
-	return c.s.Close()
+	return stderrors.Join(c.l.Close(), c.s.Close())
 }
 
 // RepairableCache is a cache whose GetChunk() function will return ChunkMissing error instead of ChunkInvalid

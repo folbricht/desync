@@ -89,11 +89,16 @@ func (s LocalStore) StoreChunk(chunk *Chunk) error {
 		return err
 	}
 	if _, err = tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name()) // clean up
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name()) // clean up
 		return err
 	}
-	tmp.Close() // Windows can't rename open files, close explicitly
+	// Windows can't rename open files, close explicitly. A failure here means
+	// the chunk wasn't flushed, so it must not be renamed into place.
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
 	return os.Rename(tmp.Name(), p)
 }
 

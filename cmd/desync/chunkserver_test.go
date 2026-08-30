@@ -29,27 +29,29 @@ func TestChunkServerReadCommand(t *testing.T) {
 	extractCmd := newExtractCommand(context.Background())
 	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob")})
 	stdout = io.Discard
-	extractCmd.SetOutput(io.Discard)
+	extractCmd.SetOut(io.Discard)
+	extractCmd.SetErr(io.Discard)
 	_, err := extractCmd.ExecuteC()
 	require.NoError(t, err)
 
 	// The server should not be serving up arbitrary files from disk. Expect a 400 error
 	resp, err := http.Get(store + "somefile")
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	// Asking for a chunk that doesn't exist should return 404
 	resp, err = http.Get(store + "0000/0000000000000000000000000000000000000000000000000000000000000000.cacnk")
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 
 	// This server shouldn't allow writing. Confirm by trying to chunk a file with
 	// the "chop" command and storing the chunks there.
 	chopCmd := newChopCommand(context.Background())
 	chopCmd.SetArgs([]string{"-s", store, "testdata/blob2.caibx", "testdata/blob2"})
-	chopCmd.SetOutput(io.Discard)
+	chopCmd.SetOut(io.Discard)
+	chopCmd.SetErr(io.Discard)
 	_, err = chopCmd.ExecuteC()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "writing to upstream")
@@ -66,7 +68,8 @@ func TestChunkServerWriteCommand(t *testing.T) {
 	// Run a "chop" command to confirm the chunk server can be used to write chunks
 	chopCmd := newChopCommand(context.Background())
 	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
-	chopCmd.SetOutput(io.Discard)
+	chopCmd.SetOut(io.Discard)
+	chopCmd.SetErr(io.Discard)
 	_, err := chopCmd.ExecuteC()
 	require.NoError(t, err)
 
@@ -74,7 +77,7 @@ func TestChunkServerWriteCommand(t *testing.T) {
 	req, _ := http.NewRequest("PUT", store+"somefile", strings.NewReader("invalid"))
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 func TestChunkServerVerifiedTLS(t *testing.T) {
@@ -89,7 +92,8 @@ func TestChunkServerVerifiedTLS(t *testing.T) {
 	// Run the "extract" command to confirm the TLS chunk server can be used
 	extractCmd := newExtractCommand(context.Background())
 	extractCmd.SetArgs([]string{"--ca-cert", "testdata/ca.crt", "-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
-	extractCmd.SetOutput(io.Discard)
+	extractCmd.SetOut(io.Discard)
+	extractCmd.SetErr(io.Discard)
 	_, err := extractCmd.ExecuteC()
 	require.NoError(t, err)
 }
@@ -115,9 +119,11 @@ func TestChunkServerInsecureTLS(t *testing.T) {
 
 	// Run the "extract" command without accepting any cert. Should fail.
 	extractCmd = newExtractCommand(context.Background())
-	extractCmd.SetOutput(io.Discard)
+	extractCmd.SetOut(io.Discard)
+	extractCmd.SetErr(io.Discard)
 	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
-	extractCmd.SetOutput(io.Discard)
+	extractCmd.SetOut(io.Discard)
+	extractCmd.SetErr(io.Discard)
 	_, err = extractCmd.ExecuteC()
 	require.Error(t, err)
 
@@ -156,7 +162,8 @@ func TestChunkServerMutualTLS(t *testing.T) {
 	extractCmd.SetArgs([]string{
 		"--ca-cert", "testdata/ca.crt",
 		"-s", store, "testdata/blob1.caibx", filepath.Join(outdir, "blob1")})
-	extractCmd.SetOutput(io.Discard)
+	extractCmd.SetOut(io.Discard)
+	extractCmd.SetErr(io.Discard)
 	_, err = extractCmd.ExecuteC()
 	require.Error(t, err)
 }
@@ -172,7 +179,7 @@ func freeLocalAddr(t *testing.T) string {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := l.Addr().String()
-	l.Close()
+	_ = l.Close()
 	return addr
 }
 
@@ -233,7 +240,8 @@ func TestChunkServerEncryption(t *testing.T) {
 	// store them un-encrypted in its local store.
 	chopCmd := newChopCommand(context.Background())
 	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
-	chopCmd.SetOutput(io.Discard)
+	chopCmd.SetOut(io.Discard)
+	chopCmd.SetErr(io.Discard)
 	_, err := chopCmd.ExecuteC()
 	require.NoError(t, err)
 
@@ -241,7 +249,8 @@ func TestChunkServerEncryption(t *testing.T) {
 	extractFile := filepath.Join(outdir, "blob1")
 	extractCmd := newExtractCommand(context.Background())
 	extractCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", extractFile})
-	extractCmd.SetOutput(io.Discard)
+	extractCmd.SetOut(io.Discard)
+	extractCmd.SetErr(io.Discard)
 	_, err = extractCmd.ExecuteC()
 	require.NoError(t, err)
 
@@ -272,7 +281,8 @@ func TestChunkServerEnvKeyDoesNotEnableEncryption(t *testing.T) {
 	// A plain (compressed, unencrypted) client must be able to write chunks
 	chopCmd := newChopCommand(context.Background())
 	chopCmd.SetArgs([]string{"-s", store, "testdata/blob1.caibx", "testdata/blob1"})
-	chopCmd.SetOutput(io.Discard)
+	chopCmd.SetOut(io.Discard)
+	chopCmd.SetErr(io.Discard)
 	_, err := chopCmd.ExecuteC()
 	require.NoError(t, err)
 
@@ -296,7 +306,8 @@ func TestChunkServerEncryptionMissingKey(t *testing.T) {
 	} {
 		cmd := newChunkServerCommand(context.Background())
 		cmd.SetArgs(append(args, "-s", t.TempDir(), "-l", "127.0.0.1:0"))
-		cmd.SetOutput(io.Discard)
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
 		_, err := cmd.ExecuteC()
 		require.ErrorContains(t, err, "no encryption key configured")
 	}

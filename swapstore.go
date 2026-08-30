@@ -72,7 +72,7 @@ func (s *SwapStore) Swap(new Store) error {
 	if oldWritable && !newWritable {
 		return errors.New("a writable store can only be updated with another writable one")
 	}
-	s.s.Close() // Close the old store
+	_ = s.s.Close() // Close the old store, the swap goes ahead regardless
 	s.s = new
 	return nil
 }

@@ -37,7 +37,7 @@ func TestHTTPStoreURL(t *testing.T) {
 			u.Path = test.storePath
 			s, err := NewRemoteHTTPStore(u, StoreOptions{})
 			require.NoError(t, err)
-			s.GetChunk(chunkID)
+			_, _ = s.GetChunk(chunkID)
 			require.Equal(t, test.serverPath, requestURI)
 		})
 	}
@@ -59,20 +59,20 @@ func TestHasChunk(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 		case "/0000/0000000500000000000000000000000000000000000000000000000000000000.cacnk":
 			w.WriteHeader(http.StatusBadGateway)
-			io.WriteString(w, "Bad Gateway")
+			_, _ = io.WriteString(w, "Bad Gateway")
 		case "/0000/0000000600000000000000000000000000000000000000000000000000000000.cacnk":
 			if attemptCount >= 2 {
 				w.WriteHeader(http.StatusOK)
 			} else {
 				w.WriteHeader(http.StatusBadGateway)
-				io.WriteString(w, "Bad Gateway")
+				_, _ = io.WriteString(w, "Bad Gateway")
 			}
 		case "/0000/0000000700000000000000000000000000000000000000000000000000000000.cacnk":
 			if attemptCount >= 3 {
 				w.WriteHeader(http.StatusNotFound)
 			} else {
 				w.WriteHeader(http.StatusBadGateway)
-				io.WriteString(w, "Bad Gateway")
+				_, _ = io.WriteString(w, "Bad Gateway")
 			}
 		default:
 			w.WriteHeader(http.StatusBadRequest)
@@ -129,35 +129,35 @@ func TestGetChunk(t *testing.T) {
 		switch r.URL.String() {
 		case "/3bc8/3bc8e3230df5515b1b40e938e49ebc765c6157d4cf4e2b9d5f9c272571365395":
 			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, "Chunk Content String 1")
+			_, _ = io.WriteString(w, "Chunk Content String 1")
 		case "/0000/0000000100000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, "Chunk Content With hash mismatch")
+			_, _ = io.WriteString(w, "Chunk Content With hash mismatch")
 		case "/0000/0000000200000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusNotFound)
 		case "/0000/0000000300000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "BadRequest")
+			_, _ = io.WriteString(w, "BadRequest")
 		case "/0000/0000000400000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusForbidden)
-			io.WriteString(w, "Forbidden")
+			_, _ = io.WriteString(w, "Forbidden")
 		case "/0000/0000000500000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusBadGateway)
-			io.WriteString(w, "Bad Gateway")
+			_, _ = io.WriteString(w, "Bad Gateway")
 		case "/65a1/65a128d0658c4cf0941771c7090fea6d9c6f981810659c24c91ba23edd71574b":
 			if attemptCount >= 2 {
 				w.WriteHeader(http.StatusOK)
-				io.WriteString(w, "Chunk Content String 6")
+				_, _ = io.WriteString(w, "Chunk Content String 6")
 			} else {
 				w.WriteHeader(http.StatusBadGateway)
-				io.WriteString(w, "Bad Gateway")
+				_, _ = io.WriteString(w, "Bad Gateway")
 			}
 		case "/0000/0000000700000000000000000000000000000000000000000000000000000000":
 			if attemptCount >= 3 {
 				w.WriteHeader(http.StatusNotFound)
 			} else {
 				w.WriteHeader(http.StatusBadGateway)
-				io.WriteString(w, "Bad Gateway")
+				_, _ = io.WriteString(w, "Bad Gateway")
 			}
 		default:
 			w.WriteHeader(http.StatusBadRequest)
@@ -225,7 +225,7 @@ func TestPutChunk(t *testing.T) {
 			content, err := io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				io.WriteString(w, err.Error())
+				_, _ = io.WriteString(w, err.Error())
 			} else {
 				writtenContent = content
 				w.WriteHeader(http.StatusOK)
@@ -234,33 +234,33 @@ func TestPutChunk(t *testing.T) {
 			content, err := io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				io.WriteString(w, err.Error())
+				_, _ = io.WriteString(w, err.Error())
 			} else {
 				writtenContent = content
 				w.WriteHeader(http.StatusCreated)
 			}
 		case "/0000/0000000300000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "BadRequest")
+			_, _ = io.WriteString(w, "BadRequest")
 		case "/0000/0000000400000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusForbidden)
-			io.WriteString(w, "Forbidden")
+			_, _ = io.WriteString(w, "Forbidden")
 		case "/0000/0000000500000000000000000000000000000000000000000000000000000000":
 			w.WriteHeader(http.StatusBadGateway)
-			io.WriteString(w, "Bad Gateway")
+			_, _ = io.WriteString(w, "Bad Gateway")
 		case "/65a1/65a128d0658c4cf0941771c7090fea6d9c6f981810659c24c91ba23edd71574b":
 			if attemptCount >= 2 {
 				content, err := io.ReadAll(r.Body)
 				if err != nil {
 					w.WriteHeader(http.StatusBadRequest)
-					io.WriteString(w, err.Error())
+					_, _ = io.WriteString(w, err.Error())
 				} else {
 					writtenContent = content
 					w.WriteHeader(http.StatusOK)
 				}
 			} else {
 				w.WriteHeader(http.StatusBadGateway)
-				io.WriteString(w, "Bad Gateway")
+				_, _ = io.WriteString(w, "Bad Gateway")
 			}
 		default:
 			w.WriteHeader(http.StatusBadRequest)
@@ -322,7 +322,7 @@ func TestPutChunk(t *testing.T) {
 func TestRetryExhaustedError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		io.WriteString(w, "service down for maintenance")
+		_, _ = io.WriteString(w, "service down for maintenance")
 	}))
 	defer ts.Close()
 	u, _ := url.Parse(ts.URL)
@@ -353,7 +353,7 @@ func TestRemoteHTTPPutEncrypted(t *testing.T) {
 
 	// Setup a dummy server that records the request body (raw chunk data)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(body, r.Body)
+		_, _ = io.Copy(body, r.Body)
 	}))
 	defer ts.Close()
 	u, _ := url.Parse(ts.URL)

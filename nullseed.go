@@ -36,7 +36,7 @@ func newNullChunkSeed(dstFile string, blocksize uint64, max uint64) (*nullChunkS
 
 func (s *nullChunkSeed) close() error {
 	if s.blockfile != nil {
-		s.blockfile.Close()
+		_ = s.blockfile.Close()
 		return os.Remove(s.blockfile.Name())
 	}
 	return nil

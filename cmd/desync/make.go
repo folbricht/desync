@@ -86,7 +86,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 		}
 	}
 	if opt.printStats {
-		printJSON(stderr, stats) // write to stderr since stdout could be used for index data
+		_ = printJSON(stderr, stats) // write to stderr since stdout could be used for index data
 	}
 	return storeCaibxFile(index, indexFile, opt.cmdStoreOptions)
 }

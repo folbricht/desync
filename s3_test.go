@@ -69,10 +69,10 @@ func sendObject(conn *net.TCPConn, request *http.Request, filePath string, mode 
 	if err != nil {
 		if os.IsNotExist(err) {
 			resp := response(request, http.Header{}, 404, "")
-			resp.Write(conn)
+			_ = resp.Write(conn)
 		} else {
 			resp := response(request, http.Header{}, 500, err.Error())
-			resp.Write(conn)
+			_ = resp.Write(conn)
 		}
 		return nil
 	}
@@ -81,7 +81,7 @@ func sendObject(conn *net.TCPConn, request *http.Request, filePath string, mode 
 	stat, err := file.Stat()
 	if err != nil {
 		resp := response(request, http.Header{}, 500, err.Error())
-		resp.Write(conn)
+		_ = resp.Write(conn)
 		return nil
 	}
 	headers := http.Header{}
@@ -140,7 +140,7 @@ func sendObject(conn *net.TCPConn, request *http.Request, filePath string, mode 
 			Body:       file,
 			Header:     headers,
 		}
-		resp.Write(conn)
+		_ = resp.Write(conn)
 	}
 	return nil
 }
@@ -165,7 +165,7 @@ func handleGetObjectRequest(conn *net.TCPConn, bucket, store string, errorMode s
 		(*errorTimes)++
 	} else {
 		resp := response(request, http.Header{}, 400, "")
-		resp.Write(conn)
+		_ = resp.Write(conn)
 	}
 	return err
 }

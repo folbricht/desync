@@ -10,8 +10,9 @@ repos:
     rev: master
     hooks:
       - id: go-fmt
-      #- id: go-vet
+      - id: go-vet
       #- id: go-imports
+      # golangci-lint needs the binary on PATH; CI enforces it either way.
       #- id: golangci-lint
       #- id: go-critic
       #- id: go-unit-tests
