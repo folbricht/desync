@@ -521,9 +521,8 @@ func TestOCIStoreRetry(t *testing.T) {
 	assert.True(t, dropped.Load())
 }
 
-// Index stores turn off http.Client.Timeout so a large index isn't cut off
-// part way through, leaving the idle guard to tell a transfer that's merely
-// slow from one that has stopped altogether.
+// The guard has to tell a transfer that is merely slow from one that has
+// stopped altogether.
 func TestOCIIdleTimeout(t *testing.T) {
 	const timeout = 200 * time.Millisecond
 	stall := make(chan struct{})
@@ -542,7 +541,7 @@ func TestOCIIdleTimeout(t *testing.T) {
 		w.Write([]byte("x"))
 	}))
 	defer srv.Close()
-	// Released before the server is closed, it waits for the handler.
+	// Runs before srv.Close, which waits for the stalled handler.
 	defer close(stall)
 
 	client := &http.Client{Transport: &idleTimeoutTransport{base: http.DefaultTransport, timeout: timeout}}

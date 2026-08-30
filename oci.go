@@ -101,12 +101,9 @@ type ociConfigBlobState struct {
 // the chunk and index stores.
 //
 // largeObjects changes how the timeout option is applied. http.Client.Timeout
-// bounds the whole exchange including the transfer of the body, which suits
-// chunks, at most a few hundred KB. An index can run to hundreds of megabytes,
-// where a one minute default would abort a transfer that is progressing
-// normally, so index stores bound the time the transfer spends making no
-// progress instead. A stalled server still fails, a slow one is allowed to
-// finish.
+// bounds the whole exchange including the body, which suits chunks but would
+// abort a healthy transfer of an index running to hundreds of megabytes. Index
+// stores bound the time a transfer makes no progress instead.
 func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, largeObjects bool) (*remote.Repository, error) {
 	if u.Scheme != "oci+https" && u.Scheme != "oci+http" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected oci+https or oci+http", u.Scheme)
@@ -160,19 +157,15 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 	return repo, nil
 }
 
-// idleTimeoutTransport bounds the time a request spends making no progress,
-// rather than its total duration. http.Client.Timeout can't be used for
-// indexes: one of a large blob runs to hundreds of megabytes and may
-// legitimately take longer than any fixed limit to transfer. A transfer that
-// stops moving altogether still has to fail though, and net/http offers no
-// per-read deadline; ResponseHeaderTimeout only bounds the wait for the
-// response headers, so on its own it lets a registry that answers with headers
-// and then stops sending body bytes hang the caller forever.
+// idleTimeoutTransport fails a request that stops making progress for the
+// timeout, letting one that is merely slow finish. net/http has no per-read
+// deadline and ResponseHeaderTimeout stops watching once the headers arrive,
+// so without this a registry that answers and then goes silent mid-body hangs
+// the caller forever.
 //
-// The timeout covers the gaps between bytes in both directions. Reads of the
-// request body are how the transport puts it on the wire, so a server that
-// stops reading mid-upload stops the transfer just as visibly as one that
-// stops writing mid-download.
+// Reads of the request body are how the transport puts it on the wire, so a
+// server that stops reading an upload is caught the same way as one that stops
+// writing a response.
 type idleTimeoutTransport struct {
 	base    http.RoundTripper
 	timeout time.Duration
@@ -182,7 +175,7 @@ func (t *idleTimeoutTransport) RoundTrip(req *http.Request) (*http.Response, err
 	ctx, cancel := context.WithCancel(req.Context())
 	guard := newIdleGuard(t.timeout, cancel)
 	// Clone carries GetBody over untouched, leaving the request rewindable for
-	// the retry and re-authentication layers sitting above this one.
+	// the retry and re-authentication layers above.
 	req = req.Clone(ctx)
 	if req.Body != nil {
 		req.Body = &idleGuardReader{ReadCloser: req.Body, guard: guard}
@@ -193,16 +186,16 @@ func (t *idleTimeoutTransport) RoundTrip(req *http.Request) (*http.Response, err
 		cancel()
 		return nil, err
 	}
-	// The guard runs on until the body is closed, which is also what releases
-	// the context. Nothing else may cancel it, the body outlives this call.
+	// The body outlives this call, so closing it is what stops the guard and
+	// releases the context.
 	resp.Body = &idleGuardReader{ReadCloser: resp.Body, guard: guard, cancel: cancel}
 	return resp, nil
 }
 
 // idleGuard cancels a request once nothing has moved for the timeout. Progress
-// is recorded with a single atomic store rather than by resetting the timer, so
-// it stays cheap on a hot read path, and the timer re-arms itself for the
-// remainder when it fires on a transfer that did move.
+// is an atomic store rather than a timer reset, keeping it cheap on the read
+// path; the timer re-arms itself for the remainder when it fires on a transfer
+// that did move.
 type idleGuard struct {
 	timeout time.Duration
 	cancel  context.CancelFunc
