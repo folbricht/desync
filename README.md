@@ -341,7 +341,9 @@ Because the index name is used as a tag it has to fit the OCI tag grammar: word 
 
 Storing an index in a registry does not keep its chunks alive there. It doesn't need to: every chunk already has its own tagged manifest holding a reference to its blob.
 
-Two things to be aware of when indexes and chunks share a repository. Store options are looked up by location, so a `store-options` entry for the repository applies to the index as well as the chunks; if that entry enables encryption, index operations fail, as described under [Chunk Encryption](#chunk-encryption). Keep the indexes in a separate repository in that case, or add a more specific entry without encryption for them. The `timeout` option is applied differently too: for indexes it bounds the wait for a response rather than the whole transfer, so a large index isn't cut off part way through by the one minute default.
+Two things to be aware of when indexes and chunks share a repository. Store options are looked up by location, so a `store-options` entry for the repository applies to the index as well as the chunks; if that entry enables encryption, index operations fail, as described under [Chunk Encryption](#chunk-encryption). Keep the indexes in a separate repository in that case, or add a more specific entry without encryption for them. The `timeout` option is applied differently too: for indexes it bounds how long a transfer may make no progress rather than how long it may take, so a large index isn't cut off part way through by the one minute default while a registry that stops responding mid-transfer still fails.
+
+Indexes over 32 MiB, which is about 840,000 chunks, roughly a 50 GB blob at the default chunk size, are streamed to the registry rather than serialized into memory first. The request body can't be rewound in that case, so `error-retry` doesn't apply to the upload and an access token that expires part way through surfaces as a `401` instead of being renewed. Registry tokens are often short-lived, so for indexes that big prefer credentials that don't expire mid-push, or split the input across several smaller indexes.
 
 #### Authentication
 

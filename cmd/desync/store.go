@@ -193,8 +193,8 @@ func readCaibxFile(location string, cmdOpt cmdStoreOptions) (c desync.Index, err
 func validateIndexLocation(location string) error {
 	loc, err := url.Parse(location)
 	if err != nil {
-		// Not a URL, so it's a local path and the store will report any
-		// problem with it when the time comes.
+		// Nothing here can name an index store, opening the location will
+		// fail with a better message than this check could give.
 		return nil
 	}
 	switch loc.Scheme {
@@ -272,9 +272,9 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	case "ssh":
 		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
 	case "oci+https", "oci+http":
-		creds, err := cfg.GetOCICredentialsFor(&p)
-		if err != nil {
-			return nil, "", err
+		creds, cerr := cfg.GetOCICredentialsFor(&p)
+		if cerr != nil {
+			return nil, "", cerr
 		}
 		s, err = desync.NewOCIIndexStore(&p, creds, opt)
 		if err != nil {

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	specs "github.com/opencontainers/image-spec/specs-go"
@@ -103,8 +104,9 @@ type ociConfigBlobState struct {
 // bounds the whole exchange including the transfer of the body, which suits
 // chunks, at most a few hundred KB. An index can run to hundreds of megabytes,
 // where a one minute default would abort a transfer that is progressing
-// normally, so index stores bound the wait for response headers instead. A
-// stalled server still fails, a slow one is allowed to finish.
+// normally, so index stores bound the time the transfer spends making no
+// progress instead. A stalled server still fails, a slow one is allowed to
+// finish.
 func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, largeObjects bool) (*remote.Repository, error) {
 	if u.Scheme != "oci+https" && u.Scheme != "oci+http" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected oci+https or oci+http", u.Scheme)
@@ -130,12 +132,11 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 	transport.MaxIdleConnsPerHost = opt.N
 
 	clientTimeout := opt.effectiveTimeout()
-	if largeObjects {
-		transport.ResponseHeaderTimeout = clientTimeout
+	var rt http.RoundTripper = transport
+	if largeObjects && clientTimeout > 0 {
+		rt = &idleTimeoutTransport{base: transport, timeout: clientTimeout}
 		clientTimeout = 0
 	}
-
-	var rt http.RoundTripper = transport
 	if opt.ErrorRetry > 0 {
 		policy := &retry.GenericPolicy{
 			Retryable: retryPredicate,
@@ -145,7 +146,7 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 			MaxWait:  time.Duration(opt.ErrorRetry) * opt.ErrorRetryBaseInterval,
 			MaxRetry: opt.ErrorRetry,
 		}
-		rt = &retry.Transport{Base: transport, Policy: func() retry.Policy { return policy }}
+		rt = &retry.Transport{Base: rt, Policy: func() retry.Policy { return policy }}
 	}
 
 	client := &auth.Client{
@@ -157,6 +158,97 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 	repo.Client = client
 	repo.PlainHTTP = u.Scheme == "oci+http"
 	return repo, nil
+}
+
+// idleTimeoutTransport bounds the time a request spends making no progress,
+// rather than its total duration. http.Client.Timeout can't be used for
+// indexes: one of a large blob runs to hundreds of megabytes and may
+// legitimately take longer than any fixed limit to transfer. A transfer that
+// stops moving altogether still has to fail though, and net/http offers no
+// per-read deadline; ResponseHeaderTimeout only bounds the wait for the
+// response headers, so on its own it lets a registry that answers with headers
+// and then stops sending body bytes hang the caller forever.
+//
+// The timeout covers the gaps between bytes in both directions. Reads of the
+// request body are how the transport puts it on the wire, so a server that
+// stops reading mid-upload stops the transfer just as visibly as one that
+// stops writing mid-download.
+type idleTimeoutTransport struct {
+	base    http.RoundTripper
+	timeout time.Duration
+}
+
+func (t *idleTimeoutTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(req.Context())
+	guard := newIdleGuard(t.timeout, cancel)
+	// Clone carries GetBody over untouched, leaving the request rewindable for
+	// the retry and re-authentication layers sitting above this one.
+	req = req.Clone(ctx)
+	if req.Body != nil {
+		req.Body = &idleGuardReader{ReadCloser: req.Body, guard: guard}
+	}
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		guard.stop()
+		cancel()
+		return nil, err
+	}
+	// The guard runs on until the body is closed, which is also what releases
+	// the context. Nothing else may cancel it, the body outlives this call.
+	resp.Body = &idleGuardReader{ReadCloser: resp.Body, guard: guard, cancel: cancel}
+	return resp, nil
+}
+
+// idleGuard cancels a request once nothing has moved for the timeout. Progress
+// is recorded with a single atomic store rather than by resetting the timer, so
+// it stays cheap on a hot read path, and the timer re-arms itself for the
+// remainder when it fires on a transfer that did move.
+type idleGuard struct {
+	timeout time.Duration
+	cancel  context.CancelFunc
+	last    atomic.Int64
+	timer   *time.Timer
+}
+
+func newIdleGuard(timeout time.Duration, cancel context.CancelFunc) *idleGuard {
+	g := &idleGuard{timeout: timeout, cancel: cancel}
+	g.progress()
+	g.timer = time.AfterFunc(timeout, g.check)
+	return g
+}
+
+func (g *idleGuard) progress() { g.last.Store(time.Now().UnixNano()) }
+
+func (g *idleGuard) check() {
+	if idle := time.Since(time.Unix(0, g.last.Load())); idle < g.timeout {
+		g.timer.Reset(g.timeout - idle)
+		return
+	}
+	g.cancel()
+}
+
+func (g *idleGuard) stop() { g.timer.Stop() }
+
+type idleGuardReader struct {
+	io.ReadCloser
+	guard  *idleGuard
+	cancel context.CancelFunc
+}
+
+func (r *idleGuardReader) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	if n > 0 {
+		r.guard.progress()
+	}
+	return n, err
+}
+
+func (r *idleGuardReader) Close() error {
+	if r.cancel != nil {
+		r.guard.stop()
+		defer r.cancel()
+	}
+	return r.ReadCloser.Close()
 }
 
 // NewOCIStore initializes a store using an OCI registry as backend.
@@ -334,12 +426,6 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	return tagsErr
 }
 
-// fetchChunkManifest fetches the manifest tagged for the chunk and returns it
-// along with its own descriptor. A tag that doesn't exist, or one that names
-// a manifest without the desync chunk artifact type, resolves to ChunkMissing:
-// the tag alone can't be trusted, an unrelated artifact sharing the repository
-// may sit under a chunk-ID-shaped tag, especially when the storage extension
-// is empty (uncompressed, unencrypted stores).
 // readOCIManifest reads a manifest body under the size limit and decodes it.
 // The whole body is decoded rather than streamed off the reader so that
 // anything trailing the manifest is rejected instead of ignored; at these
@@ -359,6 +445,12 @@ func readOCIManifest(r io.Reader) (ocispec.Manifest, error) {
 	return manifest, nil
 }
 
+// fetchChunkManifest fetches the manifest tagged for the chunk and returns it
+// along with its own descriptor. A tag that doesn't exist, or one that names
+// a manifest without the desync chunk artifact type, resolves to ChunkMissing:
+// the tag alone can't be trusted, an unrelated artifact sharing the repository
+// may sit under a chunk-ID-shaped tag, especially when the storage extension
+// is empty (uncompressed, unencrypted stores).
 func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.Manifest, ocispec.Descriptor, error) {
 	desc, r, err := s.repo.FetchReference(ctx, s.tagFromID(id))
 	if err != nil {
