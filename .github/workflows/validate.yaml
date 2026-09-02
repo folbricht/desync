@@ -172,6 +172,10 @@ jobs:
           prepare: |
             /usr/sbin/pkg_add go
           run: |
+            # pkgsrc installs under /usr/pkg, which isn't on the default PATH
+            # the way FreeBSD's /usr/local/bin is.
+            PATH=/usr/pkg/bin:/usr/pkg/sbin:$PATH
+            export PATH
             go version
             go test ./...
             go build -o cmd/desync/ ./cmd/desync

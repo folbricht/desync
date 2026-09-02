@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,6 +63,14 @@ func TestMkdevOutOfRange(t *testing.T) {
 func TestCreateDeviceRoundTrip(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("creating device nodes requires root")
+	}
+	// On DragonFly mknod reports success but the node reads back with an Rdev
+	// of NODEV (0xffffffff) for every pair tried here, 0:0 included, so the
+	// major/minor can't survive the trip through the kernel. TestMkdev above
+	// still passes there, which places the problem in mknod rather than in
+	// desync's encoding.
+	if runtime.GOOS == "dragonfly" {
+		t.Skip("dragonfly does not preserve device numbers through mknod")
 	}
 	for _, tc := range devTestCases {
 		dir := t.TempDir()
