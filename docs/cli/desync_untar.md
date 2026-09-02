@@ -39,6 +39,7 @@ desync untar <catar|index> <target> [flags]
   -i, --index                                read index file (caidx), not catar
       --no-same-owner                        extract files as current user
       --no-same-permissions                  use current user's umask instead of what is in the archive
+      --no-same-xattrs                       don't apply extended attributes from the archive
       --output-format string                 output format, 'disk' or 'gnu-tar' (default "disk")
   -s, --store strings                        source store(s), used with -i
   -t, --trust-insecure                       trust invalid certificates

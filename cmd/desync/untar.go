@@ -48,6 +48,7 @@ the output can be set to GNU tar, either an archive or STDOUT with '-'.
 	flags.BoolVarP(&opt.readIndex, "index", "i", false, "read index file (caidx), not catar")
 	flags.BoolVar(&opt.NoSameOwner, "no-same-owner", false, "extract files as current user")
 	flags.BoolVar(&opt.NoSamePermissions, "no-same-permissions", false, "use current user's umask instead of what is in the archive")
+	flags.BoolVar(&opt.NoSameXattrs, "no-same-xattrs", false, "don't apply extended attributes from the archive")
 	flags.StringVar(&opt.outFormat, "output-format", "disk", "output format, 'disk' or 'gnu-tar'")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
 	return cmd
