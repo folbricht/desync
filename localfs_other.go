@@ -157,6 +157,36 @@ func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
 	return nil
 }
 
+// verifyDeviceNode reads back a device node just created and confirms it
+// carries the major and minor it was asked for.
+//
+// mknod can report success and still not record the device number, and whether
+// it does depends on the kernel and on the filesystem underneath rather than
+// on the operating system alone. DragonFly stores NODEV, and NetBSD did the
+// same through mknodat until desync stopped using it there. Neither is
+// distinguishable from success without reading the node back, and a device
+// node pointing at the wrong device is a worse outcome than an extraction that
+// stops and says so.
+func verifyDeviceNode(r *os.Root, n NodeDevice) error {
+	fi, err := r.Lstat(n.Name)
+	if err != nil {
+		return fmt.Errorf("mknod %s: %w", n.Name, err)
+	}
+	sys, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("mknod %s: unsupported platform", n.Name)
+	}
+	// As in Next, both accessors mask the value, so sign-extending a signed
+	// dev_t on the way in is harmless.
+	major := uint64(unix.Major(uint64(sys.Rdev)))
+	minor := uint64(unix.Minor(uint64(sys.Rdev)))
+	if major != n.Major || minor != n.Minor {
+		return fmt.Errorf("mknod %s: filesystem recorded device %d:%d, not %d:%d",
+			n.Name, major, minor, n.Major, n.Minor)
+	}
+	return nil
+}
+
 func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 	r, err := fs.writeRoot()
 	if err != nil {
@@ -175,6 +205,10 @@ func (fs *LocalFS) CreateDevice(n NodeDevice) error {
 	// always confines the operation to the extraction root.
 	if err := fs.createDeviceNode(r, n); err != nil {
 		return fmt.Errorf("mknod %s: %w", n.Name, err)
+	}
+
+	if err := verifyDeviceNode(r, n); err != nil {
+		return err
 	}
 
 	if !fs.opts.NoSameOwner {

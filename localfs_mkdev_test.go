@@ -68,7 +68,8 @@ func TestCreateDeviceRoundTrip(t *testing.T) {
 	// of NODEV (0xffffffff) for every pair tried here, 0:0 included, so the
 	// major/minor can't survive the trip through the kernel. TestMkdev above
 	// still passes there, which places the problem in mknod rather than in
-	// desync's encoding.
+	// desync's encoding. CreateDevice now rejects such a node outright, which
+	// TestCreateDeviceRejectsUnrecordedNumber covers.
 	if runtime.GOOS == "dragonfly" {
 		t.Skip("dragonfly does not preserve device numbers through mknod")
 	}
@@ -106,4 +107,60 @@ func TestCreateDeviceRoundTrip(t *testing.T) {
 		assert.Equal(t, tc.major, found.DevMajor, "DevMajor of %d:%d", tc.major, tc.minor)
 		assert.Equal(t, tc.minor, found.DevMinor, "DevMinor of %d:%d", tc.major, tc.minor)
 	}
+}
+
+// TestCreateDeviceRejectsUnrecordedNumber checks that a node the filesystem
+// didn't record the device number for is reported rather than left in place
+// carrying the wrong device. DragonFly is the platform where that actually
+// happens, so it is the only one that can exercise it - should its mknod
+// start recording the number, this fails and the skip above can go too.
+func TestCreateDeviceRejectsUnrecordedNumber(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("creating device nodes requires root")
+	}
+	if runtime.GOOS != "dragonfly" {
+		t.Skip("no other platform is known to accept a device number without recording it")
+	}
+
+	fs := NewLocalFS(t.TempDir(), LocalFSOptions{})
+	err := fs.CreateDevice(NodeDevice{
+		Name:  "dev",
+		Mode:  os.ModeDevice | os.ModeCharDevice | 0666,
+		Major: 1,
+		Minor: 3,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "recorded device")
+}
+
+// TestCreateDeviceVerifiesNumber checks that a node whose recorded major/minor
+// doesn't match what was asked for is reported rather than accepted. Creating
+// the node with one pair and verifying it against another stands in for a
+// filesystem that doesn't record the number it was given, which is otherwise
+// only reproducible on DragonFly.
+func TestCreateDeviceVerifiesNumber(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("creating device nodes requires root")
+	}
+	if runtime.GOOS == "dragonfly" {
+		t.Skip("dragonfly does not preserve device numbers through mknod")
+	}
+
+	dir := t.TempDir()
+	fs := NewLocalFS(dir, LocalFSOptions{})
+	require.NoError(t, fs.CreateDevice(NodeDevice{
+		Name:  "dev",
+		Mode:  os.ModeDevice | os.ModeCharDevice | 0666,
+		Major: 1,
+		Minor: 3,
+	}))
+	require.NoError(t, fs.Close())
+
+	r, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer r.Close()
+
+	err = verifyDeviceNode(r, NodeDevice{Name: "dev", Major: 9, Minor: 9})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "recorded device 1:3, not 9:9")
 }

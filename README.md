@@ -122,7 +122,7 @@ desync extract -s http://server/store -c /tmp/cache index.caibx /path/to/largefi
 | FreeBSD | Supported | Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
 | NetBSD | Supported | No `mount-index`. Extended attributes work only on filesystems that implement them, and are skipped elsewhere. Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
 | OpenBSD | Supported | No `mount-index`, and extended attributes are silently dropped by `tar` and `untar`. Otherwise as NetBSD. |
-| DragonFly | Supported | No `mount-index`. Extended attributes are silently dropped by `tar` and `untar`, and device entries don't round-trip: `mknod` reports success but the node reads back with no device number. Otherwise as NetBSD. |
+| DragonFly | Supported | No `mount-index`. Extended attributes are silently dropped by `tar` and `untar`, and `untar` refuses device entries: `mknod` reports success there but doesn't record the device number, so the node is rejected rather than written with the wrong device. Otherwise as NetBSD. |
 
 ## Design Philosophy
 
