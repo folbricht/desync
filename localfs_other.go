@@ -4,6 +4,7 @@
 package desync
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -205,6 +206,19 @@ func mkdev(major, minor uint64) (uint64, error) {
 	return unix.Mkdev(uint32(major), uint32(minor)), nil
 }
 
+// xattrUnsupported reports whether an extended attribute call failed because
+// the filesystem has no support for them, rather than for a real reason. Where
+// that support is per-filesystem rather than per-system - NetBSD has none on
+// tmpfs, and the same is true of vfat on Linux - a tree walk would otherwise
+// fail on its first entry, so a store with no xattrs to read is treated as a
+// store with none rather than as an error.
+//
+// ENOTSUP and EOPNOTSUPP are the same value on Linux but not on the BSDs, so
+// both are tested.
+func xattrUnsupported(err error) bool {
+	return errors.Is(err, unix.EOPNOTSUPP) || errors.Is(err, unix.ENOTSUP)
+}
+
 // Next returns the next filesystem entry or io.EOF when done. The caller is responsible
 // for closing the returned File object.
 func (fs *LocalFS) Next() (*File, error) {
@@ -240,7 +254,7 @@ func (fs *LocalFS) Next() (*File, error) {
 	// Extract the Xattrs if any
 	xa := make(map[string]string)
 	keys, err := xattr.LList(entry.path)
-	if err != nil {
+	if err != nil && !xattrUnsupported(err) {
 		return nil, err
 	}
 	for _, key := range keys {
