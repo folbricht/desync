@@ -109,6 +109,19 @@ func TestLocalFSDirModeWhilePopulated(t *testing.T) {
 // TestLocalFSDirSetgidWhilePopulated confirms the setgid bit is in place while
 // the contents of a directory are written, so they inherit its group.
 func TestLocalFSDirSetgidWhilePopulated(t *testing.T) {
+	// Some build sandboxes prevent us from setting setgid bit
+	probe := filepath.Join(t.TempDir(), "setgid")
+	require.NoError(t, os.Mkdir(probe, 0755))
+	if err := os.Chmod(probe, 0775|os.ModeSetgid); err != nil {
+		t.Skipf("setgid on a directory is not permitted here: %v", err)
+	}
+	// Some environments do not preserve setgid, e.g. macOS with TMPDIR=/tmp
+	info, err := os.Stat(probe)
+	require.NoError(t, err)
+	if info.Mode()&os.ModeSetgid == 0 {
+		t.Skip("setgid on a directory is not preserved here")
+	}
+
 	dst := filepath.Join(t.TempDir(), "out")
 
 	lfs := NewLocalFS(dst, LocalFSOptions{NoSameOwner: true})
@@ -117,7 +130,7 @@ func TestLocalFSDirSetgidWhilePopulated(t *testing.T) {
 	require.NoError(t, lfs.CreateDir(NodeDirectory{Name: ".", Mode: 0755 | os.ModeDir}))
 	require.NoError(t, lfs.CreateDir(NodeDirectory{Name: "shared", Mode: 0775 | os.ModeDir | os.ModeSetgid}))
 
-	info, err := os.Stat(filepath.Join(dst, "shared"))
+	info, err = os.Stat(filepath.Join(dst, "shared"))
 	require.NoError(t, err)
 	assert.NotZero(t, info.Mode()&os.ModeSetgid, "setgid while the directory is populated")
 
