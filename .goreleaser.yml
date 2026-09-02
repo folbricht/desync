@@ -11,6 +11,17 @@ before:
 
 builds:
   - main: ./cmd/desync
+    # Build static binaries. Without this, cgo is enabled for whichever target
+    # matches the release runner itself (linux/amd64) and disabled for all the
+    # rest, since cross-compiling turns it off. That made the most-downloaded
+    # artifact the only one dynamically linked against the runner's glibc, so
+    # it wouldn't run on musl or on a distro older than the runner's image.
+    env:
+      - CGO_ENABLED=0
+    flags:
+      # Keep the builder's directory layout out of the binary so a release can
+      # be reproduced from the tag alone.
+      - -trimpath
     ldflags:
       - -s -w
       - -X main.version={{.Tag}}
@@ -62,6 +73,11 @@ archives:
       - README*
       - src: man/*
         dst: man
+    # zip on Windows, tar.gz everywhere else. Windows has no unpacker for a
+    # .tar.gz outside of Windows 11, and zip is what's expected there anyway.
+    format_overrides:
+      - goos: windows
+        formats: [ zip ]
 
 checksum:
   name_template: 'checksums.txt'
