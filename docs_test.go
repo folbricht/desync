@@ -53,7 +53,7 @@ func TestDocumentationLinks(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && (d.Name() == ".git" || d.Name() == "testdata") {
+		if d.IsDir() && (d.Name() == ".git" || d.Name() == "testdata" || d.Name() == "vendor") {
 			return filepath.SkipDir
 		}
 		if !d.IsDir() && filepath.Ext(path) == ".md" {
