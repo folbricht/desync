@@ -31,8 +31,10 @@ func NewSwapStore(s Store) *SwapStore {
 }
 
 // NewSwapWriteStore initializes as new instance of a swap store that supports
-// writing and swapping at runtime.
-func NewSwapWriteStore(s Store) *SwapWriteStore {
+// writing and swapping at runtime. It takes a WriteStore rather than a Store so
+// that handing it one that can't be written to is a compile error instead of a
+// panic on the first write.
+func NewSwapWriteStore(s WriteStore) *SwapWriteStore {
 	return &SwapWriteStore{SwapStore{s: s}}
 }
 
@@ -81,5 +83,7 @@ func (s *SwapStore) Swap(new Store) error {
 func (s *SwapWriteStore) StoreChunk(chunk *Chunk) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	// Safe: the constructor only takes a WriteStore, and Swap won't replace a
+	// writable store with one that isn't.
 	return s.s.(WriteStore).StoreChunk(chunk)
 }
