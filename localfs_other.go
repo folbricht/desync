@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package desync
 
@@ -308,7 +307,10 @@ func (fs *LocalFS) Next() (*File, error) {
 		major = uint64(unix.Major(uint64(sys.Rdev)))
 		minor = uint64(unix.Minor(uint64(sys.Rdev)))
 	default:
-		panic("unsupported platform")
+		// Unreachable on every platform this file builds for, but a returned
+		// error is what the write side does for the same assertion in
+		// verifyDeviceNode, and a walk has somewhere to report to.
+		return nil, fmt.Errorf("%s: unsupported platform", entry.path)
 	}
 
 	// Extract the Xattrs if any
