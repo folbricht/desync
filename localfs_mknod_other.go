@@ -1,4 +1,4 @@
-//go:build !linux && !freebsd && !windows
+//go:build !linux && !freebsd && !windows && !netbsd && !openbsd && !dragonfly
 
 package desync
 
@@ -11,12 +11,12 @@ import (
 )
 
 // createDeviceNode creates a device node confined to the extraction root.
-// Darwin (and other non-Linux Unix) has no mknodat(2), so the parent
-// directory is first resolved through the os.Root handle - which refuses to
-// traverse any symlink that escapes the root - to validate confinement, and
-// the node is then created on the corresponding real path. Extraction is
-// single-threaded, so there is no concurrent attacker able to swap a
-// component between this check and the mknod call.
+// Darwin has no mknodat(2), so the parent directory is first resolved through
+// the os.Root handle - which refuses to traverse any symlink that escapes the
+// root - to validate confinement, and the node is then created on the
+// corresponding real path. Extraction is single-threaded, so there is no
+// concurrent attacker able to swap a component between this check and the
+// mknod call.
 func (fs *LocalFS) createDeviceNode(r *os.Root, n NodeDevice) error {
 	dev, err := mkdev(n.Major, n.Minor)
 	if err != nil {

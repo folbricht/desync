@@ -118,9 +118,11 @@ desync extract -s http://server/store -c /tmp/cache index.caibx /path/to/largefi
 | --- | --- | --- |
 | Linux | Full support | All features including FUSE, reflinks (Btrfs/XFS) |
 | macOS | Supported | Minor incompatibilities possible when exchanging catar files with Linux (filemodes) |
-| Windows | Partial | Subset of commands. Device entries unsupported in tar; `--no-same-owner` and `--no-same-permissions` ignored in `untar`. |
+| Windows | Partial | Subset of commands. No `mount-index`. Device entries unsupported in tar; `--no-same-owner` and `--no-same-permissions` ignored in `untar`. |
 | FreeBSD | Supported | Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
-| Other BSD | Unsupported | NetBSD, OpenBSD and DragonFly are not supported by the FUSE library desync uses. |
+| NetBSD | Supported | No `mount-index`. Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
+| OpenBSD | Supported | No `mount-index`, and extended attributes are silently dropped by `tar` and `untar`. Otherwise as NetBSD. |
+| DragonFly | Supported | No `mount-index`, and extended attributes are silently dropped by `tar` and `untar`. Otherwise as NetBSD. |
 
 ## Design Philosophy
 
@@ -130,6 +132,7 @@ desync extract -s http://server/store -c /tmp/cache index.caibx /path/to/largefi
 - **Compression** — only zstd compression and uncompressed stores are supported.
 - **Serving casync clients** — desync can stand in for the casync binary on SSH servers for read-only chunk serving. Set `CASYNC_REMOTE_PATH=desync` on the client.
 - **catar limitations** — SELinux and ACLs in existing catar files are ignored and won't be present in newly created catars. FCAPs are supported only as a verbatim copy of the `security.capability` XAttr.
+- **FUSE mounting** — `mount-index` needs the FUSE bindings, which cover Linux, macOS and FreeBSD. Elsewhere the command exists but reports that it's unavailable.
 
 ## Links
 

@@ -43,12 +43,18 @@ jobs:
       - run: go test ./...
       - run: go build -o cmd/desync/ ./cmd/desync
 
-      # Fast signal for the FreeBSD build. The freebsd job below runs the
-      # actual tests, but it has to boot a VM first, so a broken build is
-      # reported here within seconds instead of minutes.
-      - name: Cross-compile FreeBSD
+      # Fast signal for the BSD builds. The VM jobs below run the actual
+      # tests, but they have to boot a VM first, so a broken build is
+      # reported here within seconds instead of minutes. Covers every BSD
+      # release artifact target; dragonfly is amd64-only in Go.
+      - name: Cross-compile BSDs
         if: runner.os == 'Linux'
-        run: GOOS=freebsd GOARCH=amd64 go build -o /dev/null ./cmd/desync
+        run: |
+          for target in freebsd/amd64 freebsd/arm64 netbsd/amd64 netbsd/arm64 \
+                        openbsd/amd64 openbsd/arm64 dragonfly/amd64; do
+            echo "==> $target"
+            GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/desync
+          done
 
       - name: Race detector
         if: runner.os == 'Linux'
@@ -123,8 +129,15 @@ jobs:
           go-version: stable
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-  # FreeBSD has no GitHub-hosted runner, so the tests run in a VM on the Linux
-  # runner. Booting it costs a few minutes, hence the separate job.
+  # None of the BSDs have a GitHub-hosted runner, so their tests run in a VM on
+  # the Linux runner. Booting one costs a few minutes, hence the separate jobs
+  # rather than steps in the matrix above. They can't be a matrix either: the
+  # VM image is chosen by which action is named in `uses`, and that field
+  # doesn't accept expressions.
+  #
+  # `go version` is echoed because the toolchain comes from each system's own
+  # package repo. Those lag, and go.mod sets a minimum, so "the package is too
+  # old" is the failure mode worth being able to read straight off the log.
   freebsd:
     name: Validate on FreeBSD
     runs-on: ubuntu-latest
@@ -140,5 +153,63 @@ jobs:
           prepare: |
             pkg install -y go
           run: |
+            go version
+            go test ./...
+            go build -o cmd/desync/ ./cmd/desync
+
+  netbsd:
+    name: Validate on NetBSD
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test in NetBSD VM
+        uses: vmactions/netbsd-vm@v1
+        with:
+          usesh: true
+          copyback: false
+          prepare: |
+            /usr/sbin/pkg_add go
+          run: |
+            go version
+            go test ./...
+            go build -o cmd/desync/ ./cmd/desync
+
+  openbsd:
+    name: Validate on OpenBSD
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test in OpenBSD VM
+        uses: vmactions/openbsd-vm@v1
+        with:
+          usesh: true
+          copyback: false
+          prepare: |
+            pkg_add -I go
+          run: |
+            go version
+            go test ./...
+            go build -o cmd/desync/ ./cmd/desync
+
+  dragonfly:
+    name: Validate on DragonFly BSD
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test in DragonFly BSD VM
+        uses: vmactions/dragonflybsd-vm@v1
+        with:
+          usesh: true
+          copyback: false
+          prepare: |
+            pkg install -y go
+          run: |
+            go version
             go test ./...
             go build -o cmd/desync/ ./cmd/desync

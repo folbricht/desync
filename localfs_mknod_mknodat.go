@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || netbsd || openbsd || dragonfly
 
 package desync
 
@@ -14,6 +14,11 @@ import (
 // traverse any symlink escaping the root) and the node is created relative to
 // that directory fd with a base name that has no path separators, so it
 // cannot escape Root.
+//
+// This covers every platform whose mknodat(2) wrapper takes the device number
+// as an int. FreeBSD has mknodat too but types it as uint64, so it needs its
+// own copy; Darwin has no mknodat at all and falls back to a resolve-then-
+// mknod dance.
 func (fs *LocalFS) createDeviceNode(r *os.Root, n NodeDevice) error {
 	dev, err := mkdev(n.Major, n.Minor)
 	if err != nil {
