@@ -5,6 +5,8 @@ package desync
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"os"
 )
 
@@ -23,9 +25,28 @@ func GetFileSize(fileName string) (size uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
-	fm := info.Mode()
-	if isDevice(fm) {
-		// TODO we probably should do something platform specific here to get the correct size
+	if !isDevice(info.Mode()) {
+		return uint64(info.Size()), nil
 	}
-	return uint64(info.Size()), nil
+
+	// Stat reports zero for a device, so the size has to come from the device
+	// itself. Linux has an ioctl for it; everywhere else, seeking to the end
+	// is what's portable across the BSDs and macOS. It reports the same value
+	// the ioctl does where both are available.
+	f, err := os.Open(fileName)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	n, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, fmt.Errorf("determining the size of %s: %w", fileName, err)
+	}
+	if n <= 0 {
+		// A character device that isn't a disk, /dev/zero and friends, has no
+		// size to report. Returning the zero silently would produce an index
+		// for an empty blob.
+		return 0, fmt.Errorf("unable to determine the size of device %s", fileName)
+	}
+	return uint64(n), nil
 }
