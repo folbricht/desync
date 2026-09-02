@@ -3,7 +3,10 @@ package desync
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -13,6 +16,12 @@ import (
 )
 
 func TestMountIndex(t *testing.T) {
+	_, err := os.Stat("/dev/fuse")
+	if errors.Is(err, fs.ErrNotExist) {
+		t.Skipf("FUSE is not available here: %v", err)
+	}
+	require.NoError(t, err)
+
 	// Create the mount point
 	mnt := t.TempDir()
 
@@ -52,6 +61,12 @@ func TestMountIndex(t *testing.T) {
 
 	select {
 	case err = <-c:
+		// go-fuse reports a missing fusermount as the error from looking it
+		// up, before anything of ours has run.
+		var lookup *exec.Error
+		if errors.As(err, &lookup) && errors.Is(err, fs.ErrNotExist) {
+			t.Skipf("FUSE is not available here: %v", err)
+		}
 		require.FailNow(t, "mount exited early", "%v", err)
 	case <-time.After(time.Second):
 	}
