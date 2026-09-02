@@ -3,7 +3,7 @@ package desync
 import (
 	"context"
 	"crypto/rand"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,11 +50,23 @@ func TestFailoverSimple(t *testing.T) {
 }
 
 func TestFailoverMutliple(t *testing.T) {
-	// Create two stores, one that fails when x is 1 and the other fails when x is 0
-	var x int64
+	// Create two stores, one that fails when x is 1 and the other fails when x is 0.
+	//
+	// mu holds x still for the duration of a whole GetChunk call. The group
+	// tries each store at most once per call, so a switch landing between
+	// those two attempts leaves the call having seen both stores fail, and it
+	// returns an error - which is what the group documents it will do when
+	// every store fails, not a bug. Without this the test asks for something
+	// the implementation never promised, and fails whenever a goroutine is
+	// descheduled mid-call: rarely on an idle machine, readily on a loaded or
+	// emulated one.
+	var (
+		mu sync.RWMutex
+		x  int
+	)
 	storeA := &TestStore{
 		GetChunkFunc: func(id ChunkID) (*Chunk, error) {
-			if atomic.LoadInt64(&x) == 0 {
+			if x == 0 {
 				return nil, nil
 			}
 			return nil, errors.New("failed")
@@ -62,7 +74,7 @@ func TestFailoverMutliple(t *testing.T) {
 	}
 	storeB := &TestStore{
 		GetChunkFunc: func(id ChunkID) (*Chunk, error) {
-			if atomic.LoadInt64(&x) == 1 {
+			if x == 1 {
 				return nil, nil
 			}
 			return nil, errors.New("failed")
@@ -90,7 +102,10 @@ func TestFailoverMutliple(t *testing.T) {
 					return nil
 				default:
 					rand.Read(id[:])
-					if _, err := g.GetChunk(id); err != nil {
+					mu.RLock()
+					_, err := g.GetChunk(id)
+					mu.RUnlock()
+					if err != nil {
 						return err
 					}
 				}
@@ -105,8 +120,9 @@ func TestFailoverMutliple(t *testing.T) {
 			case <-gCtx.Done(): // done running
 				return nil
 			case <-failOver: // switch over to the other store
-				newX := (x + 1) % 2
-				atomic.StoreInt64(&x, newX)
+				mu.Lock()
+				x = (x + 1) % 2
+				mu.Unlock()
 			}
 		}
 	})
