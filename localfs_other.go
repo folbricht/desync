@@ -44,6 +44,16 @@ func (fs *LocalFS) skipXattrs(name string, xattrs Xattrs) (bool, error) {
 	return false, nil
 }
 
+// xattrWriteError names the filesystem as the reason an attribute couldn't be
+// written, since the bare errno for it reads only "operation not supported".
+// Worded to match the platform-level case in skipXattrs.
+func xattrWriteError(name string, err error) error {
+	if xattrUnsupported(err) {
+		return fmt.Errorf("%s: extended attributes are not supported by this filesystem: %w", name, err)
+	}
+	return fmt.Errorf("%s: %w", name, err)
+}
+
 // setXattrs applies extended attributes to a regular file or directory using
 // an fd opened through the root handle, so that no symlink in the path can be
 // followed.
@@ -58,7 +68,7 @@ func (fs *LocalFS) setXattrs(r *os.Root, name string, xattrs Xattrs) error {
 	defer f.Close()
 	for key, value := range xattrs {
 		if err := xattr.FSet(f, key, []byte(value)); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
+			return xattrWriteError(name, err)
 		}
 	}
 	return nil
@@ -75,7 +85,7 @@ func (fs *LocalFS) setXattrsNoFollow(name string, xattrs Xattrs) error {
 	dst := filepath.Join(fs.rootReal, name)
 	for key, value := range xattrs {
 		if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
+			return xattrWriteError(name, err)
 		}
 	}
 	return nil

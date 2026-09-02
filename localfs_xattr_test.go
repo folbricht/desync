@@ -95,3 +95,20 @@ func TestCreateFileNoSameXattrs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "content", string(b))
 }
+
+// TestXattrWriteError checks that an unsupported filesystem is named as the
+// reason and that nothing else is reworded. Which errnos mean "unsupported" is
+// xattrUnsupported's business and is covered above.
+func TestXattrWriteError(t *testing.T) {
+	setErr := func(err error) error {
+		return &xattr.Error{Op: "xattr.FSet", Path: "/mnt/f", Name: "user.test", Err: err}
+	}
+
+	err := xattrWriteError("f", setErr(unix.EOPNOTSUPP))
+	assert.Contains(t, err.Error(), "extended attributes are not supported by this filesystem")
+	assert.ErrorIs(t, err, unix.EOPNOTSUPP, "the errno stays wrapped")
+
+	err = xattrWriteError("f", setErr(unix.EACCES))
+	assert.NotContains(t, err.Error(), "not supported by this filesystem")
+	assert.ErrorIs(t, err, unix.EACCES)
+}
