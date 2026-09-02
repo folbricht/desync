@@ -131,8 +131,8 @@ func runChunkServer(ctx context.Context, opt chunkServerOptions, args []string) 
 	// on the fly. Wrap the store into a SwapStore and start a handler for SIGHUP,
 	// reloading the store config from file.
 	if opt.storeFile != "" {
-		if _, ok := s.(desync.WriteStore); ok {
-			s = desync.NewSwapWriteStore(s)
+		if ws, ok := s.(desync.WriteStore); ok {
+			s = desync.NewSwapWriteStore(ws)
 		} else {
 			s = desync.NewSwapStore(s)
 		}
