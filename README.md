@@ -120,7 +120,7 @@ desync extract -s http://server/store -c /tmp/cache index.caibx /path/to/largefi
 | macOS | Supported | Minor incompatibilities possible when exchanging catar files with Linux (filemodes) |
 | Windows | Partial | Subset of commands. No `mount-index`. Device entries unsupported in tar; `--no-same-owner` and `--no-same-permissions` ignored in `untar`. |
 | FreeBSD | Supported | Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
-| NetBSD | Supported | No `mount-index`. Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
+| NetBSD | Supported | No `mount-index`. Extended attributes work only on filesystems that implement them, and are skipped elsewhere. Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
 | OpenBSD | Supported | No `mount-index`, and extended attributes are silently dropped by `tar` and `untar`. Otherwise as NetBSD. |
 | DragonFly | Supported | No `mount-index`. Extended attributes are silently dropped by `tar` and `untar`, and device entries don't round-trip: `mknod` reports success but the node reads back with no device number. Otherwise as NetBSD. |
 
