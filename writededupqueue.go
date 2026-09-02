@@ -1,7 +1,5 @@
 package desync
 
-import "fmt"
-
 var _ WriteStore = &WriteDedupQueue{}
 
 // WriteDedupQueue wraps a writable store and provides deduplication of incoming chunk requests and store
@@ -31,19 +29,7 @@ func (q *WriteDedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
 	q.storeChunkQueue.mu.Unlock()
 
 	if isInFlight {
-		data, err := req.wait()
-		switch b := data.(type) {
-		case nil:
-			return nil, err
-		case *Chunk:
-			// The chunk in the request is shared with all waiters. Chunk
-			// materializes its plain data and ID lazily without locking,
-			// so hand every caller its own copy. The copies still share
-			// the underlying (read-only) chunk data.
-			return b.clone(), err
-		default:
-			return nil, fmt.Errorf("internal error: unexpected type %T", data)
-		}
+		return req.waitForChunk()
 	}
 
 	// If the chunk is not currently being stored get the chunk as usual

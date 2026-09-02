@@ -30,19 +30,7 @@ func (q *DedupQueue) GetChunk(id ChunkID) (*Chunk, error) {
 	req, isInFlight := q.getChunkQueue.loadOrStore(id)
 
 	if isInFlight { // The request is already in-flight, wait for it to come back
-		data, err := req.wait()
-		switch b := data.(type) {
-		case nil:
-			return nil, err
-		case *Chunk:
-			// The chunk in the request is shared with all waiters. Chunk
-			// materializes its plain data and ID lazily without locking,
-			// so hand every caller its own copy. The copies still share
-			// the underlying (read-only) chunk data.
-			return b.clone(), err
-		default:
-			return nil, fmt.Errorf("internal error: unexpected type %T", data)
-		}
+		return req.waitForChunk()
 	}
 
 	// This request is the first one for this chunk, execute as normal
@@ -132,6 +120,27 @@ func newRequest() *request {
 func (r *request) wait() (any, error) {
 	<-r.done
 	return r.data, r.err
+}
+
+// waitForChunk waits for a chunk request to complete and returns a copy of
+// what it published. The chunk in the request is shared with all waiters, and
+// Chunk materializes its plain data and ID lazily without locking, so hand
+// every caller its own copy. The copies still share the underlying
+// (read-only) chunk data.
+//
+// A store that fails returns a nil chunk alongside its error, and that nil is
+// published as a *Chunk held in an interface, which is not an untyped nil.
+// It has to be tested for on its own, or cloning it panics (see issue #408).
+func (r *request) waitForChunk() (*Chunk, error) {
+	data, err := r.wait()
+	b, ok := data.(*Chunk)
+	if !ok {
+		return nil, fmt.Errorf("internal error: unexpected type %T", data)
+	}
+	if b == nil {
+		return nil, err
+	}
+	return b.clone(), err
 }
 
 // Set the result data and marks this request as complete.

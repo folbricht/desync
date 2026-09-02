@@ -119,3 +119,38 @@ func TestDedupQueueChunkNotShared(t *testing.T) {
 		seen[c] = struct{}{}
 	}
 }
+
+// TestDedupQueueChunkMissing covers a store that fails: the chunk it returns
+// alongside the error is nil, and every waiter piled onto that same request
+// has to receive the error rather than a chunk. Cloning the nil used to panic,
+// see issue #408.
+func TestDedupQueueChunkMissing(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := &TestStore{
+			GetChunkFunc: func(id ChunkID) (*Chunk, error) {
+				// The fake clock only advances once all other goroutines are
+				// blocked, so they're all registered as waiters by the time
+				// this returns
+				time.Sleep(time.Millisecond)
+				return nil, ChunkMissing{ID: id}
+			},
+		}
+		q := NewDedupQueue(store)
+
+		var (
+			wg    sync.WaitGroup
+			start = make(chan struct{})
+		)
+		for range 10 {
+			wg.Go(func() {
+				<-start
+				b, err := q.GetChunk(ChunkID{0})
+				assert.IsType(t, ChunkMissing{}, err)
+				assert.Nil(t, b)
+			})
+		}
+
+		close(start)
+		wg.Wait()
+	})
+}
