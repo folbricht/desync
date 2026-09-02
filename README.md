@@ -79,13 +79,15 @@ rsync is the right tool when both ends are machines you control and the destinat
 
 ## Installation
 
-Install the latest release into `$HOME/go/bin`:
+Download an archive for your platform from the [releases page](https://github.com/folbricht/desync/releases), unpack it, and put the `desync` binary somewhere on your `PATH`. Archives are published per operating system and architecture; see [Platform Support](#platform-support) for what is covered. Each release also carries a `checksums.txt` to verify the download against.
+
+To build from the latest source instead, into `$HOME/go/bin`:
 
 ```text
 go install -v github.com/folbricht/desync/cmd/desync@latest
 ```
 
-Or build from source:
+Or from a clone, which is also what you want for working on desync:
 
 ```text
 git clone https://github.com/folbricht/desync.git
