@@ -28,12 +28,38 @@ func NewLocalFS(root string, opts LocalFSOptions) *LocalFS {
 	}
 }
 
+// skipXattrs reports whether a node has any extended attributes worth applying,
+// and refuses to carry on quietly where the platform has no support for them at
+// all. pkg/xattr compiles in stubs that report success and do nothing on those
+// platforms - OpenBSD and DragonFly today - so without this check an archive's
+// attributes would be dropped without a word. Callers who don't want them can
+// say so with NoSameXattrs.
+func (fs *LocalFS) skipXattrs(name string, xattrs Xattrs) (bool, error) {
+	if len(xattrs) == 0 || fs.opts.NoSameXattrs {
+		return true, nil
+	}
+	if !xattr.XATTR_SUPPORTED {
+		return false, fmt.Errorf("%s: extended attributes are not supported on this platform", name)
+	}
+	return false, nil
+}
+
+// xattrWriteError names the filesystem as the reason an attribute couldn't be
+// written, since the bare errno for it reads only "operation not supported".
+// Worded to match the platform-level case in skipXattrs.
+func xattrWriteError(name string, err error) error {
+	if xattrUnsupported(err) {
+		return fmt.Errorf("%s: extended attributes are not supported by this filesystem: %w", name, err)
+	}
+	return fmt.Errorf("%s: %w", name, err)
+}
+
 // setXattrs applies extended attributes to a regular file or directory using
 // an fd opened through the root handle, so that no symlink in the path can be
 // followed.
-func setXattrs(r *os.Root, name string, xattrs Xattrs) error {
-	if len(xattrs) == 0 {
-		return nil
+func (fs *LocalFS) setXattrs(r *os.Root, name string, xattrs Xattrs) error {
+	if skip, err := fs.skipXattrs(name, xattrs); skip || err != nil {
+		return err
 	}
 	f, err := r.Open(name)
 	if err != nil {
@@ -42,7 +68,7 @@ func setXattrs(r *os.Root, name string, xattrs Xattrs) error {
 	defer f.Close()
 	for key, value := range xattrs {
 		if err := xattr.FSet(f, key, []byte(value)); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
+			return xattrWriteError(name, err)
 		}
 	}
 	return nil
@@ -53,13 +79,13 @@ func setXattrs(r *os.Root, name string, xattrs Xattrs) error {
 // root is used. All intermediate components were created by us through the
 // root handle and are therefore confined to it.
 func (fs *LocalFS) setXattrsNoFollow(name string, xattrs Xattrs) error {
-	if len(xattrs) == 0 {
-		return nil
+	if skip, err := fs.skipXattrs(name, xattrs); skip || err != nil {
+		return err
 	}
 	dst := filepath.Join(fs.rootReal, name)
 	for key, value := range xattrs {
 		if err := xattr.LSet(dst, key, []byte(value)); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
+			return xattrWriteError(name, err)
 		}
 	}
 	return nil
@@ -99,7 +125,7 @@ func (fs *LocalFS) SetDirPermissions(n NodeDirectory) error {
 		if err := r.Chown(n.Name, n.UID, n.GID); err != nil {
 			return fmt.Errorf("%s: %w", n.Name, err)
 		}
-		if err := setXattrs(r, n.Name, n.Xattrs); err != nil {
+		if err := fs.setXattrs(r, n.Name, n.Xattrs); err != nil {
 			return err
 		}
 	}
@@ -122,7 +148,7 @@ func (fs *LocalFS) SetFilePermissions(n NodeFile) error {
 		if err := r.Chown(n.Name, n.UID, n.GID); err != nil {
 			return fmt.Errorf("%s: %w", n.Name, err)
 		}
-		if err := setXattrs(r, n.Name, n.Xattrs); err != nil {
+		if err := fs.setXattrs(r, n.Name, n.Xattrs); err != nil {
 			return err
 		}
 	}

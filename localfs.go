@@ -50,6 +50,13 @@ type LocalFSOptions struct {
 	// Ignore the incoming permissions when writing files. Use the current default instead.
 	NoSamePermissions bool
 
+	// Don't apply the extended attributes from the archive when writing files.
+	// Without this, an archive carrying attributes cannot be extracted onto a
+	// filesystem that has no support for them, which is the right default: the
+	// alternative is writing files that silently lack what the archive said
+	// they should have.
+	NoSameXattrs bool
+
 	// Reads all timestamps as zero. Used in tar operations to avoid unnecessary changes.
 	NoTime bool
 }

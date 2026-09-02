@@ -118,11 +118,11 @@ desync extract -s http://server/store -c /tmp/cache index.caibx /path/to/largefi
 | --- | --- | --- |
 | Linux | Full support | All features including FUSE, reflinks (Btrfs/XFS) |
 | macOS | Supported | Minor incompatibilities possible when exchanging catar files with Linux (filemodes) |
-| Windows | Partial | Subset of commands. No `mount-index`. Device entries unsupported in tar; `--no-same-owner` and `--no-same-permissions` ignored in `untar`. |
+| Windows | Partial | Subset of commands. No `mount-index`. Device entries unsupported in tar; `--no-same-owner`, `--no-same-permissions` and `--no-same-xattrs` ignored in `untar`, which never applies extended attributes there. |
 | FreeBSD | Supported | Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
-| NetBSD | Supported | No `mount-index`. Extended attributes work only on filesystems that implement them, and are skipped elsewhere. Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
-| OpenBSD | Supported | No `mount-index`, and extended attributes are silently dropped by `tar` and `untar`. Otherwise as NetBSD. |
-| DragonFly | Supported | No `mount-index`. Extended attributes are silently dropped by `tar` and `untar`, and `untar` refuses device entries: `mknod` reports success there but doesn't record the device number, so the node is rejected rather than written with the wrong device. Otherwise as NetBSD. |
+| NetBSD | Supported | No `mount-index`. Extended attributes work only on filesystems that implement them; `tar` skips them elsewhere and `untar` needs `--no-same-xattrs` there. Tested in CI in a VM and release binaries are published, but it sees far less real-world use than Linux. |
+| OpenBSD | Supported | No `mount-index`. Extended attributes are unavailable: `tar` records none, and `untar` refuses an archive that carries them unless `--no-same-xattrs` is given. Otherwise as NetBSD. |
+| DragonFly | Supported | No `mount-index`. Extended attributes as on OpenBSD. `untar` also refuses device entries: `mknod` reports success there but doesn't record the device number, so the node is rejected rather than written with the wrong device. Otherwise as NetBSD. |
 
 ## Design Philosophy
 
