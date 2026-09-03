@@ -31,6 +31,7 @@ This can be combined with store failover by providing the same syntax as used in
   | Option | Description | Default |
   | --- | --- | --- |
   | `timeout` | Time limit for chunk read/write in nanoseconds. Negative = infinite. Applies to HTTP(S), S3 and OCI stores. | 1 minute |
+  | `n` | Number of concurrent requests made to this store. The `--concurrency` option takes precedence when it is given. | 10 |
   | `error-retry` | Number of times to retry failed chunk requests. | 0 |
   | `error-retry-base-interval` | Nanoseconds to wait before first retry. Attempt N waits N times this interval. | 0 |
   | `client-cert` | Certificate file for mutual SSL. | — |
