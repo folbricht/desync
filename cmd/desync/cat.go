@@ -98,7 +98,11 @@ func runCat(ctx context.Context, opt catOptions, args []string) error {
 	}
 
 	if opt.length > 0 {
-		_, err = io.CopyN(outFile, readSeeker, int64(opt.length))
+		// Fewer bytes left in the blob than were asked for is the end of the
+		// data, not a failure. Everything available has been written by then.
+		if _, err = io.CopyN(outFile, readSeeker, int64(opt.length)); errors.Is(err, io.EOF) {
+			err = nil
+		}
 	} else {
 		_, err = io.Copy(outFile, readSeeker)
 	}

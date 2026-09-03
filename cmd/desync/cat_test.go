@@ -26,6 +26,10 @@ func TestCatCommand(t *testing.T) {
 			[]string{"--store", "testdata/blob1.store", "-o", "1024", "testdata/blob1.caibx"}, 1024, 0},
 		{"cat with offset and length",
 			[]string{"--store", "testdata/blob1.store", "-o", "1024", "-l", "2048", "testdata/blob1.caibx"}, 1024, 2048},
+		// Asking for more than is left just gets what's there, the same way
+		// cat(1) doesn't fail at the end of a file.
+		{"cat with length past the end of the blob",
+			[]string{"--store", "testdata/blob1.store", "-o", "2097000", "-l", "4096", "testdata/blob1.caibx"}, 2097000, 4096},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := newCatCommand(context.Background())
@@ -43,7 +47,7 @@ func TestCatCommand(t *testing.T) {
 			start := test.offset
 			end := len(f)
 			if test.length > 0 {
-				end = start + test.length
+				end = min(start+test.length, len(f))
 			}
 			require.Equal(t, f[start:end], b.Bytes())
 		})
