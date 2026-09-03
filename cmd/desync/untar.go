@@ -72,11 +72,7 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) (err error) 
 		lfs := desync.NewLocalFS(target, opt.LocalFSOptions)
 		// Closing applies any directory metadata that is still outstanding,
 		// which is the case when the extraction failed part-way through.
-		defer func() {
-			if cerr := lfs.Close(); cerr != nil && err == nil {
-				err = cerr
-			}
-		}()
+		defer closeInto(lfs, &err)
 		fs = lfs
 	case "gnu-tar": // GNU tar, either file or STDOUT
 		var w *os.File
@@ -87,10 +83,14 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) (err error) 
 			if err != nil {
 				return err
 			}
-			defer w.Close()
+			defer closeInto(w, &err)
 		}
 		gtar := desync.NewTarWriter(w)
-		defer gtar.Close()
+		// Closing is what writes the padding and the end-of-archive blocks,
+		// so a failure here leaves a truncated archive behind. It has to
+		// happen before the file below it is closed, which the defer order
+		// takes care of.
+		defer closeInto(gtar, &err)
 		fs = gtar
 	default:
 		return fmt.Errorf("invalid output format '%s'", opt.outFormat)
@@ -128,4 +128,14 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) (err error) 
 	}
 
 	return desync.UnTarIndex(ctx, fs, index, s, opt.n, desync.NewProgressBar("Unpacking "))
+}
+
+// closeInto closes c, reporting a failure through err unless something has
+// already gone wrong. Closing is where buffered output is flushed and, for an
+// archive, where the trailer is written, so a dropped error there is a
+// truncated result reported as a success.
+func closeInto(c io.Closer, err *error) {
+	if cerr := c.Close(); cerr != nil && *err == nil {
+		*err = cerr
+	}
 }
