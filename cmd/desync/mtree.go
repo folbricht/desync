@@ -55,9 +55,15 @@ func runMtree(ctx context.Context, opt mtreeOptions, args []string) error {
 	}
 
 	input := args[0]
-	mtreeFS, err := desync.NewMtreeFS(stdout)
-	if err != nil {
-		return err
+
+	// An index doesn't have to be a local file, it can be read from STDIN or
+	// a store, so it isn't looked for on the filesystem. A catar or a
+	// directory always is one.
+	if opt.readIndex {
+		if stat, err := os.Stat(input); err == nil && stat.IsDir() {
+			return errors.New("-i can't be used with input directory")
+		}
+		return mtreeIndex(ctx, opt, input)
 	}
 
 	stat, err := os.Stat(input)
@@ -65,8 +71,11 @@ func runMtree(ctx context.Context, opt mtreeOptions, args []string) error {
 		return err
 	}
 
-	if opt.readIndex && stat.IsDir() {
-		return errors.New("-i can't be used with input directory")
+	// Nothing is written until the input is known to be readable, so a
+	// failure doesn't leave a header on its own behind.
+	mtreeFS, err := desync.NewMtreeFS(stdout)
+	if err != nil {
+		return err
 	}
 
 	// Input is a directory, not an archive. So Tar it into an Untar stream
@@ -94,25 +103,28 @@ func runMtree(ctx context.Context, opt mtreeOptions, args []string) error {
 		return untarErr
 	}
 
-	// If we got a catar file unpack that and exit
-	if !opt.readIndex {
-		f, err := os.Open(input)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		var r io.Reader = f
-		return desync.UnTar(ctx, r, mtreeFS)
+	// What's left is a catar file, unpack that
+	f, err := os.Open(input)
+	if err != nil {
+		return err
 	}
+	defer f.Close()
+	return desync.UnTar(ctx, f, mtreeFS)
+}
 
+func mtreeIndex(ctx context.Context, opt mtreeOptions, input string) error {
 	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
-	// The input must be an index, read it whole
+	// Read the index whole before writing anything
 	index, err := readCaibxFile(input, opt.cmdStoreOptions)
+	if err != nil {
+		return err
+	}
+	mtreeFS, err := desync.NewMtreeFS(stdout)
 	if err != nil {
 		return err
 	}
