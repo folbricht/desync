@@ -55,7 +55,7 @@ func runMtree(ctx context.Context, opt mtreeOptions, args []string) error {
 	}
 
 	input := args[0]
-	mtreeFS, err := desync.NewMtreeFS(os.Stdout)
+	mtreeFS, err := desync.NewMtreeFS(stdout)
 	if err != nil {
 		return err
 	}
@@ -76,15 +76,20 @@ func runMtree(ctx context.Context, opt mtreeOptions, args []string) error {
 		inFS := desync.NewLocalFS(input, desync.LocalFSOptions{})
 
 		// Run the tar bit in a goroutine, writing to the pipe
-		var tarErr error
+		tarErr := make(chan error, 1)
 		go func() {
-			tarErr = desync.Tar(ctx, w, inFS)
-			w.CloseWithError(tarErr)
+			err := desync.Tar(ctx, w, inFS)
+			w.CloseWithError(err)
+			tarErr <- err
 		}()
 		untarErr := desync.UnTar(ctx, r, mtreeFS)
 
-		if tarErr != nil {
-			return tarErr
+		// UnTar can give up before the stream ends, leaving Tar blocked on a
+		// pipe nobody reads. Closing the read end lets it finish, so its
+		// error can be collected rather than raced on.
+		r.CloseWithError(untarErr)
+		if err := <-tarErr; err != nil {
+			return err
 		}
 		return untarErr
 	}
