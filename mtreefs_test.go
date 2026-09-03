@@ -2,6 +2,7 @@ package desync
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -63,3 +64,44 @@ func TestMtreeFSNoKeywordInjection(t *testing.T) {
 		assert.NotEqual(t, "ignore", f, "injected keyword must not appear as its own field")
 	}
 }
+
+// A listing that couldn't be written is not the listing that was asked for,
+// and nothing downstream notices a short write, so every entry has to report
+// its own.
+func TestMtreeFSWriteError(t *testing.T) {
+	writeErr := errors.New("no space left on device")
+	mtime := time.Unix(0, 0)
+
+	for _, test := range []struct {
+		name  string
+		write func(fs MtreeFS) error
+	}{
+		{"directory", func(fs MtreeFS) error {
+			return fs.CreateDir(NodeDirectory{Name: "dir", MTime: mtime})
+		}},
+		{"file", func(fs MtreeFS) error {
+			return fs.CreateFile(NodeFile{Name: "file", Data: strings.NewReader("data"), MTime: mtime})
+		}},
+		{"symlink", func(fs MtreeFS) error {
+			return fs.CreateSymlink(NodeSymlink{Name: "link", Target: "file", MTime: mtime})
+		}},
+		{"device", func(fs MtreeFS) error {
+			return fs.CreateDevice(NodeDevice{Name: "dev", MTime: mtime})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fs := MtreeFS{w: failWriter{writeErr}}
+			require.ErrorIs(t, test.write(fs), writeErr)
+		})
+	}
+
+	// The header is the first thing written, so it fails there too.
+	_, err := NewMtreeFS(failWriter{writeErr})
+	require.ErrorIs(t, err, writeErr)
+}
+
+// failWriter stands in for output that has stopped accepting anything, a full
+// disk or a closed pipe.
+type failWriter struct{ err error }
+
+func (w failWriter) Write([]byte) (int, error) { return 0, w.err }
