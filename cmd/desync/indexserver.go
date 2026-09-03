@@ -140,10 +140,8 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 		tlsConfig.ClientCAs = certPool
 	}
 
-	// Run the server(s) in a goroutine, and use the main goroutine to wait for
-	// a signal or a failing server (ctx gets cancelled in that case)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// Run the server(s) in goroutines and use the main goroutine to wait for
+	// either a signal or one of them giving up.
 	serverErr := make(chan error, len(addresses))
 	for _, addr := range addresses {
 		go func() {
@@ -161,18 +159,15 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 				err = server.ListenAndServeTLS(opt.cert, opt.key)
 			}
 			serverErr <- err
-			cancel()
 		}()
 	}
-	// wait for either INT/TERM or an issue with the server
-	<-ctx.Done()
 
 	// A server only stops on its own when it fails, so report that and let the
 	// process exit non-zero. Shutting down on a signal isn't an error.
 	select {
 	case err := <-serverErr:
 		return err
-	default:
+	case <-ctx.Done():
 		return nil
 	}
 }
