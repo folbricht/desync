@@ -17,6 +17,7 @@ import (
 var (
 	stdout io.Writer = os.Stdout
 	stderr io.Writer = os.Stderr
+	stdin  io.Reader = os.Stdin
 )
 
 var sighup = make(chan os.Signal, 1)

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"io"
+	"slices"
+	"strings"
 
 	"github.com/folbricht/desync"
 	"github.com/spf13/cobra"
@@ -48,6 +51,12 @@ func runPrune(ctx context.Context, opt pruneOptions, args []string) error {
 	if opt.store == "" {
 		return errors.New("no store provided")
 	}
+	// The confirmation prompt below reads STDIN, which an index read from
+	// there has already consumed. Say so rather than ask a question that
+	// can't be answered.
+	if !opt.yes && slices.Contains(args, "-") {
+		return errors.New("--yes is required when reading an index from STDIN")
+	}
 
 	// Open the target store
 	sr, err := storeFromLocation(opt.store, opt.cmdStoreOptions)
@@ -82,18 +91,24 @@ func runPrune(ctx context.Context, opt pruneOptions, args []string) error {
 
 	// If the -y option wasn't provided, ask the user to confirm before doing anything
 	if !opt.yes {
-		fmt.Printf("Warning: The provided index files reference %d unique chunks. Are you sure\nyou want to delete all other chunks from '%s'?\n", len(ids), s)
+		fmt.Fprintf(stdout, "Warning: The provided index files reference %d unique chunks. Are you sure\nyou want to delete all other chunks from '%s'?\n", len(ids), s)
+		in := bufio.NewReader(stdin)
 	ask:
 		for {
-			var a string
-			fmt.Printf("[y/N]: ")
-			if _, err := fmt.Fscanln(os.Stdin, &a); err != nil {
+			fmt.Fprint(stdout, "[y/N]: ")
+			// Read the whole line rather than a word, so that just hitting
+			// enter is the "no" the prompt offers as the default.
+			a, err := in.ReadString('\n')
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
-			switch a {
+			switch strings.TrimSpace(a) {
 			case "y", "Y":
 				break ask
 			case "n", "N", "":
+				return nil
+			}
+			if errors.Is(err, io.EOF) { // nothing left to answer with
 				return nil
 			}
 		}
