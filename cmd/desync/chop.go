@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/folbricht/desync"
@@ -103,10 +106,14 @@ func runChop(ctx context.Context, opt chopOptions, args []string) error {
 			}
 		}
 
-		chunks = make([]desync.IndexChunk, 0, len(m))
-		for _, c := range m {
-			chunks = append(chunks, c)
-		}
+		// Back into the order they appear in the index. ChopFile's workers
+		// seek to each chunk's offset, so the order they are handed out in is
+		// the order the file gets read in, and map iteration order would make
+		// that a different random walk over the whole file on every run.
+		chunks = slices.Collect(maps.Values(m))
+		slices.SortFunc(chunks, func(a, b desync.IndexChunk) int {
+			return cmp.Compare(a.Start, b.Start)
+		})
 	}
 
 	// If this is a terminal, we want a progress bar
