@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -161,4 +162,30 @@ func TestGetOCICredentialsWithoutDockerConfigPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, cred.Username)
 	require.Empty(t, cred.Password)
+}
+
+// A config file given with --config that doesn't exist yet is what 'config -w'
+// is meant to create, so it must not be fatal before the command runs.
+func TestConfigFileMissing(t *testing.T) {
+	oldCfgFile, oldCfg := cfgFile, cfg
+	t.Cleanup(func() { cfgFile, cfg, cfgFileErr = oldCfgFile, oldCfg, nil })
+
+	cfgFile = filepath.Join(t.TempDir(), "config.json")
+	initConfig()
+	require.Error(t, cfgFileErr)
+
+	// Only the config command gets to carry on without it
+	ctx := context.Background()
+	require.NoError(t, checkConfigFile(newConfigCommand(ctx)))
+	require.Error(t, checkConfigFile(newCatCommand(ctx)))
+
+	require.NoError(t, runConfig(ctx, true))
+	b, err := os.ReadFile(cfgFile)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(b, &Config{}))
+
+	// Now that it's there, every command is happy with it
+	initConfig()
+	require.NoError(t, cfgFileErr)
+	require.NoError(t, checkConfigFile(newCatCommand(ctx)))
 }

@@ -245,6 +245,10 @@ func runConfig(ctx context.Context, write bool) error {
 var cfg Config
 var cfgFile string
 
+// Set when the config file given with --config doesn't exist. It's not fatal
+// right away since 'config -w' creates it, see checkConfigFile().
+var cfgFileErr error
+
 // Look for $HOME/.config/desync and if present, load into the global config
 // instance. Values defined in the file will be set accordingly, while anything
 // that's not in the file will retain its default values.
@@ -259,20 +263,31 @@ func initConfig() {
 		}
 		defaultLocation = true
 	}
-	if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
-		if defaultLocation { // no problem if the default config doesn't exist
-			return
-		}
-		die(err)
-	}
+	cfgFileErr = nil
 	f, err := os.Open(cfgFile)
 	if err != nil {
-		die(err)
+		if !os.IsNotExist(err) {
+			die(err)
+		}
+		if !defaultLocation { // no problem if the default config doesn't exist
+			cfgFileErr = err
+		}
+		return
 	}
 	defer f.Close()
 	if err = json.NewDecoder(f).Decode(&cfg); err != nil {
 		die(errors.Wrap(err, "reading "+cfgFile))
 	}
+}
+
+// A config file the user asked for with --config has to be there for every
+// command that reads it. The config command is the one that writes it, so it
+// is allowed to name a file that doesn't exist yet.
+func checkConfigFile(cmd *cobra.Command) error {
+	if cmd.Name() == "config" {
+		return nil
+	}
+	return cfgFileErr
 }
 
 // Digest algorithm to be used by desync globally.
