@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -145,10 +144,11 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 	// a signal or a failing server (ctx gets cancelled in that case)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	serverErr := make(chan error, len(addresses))
 	for _, addr := range addresses {
-		go func(a string) {
+		go func() {
 			server := &http.Server{
-				Addr:              a,
+				Addr:              addr,
 				TLSConfig:         tlsConfig,
 				ErrorLog:          log.New(stderr, "", log.LstdFlags),
 				ReadHeaderTimeout: 30 * time.Second,
@@ -160,11 +160,19 @@ func serve(ctx context.Context, opt cmdServerOptions, addresses ...string) error
 			} else {
 				err = server.ListenAndServeTLS(opt.cert, opt.key)
 			}
-			fmt.Fprintln(stderr, err)
+			serverErr <- err
 			cancel()
-		}(addr)
+		}()
 	}
 	// wait for either INT/TERM or an issue with the server
 	<-ctx.Done()
-	return nil
+
+	// A server only stops on its own when it fails, so report that and let the
+	// process exit non-zero. Shutting down on a signal isn't an error.
+	select {
+	case err := <-serverErr:
+		return err
+	default:
+		return nil
+	}
 }

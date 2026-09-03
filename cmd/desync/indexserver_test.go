@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -159,4 +161,31 @@ func startIndexServer(t *testing.T, args ...string) (string, context.CancelFunc)
 	// Wait a little for the server to start
 	time.Sleep(time.Second)
 	return addr, cancel
+}
+
+// A server that fails to start has to report that. Without it, a service that
+// never came up looks like a clean shutdown to whatever supervises it.
+func TestServerStartFailure(t *testing.T) {
+	// Hold on to an address so the servers can't bind to it
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer l.Close()
+
+	for _, test := range []struct {
+		name    string
+		command func(context.Context) *cobra.Command
+	}{
+		{"chunk-server", newChunkServerCommand},
+		{"index-server", newIndexServerCommand},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			http.DefaultServeMux = &http.ServeMux{}
+			cmd := test.command(context.Background())
+			cmd.SetArgs([]string{"-s", t.TempDir(), "-l", l.Addr().String()})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			_, err := cmd.ExecuteC()
+			require.ErrorContains(t, err, l.Addr().String())
+		})
+	}
 }
