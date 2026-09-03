@@ -26,6 +26,9 @@ stores can also be combined into one failover group by separating them with
 '|', for example -s "http://server1/store|http://server2/store".`,
 		// Makes cobra provide --version. The 'version' command prints more.
 		Version: currentBuild().Version,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return checkConfigFile(cmd)
+		},
 	}
 	// Registered here so cobra doesn't claim -v as its shorthand, which users
 	// would reasonably expect to mean --verbose.
