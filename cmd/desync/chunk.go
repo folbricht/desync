@@ -79,6 +79,6 @@ func runChunk(ctx context.Context, opt chunkOptions, args []string) error {
 			return nil
 		}
 		sum := desync.Digest.Sum(b)
-		fmt.Printf("%d\t%d\t%x\n", start+opt.startPos, len(b), sum)
+		fmt.Fprintf(stdout, "%d\t%d\t%x\n", start+opt.startPos, len(b), sum)
 	}
 }

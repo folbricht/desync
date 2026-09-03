@@ -64,22 +64,23 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 	}
 
 	var results struct {
-		Total                           int    `json:"total"`
-		Unique                          int    `json:"unique"`
-		InStore                         uint64 `json:"in-store"`
-		InSeed                          uint64 `json:"in-seed"`
-		InCache                         uint64 `json:"in-cache"`
-		NotInSeedNorCache               uint64 `json:"not-in-seed-nor-cache"`
-		Size                            uint64 `json:"size"`
-		SizeNotInSeed                   uint64 `json:"dedup-size-not-in-seed"`
-		SizeNotInSeedNorCache           uint64 `json:"dedup-size-not-in-seed-nor-cache"`
-		SizeNotInSeedNorCacheCompressed uint64 `json:"dedup-size-not-in-seed-nor-cache-compressed"`
-		ChunkSizeMin                    uint64 `json:"chunk-size-min"`
-		ChunkSizeAvg                    uint64 `json:"chunk-size-avg"`
-		ChunkSizeMax                    uint64 `json:"chunk-size-max"`
+		Total                           int     `json:"total"`
+		Unique                          int     `json:"unique"`
+		InStore                         uint64  `json:"in-store"`
+		InSeed                          uint64  `json:"in-seed"`
+		InCache                         uint64  `json:"in-cache"`
+		NotInSeedNorCache               uint64  `json:"not-in-seed-nor-cache"`
+		Size                            uint64  `json:"size"`
+		SizeNotInSeed                   uint64  `json:"dedup-size-not-in-seed"`
+		SizeNotInSeedNorCache           uint64  `json:"dedup-size-not-in-seed-nor-cache"`
+		SizeNotInSeedNorCacheCompressed *uint64 `json:"dedup-size-not-in-seed-nor-cache-compressed,omitempty"`
+		ChunkSizeMin                    uint64  `json:"chunk-size-min"`
+		ChunkSizeAvg                    uint64  `json:"chunk-size-avg"`
+		ChunkSizeMax                    uint64  `json:"chunk-size-max"`
 	}
 
 	var estimateCompressedSize = opt.chunksInfo != ""
+	var compressedSize uint64
 	var chunksInfo []desync.ChunkAdditionalInfo
 	if opt.chunksInfo != "" {
 		b, err := os.ReadFile(opt.chunksInfo)
@@ -173,12 +174,11 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 			results.SizeNotInSeedNorCache += chunk.Size
 			if estimateCompressedSize {
 				if chunkInfo, found := chunkIDMap[chunk.ID]; found {
-					results.SizeNotInSeedNorCacheCompressed += uint64(chunkInfo.CompressedSize)
+					compressedSize += uint64(chunkInfo.CompressedSize)
 					if chunkInfo.CompressedSize == 0 {
-						// We don't have the compressed info for at least one chunk. We shouldn't print that info
-						// because it would not be accurate.
+						// We don't have the compressed info for at least one chunk. We shouldn't report that
+						// info because it would not be accurate.
 						estimateCompressedSize = false
-						results.SizeNotInSeedNorCacheCompressed = 0
 					}
 					if chunkInfo.UncompressedSize != chunk.Size {
 						return fmt.Errorf("the chunks info file has an unexpected size for the chunk %s: %d instead of %d",
@@ -188,12 +188,16 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 					// If the provided chunks info file is missing some chunks we stop estimating the size.
 					// Otherwise, the shown value at the end could end up being wrong.
 					estimateCompressedSize = false
-					results.SizeNotInSeedNorCacheCompressed = 0
 				}
 			}
 		}
 	}
 	results.Unique = len(deduped)
+	// Reported only when it could be worked out for every chunk. A zero here
+	// would otherwise read as "nothing to transfer" rather than "not known".
+	if estimateCompressedSize {
+		results.SizeNotInSeedNorCacheCompressed = &compressedSize
+	}
 
 	if len(opt.stores) > 0 {
 		store, err := multiStoreWithRouter(opt.cmdStoreOptions, opt.stores...)
@@ -228,19 +232,21 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 			return err
 		}
 	case "plain":
-		fmt.Println("Blob size:", results.Size)
-		fmt.Println("Size of deduplicated chunks not in seed:", results.SizeNotInSeed)
-		fmt.Println("Size of deduplicated chunks not in seed nor cache:", results.SizeNotInSeedNorCache)
-		fmt.Println("Total chunks:", results.Total)
-		fmt.Println("Unique chunks:", results.Unique)
-		fmt.Println("Chunks in store:", results.InStore)
-		fmt.Println("Chunks in seed:", results.InSeed)
-		fmt.Println("Chunks in cache:", results.InCache)
-		fmt.Println("Chunks not in seed nor cache:", results.NotInSeedNorCache)
-		fmt.Println("Compressed chunks not in seed nor cache:", results.SizeNotInSeedNorCacheCompressed)
-		fmt.Println("Chunk size min:", results.ChunkSizeMin)
-		fmt.Println("Chunk size avg:", results.ChunkSizeAvg)
-		fmt.Println("Chunk size max:", results.ChunkSizeMax)
+		fmt.Fprintln(stdout, "Blob size:", results.Size)
+		fmt.Fprintln(stdout, "Size of deduplicated chunks not in seed:", results.SizeNotInSeed)
+		fmt.Fprintln(stdout, "Size of deduplicated chunks not in seed nor cache:", results.SizeNotInSeedNorCache)
+		fmt.Fprintln(stdout, "Total chunks:", results.Total)
+		fmt.Fprintln(stdout, "Unique chunks:", results.Unique)
+		fmt.Fprintln(stdout, "Chunks in store:", results.InStore)
+		fmt.Fprintln(stdout, "Chunks in seed:", results.InSeed)
+		fmt.Fprintln(stdout, "Chunks in cache:", results.InCache)
+		fmt.Fprintln(stdout, "Chunks not in seed nor cache:", results.NotInSeedNorCache)
+		if results.SizeNotInSeedNorCacheCompressed != nil {
+			fmt.Fprintln(stdout, "Compressed size of deduplicated chunks not in seed nor cache:", *results.SizeNotInSeedNorCacheCompressed)
+		}
+		fmt.Fprintln(stdout, "Chunk size min:", results.ChunkSizeMin)
+		fmt.Fprintln(stdout, "Chunk size avg:", results.ChunkSizeAvg)
+		fmt.Fprintln(stdout, "Chunk size max:", results.ChunkSizeMax)
 	default:
 		return fmt.Errorf("unsupported output format %q", opt.printFormat)
 	}

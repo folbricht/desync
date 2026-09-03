@@ -28,7 +28,6 @@ func TestInfoCommand(t *testing.T) {
 				"size": 2097152,
 				"dedup-size-not-in-seed": 1114112,
 				"dedup-size-not-in-seed-nor-cache": 1114112,
-				"dedup-size-not-in-seed-nor-cache-compressed": 0,
 				"chunk-size-min": 2048,
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768
@@ -45,7 +44,6 @@ func TestInfoCommand(t *testing.T) {
 				"size": 2097152,
 				"dedup-size-not-in-seed": 80029,
 				"dedup-size-not-in-seed-nor-cache": 80029,
-				"dedup-size-not-in-seed-nor-cache-compressed": 0,
 				"chunk-size-min": 2048,
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768
@@ -96,7 +94,6 @@ func TestInfoCommand(t *testing.T) {
 				"size": 2097152,
 				"dedup-size-not-in-seed": 1114112,
 				"dedup-size-not-in-seed-nor-cache": 1114112,
-				"dedup-size-not-in-seed-nor-cache-compressed": 0,
 				"chunk-size-min": 2048,
 				"chunk-size-avg": 8192,
 				"chunk-size-max": 32768
@@ -125,4 +122,39 @@ func TestInfoCommand(t *testing.T) {
 			require.Equal(t, exp, got)
 		})
 	}
+}
+
+// The plain output has to go to the same writer as the JSON one, and only
+// report a compressed size when there was one to work out.
+func TestInfoCommandPlain(t *testing.T) {
+	run := func(t *testing.T, args ...string) string {
+		t.Helper()
+		b := new(bytes.Buffer)
+		oldStdout := stdout
+		t.Cleanup(func() { stdout = oldStdout })
+		stdout = b
+
+		cmd := newInfoCommand(context.Background())
+		cmd.SetArgs(append(args, "--format", "plain"))
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		_, err := cmd.ExecuteC()
+		require.NoError(t, err)
+		return b.String()
+	}
+
+	out := run(t, "-s", "testdata/blob1.store", "testdata/blob1.caibx")
+	require.Contains(t, out, "Blob size: 2097152\n")
+	require.Contains(t, out, "Chunks in store: 131\n")
+	require.NotContains(t, out, "Compressed size", "nothing was given to estimate from")
+
+	out = run(t, "-s", "testdata/blob2.store", "--cache", "testdata/blob2.cache",
+		"--chunks-info", "testdata/blob2_chunks_info.json", "testdata/blob2.caibx")
+	require.Contains(t, out, "Compressed size of deduplicated chunks not in seed nor cache: 818145\n")
+
+	// The estimate is given up on when a chunk is missing from the info file,
+	// and an abandoned one must not read as a size of zero.
+	out = run(t, "-s", "testdata/blob2.store",
+		"--chunks-info", "testdata/blob2_chunks_info_missing.json", "testdata/blob2.caibx")
+	require.NotContains(t, out, "Compressed size")
 }

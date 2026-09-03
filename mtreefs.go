@@ -28,8 +28,7 @@ func (fs MtreeFS) CreateDir(n NodeDirectory) error {
 	attr = append(attr, fmt.Sprintf("uid=%d", n.UID))
 	attr = append(attr, fmt.Sprintf("gid=%d", n.GID))
 	attr = append(attr, fmt.Sprintf("time=%d.%9d", n.MTime.Unix(), n.MTime.Nanosecond()))
-	fmt.Fprintln(fs.w, strings.Join(attr, " "))
-	return nil
+	return fs.write(attr)
 }
 
 func (fs MtreeFS) CreateFile(n NodeFile) error {
@@ -56,8 +55,7 @@ func (fs MtreeFS) CreateFile(n NodeFile) error {
 	default:
 		return fmt.Errorf("unsupported mtree hash algorithm %d", Digest.Algorithm())
 	}
-	fmt.Fprintln(fs.w, strings.Join(attr, " "))
-	return nil
+	return fs.write(attr)
 }
 
 func (fs MtreeFS) CreateSymlink(n NodeSymlink) error {
@@ -67,8 +65,7 @@ func (fs MtreeFS) CreateSymlink(n NodeSymlink) error {
 	attr = append(attr, fmt.Sprintf("uid=%d", n.UID))
 	attr = append(attr, fmt.Sprintf("gid=%d", n.GID))
 	attr = append(attr, fmt.Sprintf("time=%d.%9d", n.MTime.Unix(), n.MTime.Nanosecond()))
-	fmt.Fprintln(fs.w, strings.Join(attr, " "))
-	return nil
+	return fs.write(attr)
 }
 
 func (fs MtreeFS) CreateDevice(n NodeDevice) error {
@@ -82,8 +79,15 @@ func (fs MtreeFS) CreateDevice(n NodeDevice) error {
 	attr = append(attr, fmt.Sprintf("uid=%d", n.UID))
 	attr = append(attr, fmt.Sprintf("gid=%d", n.GID))
 	attr = append(attr, fmt.Sprintf("time=%d.%9d", n.MTime.Unix(), n.MTime.Nanosecond()))
-	fmt.Fprintln(fs.w, strings.Join(attr, " "))
-	return nil
+	return fs.write(attr)
+}
+
+// write emits one mtree line. The error matters: a listing that stopped
+// half-way through is not the one the caller asked for, and nothing further
+// down reports a short write.
+func (fs MtreeFS) write(attr []string) error {
+	_, err := fmt.Fprintln(fs.w, strings.Join(attr, " "))
+	return err
 }
 
 // Converts filenames into an mtree-compatible format following the rules outlined in mtree(5):
