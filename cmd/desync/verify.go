@@ -39,6 +39,9 @@ invalid chunks are deleted from the store.`,
 }
 
 func runVerify(ctx context.Context, opt verifyOptions, args []string) error {
+	if err := opt.cmdStoreOptions.validate(); err != nil {
+		return err
+	}
 	if opt.store == "" {
 		return errors.New("no store provided")
 	}

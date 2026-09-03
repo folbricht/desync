@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,4 +51,15 @@ func TestVerifyCommand(t *testing.T) {
 	// Confirm sure the bad chunk file is gone from the store
 	_, err = os.Stat(invalidChunkFile)
 	require.True(t, os.IsNotExist(err))
+}
+
+// Without workers there's nothing to read the chunks the store feeds them, so
+// the command has to refuse rather than block forever.
+func TestVerifyCommandConcurrency(t *testing.T) {
+	cmd := newVerifyCommand(context.Background())
+	cmd.SetArgs([]string{"-s", t.TempDir(), "-n", "0"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	_, err := cmd.ExecuteC()
+	require.ErrorContains(t, err, "--concurrency")
 }

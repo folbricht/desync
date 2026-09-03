@@ -57,6 +57,11 @@ func (o cmdStoreOptions) validate() error {
 	if (o.clientKey == "") != (o.clientCert == "") {
 		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
+	if o.n < 1 {
+		// Without workers, nothing reads from the queues the commands feed
+		// chunks into, and they'd block forever.
+		return errors.New("--concurrency needs to be at least 1")
+	}
 	return nil
 }
 
