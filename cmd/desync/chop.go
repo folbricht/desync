@@ -75,9 +75,45 @@ func runChop(ctx context.Context, opt chopOptions, args []string) error {
 	if err != nil {
 		return err
 	}
-	chunks, err := chunksToStore(c.Chunks, opt)
-	if err != nil {
-		return err
+	chunks := c.Chunks
+
+	// If requested, skip/ignore all chunks that are referenced in other indexes or text files
+	if len(opt.ignoreIndexes) > 0 || len(opt.ignoreChunks) > 0 {
+		m := make(map[desync.ChunkID]desync.IndexChunk)
+		for _, c := range chunks {
+			m[c.ID] = c
+		}
+
+		// Remove chunks referenced in indexes
+		for _, f := range opt.ignoreIndexes {
+			i, err := readCaibxFile(f, opt.cmdStoreOptions)
+			if err != nil {
+				return err
+			}
+			for _, c := range i.Chunks {
+				delete(m, c.ID)
+			}
+		}
+
+		// Remove chunks referenced in ASCII text files
+		for _, f := range opt.ignoreChunks {
+			ids, err := readChunkIDFile(f)
+			if err != nil {
+				return err
+			}
+			for _, id := range ids {
+				delete(m, id)
+			}
+		}
+
+		// Back into the order they appear in the index. ChopFile's workers
+		// seek to each chunk's offset, so the order they are handed out in is
+		// the order the file gets read in, and map iteration order would make
+		// that a different random walk over the whole file on every run.
+		chunks = slices.Collect(maps.Values(m))
+		slices.SortFunc(chunks, func(a, b desync.IndexChunk) int {
+			return cmp.Compare(a.Start, b.Start)
+		})
 	}
 
 	// If this is a terminal, we want a progress bar
@@ -85,52 +121,6 @@ func runChop(ctx context.Context, opt chopOptions, args []string) error {
 
 	// Chop up the file into chunks and store them in the target store
 	return desync.ChopFile(ctx, dataFile, chunks, s, opt.n, pb)
-}
-
-// chunksToStore drops the chunks that are referenced in any of the ignore
-// indexes or chunk ID files, keeping the order they appear in the index and
-// one entry per chunk ID.
-func chunksToStore(chunks []desync.IndexChunk, opt chopOptions) ([]desync.IndexChunk, error) {
-	if len(opt.ignoreIndexes) == 0 && len(opt.ignoreChunks) == 0 {
-		return chunks, nil
-	}
-
-	m := make(map[desync.ChunkID]desync.IndexChunk, len(chunks))
-	for _, c := range chunks {
-		m[c.ID] = c
-	}
-
-	// Remove chunks referenced in indexes
-	for _, f := range opt.ignoreIndexes {
-		i, err := readCaibxFile(f, opt.cmdStoreOptions)
-		if err != nil {
-			return nil, err
-		}
-		for _, c := range i.Chunks {
-			delete(m, c.ID)
-		}
-	}
-
-	// Remove chunks referenced in ASCII text files
-	for _, f := range opt.ignoreChunks {
-		ids, err := readChunkIDFile(f)
-		if err != nil {
-			return nil, err
-		}
-		for _, id := range ids {
-			delete(m, id)
-		}
-	}
-
-	// Back into the order they appear in the index. ChopFile's workers seek to
-	// each chunk's offset, so the order they are handed out in is the order
-	// the file gets read in, and map iteration order would make that a
-	// different random walk over the whole file on every run.
-	out := slices.Collect(maps.Values(m))
-	slices.SortFunc(out, func(a, b desync.IndexChunk) int {
-		return cmp.Compare(a.Start, b.Start)
-	})
-	return out, nil
 }
 
 // Read a list of chunk IDs from a file. Blank lines are skipped.
