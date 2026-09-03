@@ -94,7 +94,7 @@ func TestMtreeCommandIndexLocations(t *testing.T) {
 			f, err := os.Open("testdata/tree.caidx")
 			require.NoError(t, err)
 			oldStdin := os.Stdin
-			t.Cleanup(func() { os.Stdin = oldStdin; f.Close() })
+			t.Cleanup(func() { os.Stdin = oldStdin; _ = f.Close() })
 			os.Stdin = f
 		}, "-")
 	})
