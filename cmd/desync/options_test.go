@@ -123,6 +123,66 @@ func TestStoreOptionsValidate(t *testing.T) {
 	}
 }
 
+// The concurrency flag carries a default rather than a zero value, so the
+// merge has to tell "not given" from "given as 10" to let a config file set it.
+func TestConcurrencyOption(t *testing.T) {
+	const defaultConcurrency = 10
+	for _, test := range []struct {
+		name           string
+		args           []string
+		cfgFileContent []byte
+		storeHit       int
+		storeMiss      int
+	}{
+		{"config sets the concurrency",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"n": 50}}}`),
+			50, defaultConcurrency,
+		},
+		{"the flag overrides the config",
+			[]string{"--concurrency", "20"},
+			[]byte(`{"store-options": {"/store/*/":{"n": 50}}}`),
+			20, 20,
+		},
+		{"the flag set to the default still overrides",
+			[]string{"--concurrency", "10"},
+			[]byte(`{"store-options": {"/store/*/":{"n": 50}}}`),
+			defaultConcurrency, defaultConcurrency,
+		},
+		{"config without a concurrency",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"uncompressed": true}}}`),
+			defaultConcurrency, defaultConcurrency,
+		},
+		{"a config concurrency no store could use is ignored",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"n": 0}}}`),
+			defaultConcurrency, defaultConcurrency,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, test.cfgFileContent, 0644))
+			cfgFile = f
+			initConfig()
+
+			var cmdOpt cmdStoreOptions
+			cmd := newTestOptionsCommand(&cmdOpt)
+			cmd.SetArgs(test.args)
+			_, err := cmd.ExecuteC()
+			require.NoError(t, err)
+
+			configOptions, err := cfg.GetStoreOptionsFor("/store/20230901")
+			require.NoError(t, err)
+			require.Equal(t, test.storeHit, cmdOpt.MergedWith(configOptions).N)
+
+			configOptions, err = cfg.GetStoreOptionsFor("/missingStore")
+			require.NoError(t, err)
+			require.Equal(t, test.storeMiss, cmdOpt.MergedWith(configOptions).N)
+		})
+	}
+}
+
 func TestServerOptionsValidate(t *testing.T) {
 	for _, test := range []struct {
 		name    string

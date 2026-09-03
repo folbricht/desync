@@ -26,7 +26,13 @@ type cmdStoreOptions struct {
 // MergedWith takes store options as read from the config, and applies command-line
 // provided options on top of them and returns the merged result.
 func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions {
-	opt.N = o.n
+	// Unlike the options below, the flag carries a default rather than a zero
+	// value, so it can't just win when it wasn't given. Take the concurrency
+	// from the config unless the flag was set, or the config didn't name a
+	// usable one.
+	if opt.N < 1 || o.FlagSet.Lookup("concurrency").Changed {
+		opt.N = o.n
+	}
 
 	if o.FlagSet.Lookup("client-cert").Changed {
 		opt.ClientCert = o.clientCert
