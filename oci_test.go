@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -521,23 +522,118 @@ func TestOCIStoreRetry(t *testing.T) {
 	assert.True(t, dropped.Load())
 }
 
+// dripBody hands out one byte per gap, standing in for a server writing a
+// response slowly. It watches the request context because that cancellation is
+// how the transport aborts a read that net/http would otherwise leave hanging.
+type dripBody struct {
+	ctx       context.Context
+	gap       time.Duration
+	left      int
+	thenStall bool
+}
+
+func (b *dripBody) Read(p []byte) (int, error) {
+	if b.left == 0 {
+		if !b.thenStall {
+			return 0, io.EOF
+		}
+		<-b.ctx.Done() // stopped for good
+		return 0, b.ctx.Err()
+	}
+	select {
+	case <-time.After(b.gap):
+	case <-b.ctx.Done():
+		return 0, b.ctx.Err()
+	}
+	b.left--
+	p[0] = 'x'
+	return 1, nil
+}
+
+func (b *dripBody) Close() error { return nil }
+
+// dripTransport answers every request with a dripBody.
+type dripTransport struct {
+	gap       time.Duration
+	n         int
+	thenStall bool
+}
+
+func (t *dripTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       &dripBody{ctx: req.Context(), gap: t.gap, left: t.n, thenStall: t.thenStall},
+	}, nil
+}
+
 // The guard has to tell a transfer that is merely slow from one that has
-// stopped altogether.
+// stopped altogether. Both cases run on synctest's clock, so the timings are
+// exact rather than approximate, which a real one can't promise on a loaded
+// machine, and the seconds they simulate cost no wall time.
 func TestOCIIdleTimeout(t *testing.T) {
+	const timeout = time.Second
+
+	// A slow but progressing transfer runs far longer than the timeout and
+	// still finishes.
+	t.Run("slow", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			base := &dripTransport{gap: timeout * 3 / 4, n: 20}
+			resp := roundTrip(t, &idleTimeoutTransport{base: base, timeout: timeout})
+			b, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			require.NoError(t, err)
+			require.Equal(t, strings.Repeat("x", base.n), string(b))
+		})
+	})
+
+	// One that stops moving fails rather than hanging. The read runs in a
+	// goroutine so a guard that never fires is reported as a missed deadline
+	// instead of stopping the test dead; waiting for it costs no real time.
+	t.Run("stalled", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			rt := &idleTimeoutTransport{base: &dripTransport{gap: timeout / 4, n: 2, thenStall: true}, timeout: timeout}
+			resp := roundTrip(t, rt)
+			read := make(chan error, 1)
+			go func() {
+				_, err := io.ReadAll(resp.Body)
+				read <- err
+			}()
+			select {
+			case err := <-read:
+				require.Error(t, err)
+			case <-time.After(10 * timeout):
+				// Release the reader first, or the bubble ends with a
+				// goroutine still in it and the panic buries the failure.
+				_ = resp.Body.Close()
+				<-read
+				require.Fail(t, "a stalled transfer was never cancelled")
+			}
+			_ = resp.Body.Close()
+		})
+	})
+}
+
+func roundTrip(t *testing.T, rt http.RoundTripper) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://registry.example.com/", nil)
+	require.NoError(t, err)
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	return resp
+}
+
+// The guard cancels the request context when a transfer stops moving. That
+// only helps if it aborts a read that is genuinely blocked on the network,
+// which no stand-in for the transport can show.
+func TestOCIIdleTimeoutRealConnection(t *testing.T) {
 	const timeout = 200 * time.Millisecond
 	stall := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", "4")
+		w.Header().Set("Content-Length", "2")
 		w.WriteHeader(http.StatusOK)
-		for range 3 {
-			w.Write([]byte("x"))
-			w.(http.Flusher).Flush()
-			// Under the timeout individually, over it in total.
-			time.Sleep(timeout * 3 / 4)
-		}
-		if r.URL.Path == "/stall" {
-			<-stall
-		}
+		w.Write([]byte("x"))
+		w.(http.Flusher).Flush()
+		<-stall
 		w.Write([]byte("x"))
 	}))
 	defer srv.Close()
@@ -545,19 +641,21 @@ func TestOCIIdleTimeout(t *testing.T) {
 	defer close(stall)
 
 	client := &http.Client{Transport: &idleTimeoutTransport{base: http.DefaultTransport, timeout: timeout}}
+	resp, err := client.Get(srv.URL)
+	require.NoError(t, err)
+	// Closing the body is also what releases the read below when it is still
+	// blocked, so the test reports the failure instead of hanging on it.
+	defer resp.Body.Close()
 
-	// A slow but progressing transfer runs longer than the timeout and finishes.
-	resp, err := client.Get(srv.URL + "/slow")
-	require.NoError(t, err)
-	b, err := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	require.NoError(t, err)
-	require.Equal(t, "xxxx", string(b))
-
-	// One that stops moving fails rather than hanging.
-	resp, err = client.Get(srv.URL + "/stall")
-	require.NoError(t, err)
-	_, err = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	require.Error(t, err)
+	read := make(chan error, 1)
+	go func() {
+		_, err := io.ReadAll(resp.Body)
+		read <- err
+	}()
+	select {
+	case err := <-read:
+		require.Error(t, err)
+	case <-time.After(10 * timeout):
+		require.Fail(t, "a stalled transfer was never cancelled")
+	}
 }
