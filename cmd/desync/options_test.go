@@ -99,6 +99,30 @@ func TestErrorRetryOptions(t *testing.T) {
 	}
 }
 
+func TestStoreOptionsValidate(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		opt     cmdStoreOptions
+		wantErr string
+	}{
+		{"defaults", cmdStoreOptions{n: 10}, ""},
+		{"TLS client auth", cmdStoreOptions{n: 10, clientCert: "c", clientKey: "k"}, ""},
+		{"key without cert", cmdStoreOptions{n: 10, clientKey: "k"}, "--client-key and --client-cert"},
+		{"cert without key", cmdStoreOptions{n: 10, clientCert: "c"}, "--client-key and --client-cert"},
+		{"zero concurrency", cmdStoreOptions{n: 0}, "--concurrency"},
+		{"negative concurrency", cmdStoreOptions{n: -1}, "--concurrency"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.opt.validate()
+			if test.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, test.wantErr)
+		})
+	}
+}
+
 func TestServerOptionsValidate(t *testing.T) {
 	for _, test := range []struct {
 		name    string
