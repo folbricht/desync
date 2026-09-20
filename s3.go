@@ -64,13 +64,14 @@ func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string,
 	}
 
 	// Keep an idle connection for every concurrent request. With fewer, the
-	// connections above minio's default would be closed and reopened for
-	// every request.
+	// connections above minio's defaults, per host and in total, would be
+	// closed and reopened for every request.
 	transport, err := minio.DefaultTransport(useSSL)
 	if err != nil {
 		return s, errors.Wrap(err, u.String())
 	}
 	transport.MaxIdleConnsPerHost = max(transport.MaxIdleConnsPerHost, opt.N)
+	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.N)
 
 	s.client, err = minio.New(u.Host, &minio.Options{
 		Creds:        s3Creds,
