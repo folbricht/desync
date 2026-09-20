@@ -85,3 +85,30 @@ func TestSFTPStorePruneSingleConnection(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, hasPrune, "unreferenced chunk was not removed")
 }
+
+func TestSFTPStoreOpensConnectionsOnDemand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test sftp server serves the local filesystem, which the store cannot address on windows")
+	}
+	t.Setenv("CASYNC_SSH_PATH", os.Args[0])
+	t.Setenv("DESYNC_SFTP_TEST_SERVER", "1")
+
+	u, err := url.Parse("sftp://localhost" + t.TempDir())
+	require.NoError(t, err)
+
+	s, err := NewSFTPStore(u, StoreOptions{N: 4})
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Used one request at a time, the store only needs the connection it
+	// opened on creation
+	chunk := NewChunk([]byte("chunk"))
+	require.NoError(t, s.StoreChunk(chunk))
+	_, err = s.GetChunk(chunk.ID())
+	require.NoError(t, err)
+	hasChunk, err := s.HasChunk(chunk.ID())
+	require.NoError(t, err)
+	assert.True(t, hasChunk)
+
+	assert.Len(t, s.pool.idle, 1)
+}

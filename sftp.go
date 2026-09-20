@@ -32,9 +32,8 @@ type SFTPStoreBase struct {
 
 // SFTPStore is a chunk store that uses SFTP over SSH.
 type SFTPStore struct {
-	pool       chan *SFTPStoreBase
+	pool       *sessionPool[*SFTPStoreBase]
 	location   *url.URL
-	n          int
 	converters Converters
 }
 
@@ -150,21 +149,26 @@ func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
 		return nil, err
 	}
 	extension := converters.storageExtension()
-	s := &SFTPStore{make(chan *SFTPStoreBase, opt.N), location, opt.N, converters}
-	for i := 0; i < opt.N; i++ {
-		c, err := newSFTPStoreBase(location, opt, extension)
-		if err != nil {
-			return nil, err
-		}
-		s.pool <- c
+	pool := newSessionPool(opt.N, func() (*SFTPStoreBase, error) {
+		return newSFTPStoreBase(location, opt, extension)
+	})
+	// Open the first connection right away to confirm the store can be
+	// reached, the others are opened when they're needed.
+	c, err := pool.get()
+	if err != nil {
+		return nil, err
 	}
-	return s, nil
+	pool.put(c)
+	return &SFTPStore{pool, location, converters}, nil
 }
 
 // GetChunk returns a chunk from an SFTP store, returns ChunkMissing if the file does not exist
 func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
-	c := <-s.pool
-	defer func() { s.pool <- c }()
+	c, err := s.pool.get()
+	if err != nil {
+		return nil, err
+	}
+	defer s.pool.put(c)
 	name := c.nameFromID(id)
 	f, err := c.client.Open(name)
 	if err != nil {
@@ -184,8 +188,11 @@ func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
 // Used when verifying and repairing caches.
 func (s *SFTPStore) RemoveChunk(id ChunkID) error {
-	c := <-s.pool
-	defer func() { s.pool <- c }()
+	c, err := s.pool.get()
+	if err != nil {
+		return err
+	}
+	defer s.pool.put(c)
 	return c.removeChunk(id)
 }
 
@@ -204,8 +211,11 @@ func (s *SFTPStoreBase) removeChunk(id ChunkID) error {
 
 // StoreChunk adds a new chunk to the store
 func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
-	c := <-s.pool
-	defer func() { s.pool <- c }()
+	c, err := s.pool.get()
+	if err != nil {
+		return err
+	}
+	defer s.pool.put(c)
 	name := c.nameFromID(chunk.ID())
 	b, err := chunk.Storage(s.converters)
 	if err != nil {
@@ -217,18 +227,24 @@ func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 
 // HasChunk returns true if the chunk is in the store
 func (s *SFTPStore) HasChunk(id ChunkID) (bool, error) {
-	c := <-s.pool
-	defer func() { s.pool <- c }()
+	c, err := s.pool.get()
+	if err != nil {
+		return false, err
+	}
+	defer s.pool.put(c)
 	name := c.nameFromID(id)
-	_, err := c.client.Stat(name)
+	_, err = c.client.Stat(name)
 	return err == nil, nil
 }
 
 // Prune removes any chunks from the store that are not contained in a list
 // of chunks
 func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	c := <-s.pool
-	defer func() { s.pool <- c }()
+	c, err := s.pool.get()
+	if err != nil {
+		return err
+	}
+	defer s.pool.put(c)
 	walker := c.client.Walk(c.path)
 
 	for walker.Step() {
@@ -266,12 +282,7 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 
 // Close terminates all client connections
 func (s *SFTPStore) Close() error {
-	var err error
-	for i := 0; i < s.n; i++ {
-		c := <-s.pool
-		err = c.Close()
-	}
-	return err
+	return s.pool.close((*SFTPStoreBase).Close)
 }
 
 func (s *SFTPStore) String() string {

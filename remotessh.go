@@ -15,8 +15,7 @@ var _ Store = &RemoteSSH{}
 // multiple sessions to improve throughput.
 type RemoteSSH struct {
 	location *url.URL
-	pool     chan *Protocol // use a buffered channel as session "pool"
-	n        int
+	pool     *sessionPool[*Protocol]
 }
 
 // NewRemoteSSHStore establishes up to n connections with a casync chunk server
@@ -27,36 +26,39 @@ func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) 
 	if opt.EncryptionConfigured() {
 		return nil, errors.New("encryption is not supported by casync protocol (ssh://) stores")
 	}
-	remote := RemoteSSH{location: location, pool: make(chan *Protocol, opt.N), n: opt.N}
-	// Start n sessions and put them into the pool (buffered channel)
-	for i := 0; i < remote.n; i++ {
-		s, err := StartProtocol(location)
-		if err != nil {
-			return &remote, errors.Wrap(err, "failed to start chunk server command")
-		}
-		remote.pool <- s
+	remote := RemoteSSH{
+		location: location,
+		pool: newSessionPool(opt.N, func() (*Protocol, error) {
+			s, err := StartProtocol(location)
+			return s, errors.Wrap(err, "failed to start chunk server command")
+		}),
 	}
+	// Start the first session right away to confirm the store can be
+	// reached, the others are started when they're needed.
+	s, err := remote.pool.get()
+	if err != nil {
+		return &remote, err
+	}
+	remote.pool.put(s)
 	return &remote, nil
 }
 
 // GetChunk requests a chunk from the server and returns a (compressed) one.
-// It uses any of the n sessions this store maintains in its pool. Blocks until
-// one session becomes available
+// It uses any of the sessions this store maintains in its pool, starting a new
+// one if all are busy. Blocks until one session becomes available if the pool
+// is at its limit.
 func (r *RemoteSSH) GetChunk(id ChunkID) (*Chunk, error) {
-	client := <-r.pool
-	chunk, err := client.RequestChunk(id)
-	r.pool <- client
-	return chunk, err
+	client, err := r.pool.get()
+	if err != nil {
+		return nil, err
+	}
+	defer r.pool.put(client)
+	return client.RequestChunk(id)
 }
 
 // Close terminates all client connections
 func (r *RemoteSSH) Close() error {
-	var err error
-	for i := 0; i < r.n; i++ {
-		client := <-r.pool
-		err = client.SendGoodbye()
-	}
-	return err
+	return r.pool.close((*Protocol).SendGoodbye)
 }
 
 // HasChunk returns true if the chunk is in the store. TODO: Implementing it
