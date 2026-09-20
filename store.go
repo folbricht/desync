@@ -19,7 +19,7 @@ const DefaultErrorRetryBaseInterval = 500 * time.Millisecond
 const (
 	// AdaptiveConcurrency as the concurrency of a store (StoreOptions.N) lets
 	// the number of concurrent requests follow what the store and the network
-	// can handle. Requests need to go through an AdaptiveStore for that, the
+	// can handle. Requests need to go through NewAdaptiveStore for that, the
 	// store itself only prepares for up to MaxAdaptiveConcurrency of them.
 	AdaptiveConcurrency = -1
 

@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,6 +139,54 @@ func TestExtractAdaptiveConcurrency(t *testing.T) {
 			require.Equal(t, expected, got)
 		})
 	}
+}
+
+// A store configured with an adaptive concurrency raises the number of
+// workers, but a store next to it with a fixed one still only gets as many
+// concurrent requests as that allows.
+func TestExtractAdaptiveNextToFixedStore(t *testing.T) {
+	expected, err := os.ReadFile("testdata/blob1")
+	require.NoError(t, err)
+
+	// The adaptive store has none of the chunks, the fixed one has them all
+	empty := httptest.NewServer(http.NotFoundHandler())
+	defer empty.Close()
+	var inFlight, peak atomic.Int64
+	files := http.FileServer(http.Dir("testdata/blob1.store"))
+	full := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			old := peak.Load()
+			if n <= old || peak.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+		files.ServeHTTP(w, r)
+	}))
+	defer full.Close()
+
+	oldCfgFile, oldCfg := cfgFile, cfg
+	t.Cleanup(func() { cfgFile, cfg = oldCfgFile, oldCfg })
+	cfgFile = filepath.Join(t.TempDir(), "config.json")
+	config := fmt.Sprintf(`{"store-options": {"%s/": {"n": -1}, "%s/": {"n": 2}}}`, empty.URL, full.URL)
+	require.NoError(t, os.WriteFile(cfgFile, []byte(config), 0644))
+	initConfig()
+
+	out := filepath.Join(t.TempDir(), "out")
+	cmd := newExtractCommand(context.Background())
+	cmd.SetArgs([]string{"-s", empty.URL + "/", "-s", full.URL + "/", "testdata/blob1.caibx", out})
+	stderr = io.Discard
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	_, err = cmd.ExecuteC()
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
+	assert.LessOrEqual(t, peak.Load(), int64(2))
 }
 
 func TestExtractWithFailover(t *testing.T) {

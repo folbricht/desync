@@ -132,16 +132,18 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	// into a chunker using a pipe
 	r, w := io.Pipe()
 
+	workers, err := opt.storeWorkers(opt.store)
+	if err != nil {
+		return err
+	}
+	opt.workers = workers
+
 	// Open the target store
 	s, err := WritableStore(opt.store, opt.cmdStoreOptions)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
-	workers, err := opt.storeWorkers(opt.store)
-	if err != nil {
-		return err
-	}
 
 	// Prepare the chunker
 	min, avg, max, err := parseChunkSizeParam(opt.chunkSize)

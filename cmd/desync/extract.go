@@ -95,9 +95,15 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 		return errors.New("is not possible to use at the same time --skip-invalid-seeds and --regenerate-invalid-seeds")
 	}
 
+	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
+	if err != nil {
+		return err
+	}
+	opt.workers = workers
+
 	// Parse the store locations, open the stores and add a cache is requested
 	var s desync.Store
-	s, err := MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
+	s, err = MultiStoreWithCache(opt.cmdStoreOptions, opt.cache, opt.stores...)
 	if err != nil {
 		return err
 	}
@@ -128,10 +134,6 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 		invalidSeedAction = desync.InvalidSeedActionSkip
 	} else if opt.regenerateInvalidSeeds {
 		invalidSeedAction = desync.InvalidSeedActionRegenerate
-	}
-	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
-	if err != nil {
-		return err
 	}
 	assembleOpt := desync.AssembleOptions{N: workers, InvalidSeedAction: invalidSeedAction}
 

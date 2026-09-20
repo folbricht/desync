@@ -61,6 +61,12 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 		return err
 	}
 
+	workers, err := opt.storeWorkers(opt.store)
+	if err != nil {
+		return err
+	}
+	opt.workers = workers
+
 	// Open the target store if one was given
 	var s desync.WriteStore
 	if opt.store != "" {
@@ -80,10 +86,6 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 
 	// Chop up the file into chunks and store them in the target store if a store was given
 	if s != nil {
-		workers, err := opt.storeWorkers(opt.store)
-		if err != nil {
-			return err
-		}
 		pb := desync.NewProgressBar("Storing ")
 		if err := desync.ChopFile(ctx, dataFile, index.Chunks, s, workers, pb); err != nil {
 			return err

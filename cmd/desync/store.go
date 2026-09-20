@@ -107,8 +107,10 @@ func storeOptionsFor(location string, cmdOpt cmdStoreOptions) (desync.StoreOptio
 
 // transferStoreFromLocation returns the store at a location like
 // storeFromLocation does, for commands that transfer chunks concurrently. If
-// the concurrency of a remote store is adaptive, requests to it go through an
-// AdaptiveStore.
+// the concurrency of a remote store is adaptive, requests to it go through a
+// limiter that adapts. If an adaptive store raised the number of workers above
+// the concurrency given on the command line, a remote store with a fixed
+// concurrency is held to it.
 func transferStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 	opt, err := storeOptionsFor(location, cmdOpt)
 	if err != nil {
@@ -118,18 +120,28 @@ func transferStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.
 	if err != nil {
 		return nil, err
 	}
-	if opt.N != desync.AdaptiveConcurrency {
+	adaptive := opt.N == desync.AdaptiveConcurrency
+	limited := !adaptive && cmdOpt.workers > cmdOpt.n && cmdOpt.workers > opt.N
+	if !adaptive && !limited {
 		return s, nil
 	}
 	switch s.(type) {
 	case desync.LocalStore, *desync.WriteDedupQueue:
 		return s, nil
 	}
-	desync.Log.WithField("store", location).Debugf("adaptive concurrency, up to %d", desync.MaxAdaptiveConcurrency)
-	if ws, ok := s.(desync.WriteStore); ok {
-		return desync.NewAdaptiveWriteStore(ws, desync.MaxAdaptiveConcurrency), nil
+	ws, writable := s.(desync.WriteStore)
+	switch {
+	case adaptive:
+		desync.Log.WithField("store", location).Debugf("adaptive concurrency, up to %d", desync.MaxAdaptiveConcurrency)
+		if writable {
+			return desync.NewAdaptiveWriteStore(ws, desync.MaxAdaptiveConcurrency), nil
+		}
+		return desync.NewAdaptiveStore(s, desync.MaxAdaptiveConcurrency), nil
+	case writable:
+		return desync.NewLimitedWriteStore(ws, opt.N), nil
+	default:
+		return desync.NewLimitedStore(s, opt.N), nil
 	}
-	return desync.NewAdaptiveStore(s, desync.MaxAdaptiveConcurrency), nil
 }
 
 // Parse a single store URL or path and return an initialized instance of it

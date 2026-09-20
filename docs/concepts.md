@@ -36,7 +36,7 @@ The `-n` (`--concurrency`) option sets how many operations a command runs at the
 
 With a fixed concurrency, throughput is limited to about N × chunk size / round-trip time, so a connection with high latency can stay mostly idle. An adaptive limit measures the throughput and the latency of the requests. It doubles as long as throughput keeps growing. Once throughput stops growing, the limit is kept at twice the number of requests the network and the store can process at once, which is the highest throughput times the lowest latency. The headroom lets throughput grow when the network or the store get faster, and the limit grows with it. A failed request halves the limit.
 
-The concurrency of a single store can be set to -1 as well, with `n` in its [store options](configuration.md#configuration-reference). `--verbose` logs every change of a limit.
+The concurrency of a single store can be set to -1 as well, with `n` in its [store options](configuration.md#configuration-reference). Other remote stores used by the same command, like a cache or further stores, still get no more concurrent requests than their own concurrency allows. `--verbose` logs every change of a limit.
 
 ## Seeds and Reflinks
 

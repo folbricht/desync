@@ -14,7 +14,11 @@ import (
 // cmdStoreOptions are used to pass additional options to store initialization from the
 // commandline. These generally override settings from the config file.
 type cmdStoreOptions struct {
-	n                      int
+	n int
+	// Number of goroutines the command runs to make requests to the stores,
+	// once it's known. An adaptive store can raise it above n, stores with a
+	// fixed concurrency are then held to theirs.
+	workers                int
 	clientCert             string
 	clientKey              string
 	caCert                 string

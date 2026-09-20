@@ -29,7 +29,7 @@ func TestValidateIndexLocation(t *testing.T) {
 }
 
 // With an adaptive concurrency, requests to remote stores go through an
-// AdaptiveStore. Local stores and stores opened for anything other than
+// adaptive limiter. Local stores and stores opened for anything other than
 // transfers, like pruning, are left alone.
 func TestTransferStoreFromLocation(t *testing.T) {
 	var cmdOpt cmdStoreOptions
@@ -40,7 +40,7 @@ func TestTransferStoreFromLocation(t *testing.T) {
 
 	s, err := transferStoreFromLocation("http://localhost/store/", cmdOpt)
 	require.NoError(t, err)
-	assert.IsType(t, &desync.AdaptiveWriteStore{}, s)
+	assert.IsType(t, &desync.LimitedWriteStore{}, s)
 
 	s, err = storeFromLocation("http://localhost/store/", cmdOpt)
 	require.NoError(t, err)
@@ -63,4 +63,35 @@ func TestTransferStoreFromLocation(t *testing.T) {
 	s, err = transferStoreFromLocation("http://localhost/store/", cmdOpt)
 	require.NoError(t, err)
 	assert.IsType(t, &desync.RemoteHTTP{}, s)
+}
+
+// When an adaptive store raised the number of workers above the concurrency
+// on the command line, remote stores with a fixed concurrency are held to it.
+func TestTransferStoreFromLocationFixedLimit(t *testing.T) {
+	var cmdOpt cmdStoreOptions
+	cmd := newTestOptionsCommand(&cmdOpt)
+	cmd.SetArgs([]string{"-n", "10"})
+	_, err := cmd.ExecuteC()
+	require.NoError(t, err)
+
+	// As many workers as the command line asked for, nothing to limit
+	cmdOpt.workers = 10
+	s, err := transferStoreFromLocation("http://localhost/store/", cmdOpt)
+	require.NoError(t, err)
+	assert.IsType(t, &desync.RemoteHTTP{}, s)
+
+	// More workers than that
+	cmdOpt.workers = desync.MaxAdaptiveConcurrency
+	s, err = transferStoreFromLocation("http://localhost/store/", cmdOpt)
+	require.NoError(t, err)
+	assert.IsType(t, &desync.LimitedWriteStore{}, s)
+
+	// Local stores aren't limited either way
+	s, err = transferStoreFromLocation(t.TempDir(), cmdOpt)
+	require.NoError(t, err)
+	switch s.(type) {
+	case desync.LocalStore, *desync.WriteDedupQueue:
+	default:
+		assert.Failf(t, "local store was wrapped", "got %T", s)
+	}
 }

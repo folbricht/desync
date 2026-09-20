@@ -200,12 +200,13 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 	}
 
 	if len(opt.stores) > 0 {
-		store, err := multiStoreWithRouter(opt.cmdStoreOptions, opt.stores...)
+		workers, err := opt.storeWorkers(opt.stores...)
 		if err != nil {
 			return err
 		}
+		opt.workers = workers
 
-		workers, err := opt.storeWorkers(opt.stores...)
+		store, err := multiStoreWithRouter(opt.cmdStoreOptions, opt.stores...)
 		if err != nil {
 			return err
 		}
