@@ -129,5 +129,9 @@ func mtreeIndex(ctx context.Context, opt mtreeOptions, input string) error {
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, mtreeFS, index, s, opt.n, desync.NullProgressBar{})
+	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
+	if err != nil {
+		return err
+	}
+	return desync.UnTarIndex(ctx, mtreeFS, index, s, workers, desync.NullProgressBar{})
 }

@@ -28,7 +28,7 @@ func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) 
 	}
 	remote := RemoteSSH{
 		location: location,
-		pool: newSessionPool(opt.N, func() (*Protocol, error) {
+		pool: newSessionPool(opt.maxConcurrency(), func() (*Protocol, error) {
 			s, err := StartProtocol(location)
 			return s, errors.Wrap(err, "failed to start chunk server command")
 		}),

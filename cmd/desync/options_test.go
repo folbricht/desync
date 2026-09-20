@@ -3,10 +3,13 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/folbricht/desync"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -110,7 +113,8 @@ func TestStoreOptionsValidate(t *testing.T) {
 		{"key without cert", cmdStoreOptions{n: 10, clientKey: "k"}, "--client-key and --client-cert"},
 		{"cert without key", cmdStoreOptions{n: 10, clientCert: "c"}, "--client-key and --client-cert"},
 		{"zero concurrency", cmdStoreOptions{n: 0}, "--concurrency"},
-		{"negative concurrency", cmdStoreOptions{n: -1}, "--concurrency"},
+		{"adaptive concurrency", cmdStoreOptions{n: -1}, ""},
+		{"negative concurrency", cmdStoreOptions{n: -2}, "--concurrency"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.opt.validate()
@@ -156,8 +160,18 @@ func TestConcurrencyOption(t *testing.T) {
 		},
 		{"a config concurrency no store could use is ignored",
 			[]string{""},
-			[]byte(`{"store-options": {"/store/*/":{"n": 0}}}`),
+			[]byte(`{"store-options": {"/store/*/":{"n": -2}}}`),
 			defaultConcurrency, defaultConcurrency,
+		},
+		{"config sets an adaptive concurrency",
+			[]string{""},
+			[]byte(`{"store-options": {"/store/*/":{"n": -1}}}`),
+			desync.AdaptiveConcurrency, defaultConcurrency,
+		},
+		{"the flag sets an adaptive concurrency",
+			[]string{"--concurrency", "-1"},
+			[]byte(`{"store-options": {"/store/*/":{"n": 50}}}`),
+			desync.AdaptiveConcurrency, desync.AdaptiveConcurrency,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -342,4 +356,45 @@ func TestTrustInsecureOption(t *testing.T) {
 			require.Equal(t, test.trustInsecureStoreMiss, opt.TrustInsecure)
 		})
 	}
+}
+
+// Commands run enough workers for an adaptive store to reach its maximum,
+// whether the flag or the config asked for it.
+func TestStoreWorkers(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		args      []string
+		locations []string
+		want      int
+	}{
+		{"default", nil, []string{"/other/"}, 10},
+		{"flag", []string{"-n", "20"}, []string{"/store/a/"}, 20},
+		{"adaptive flag", []string{"-n", "-1"}, []string{"/other/"}, desync.MaxAdaptiveConcurrency},
+		{"adaptive in the config", nil, []string{"/other/", "/store/a/"}, desync.MaxAdaptiveConcurrency},
+		{"adaptive in the config of a group member", nil, []string{"/other/|/store/a/"}, desync.MaxAdaptiveConcurrency},
+		{"adaptive in the config, overridden by the flag", []string{"-n", "20"}, []string{"/store/a/"}, 20},
+		{"no location", nil, []string{""}, 10},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := filepath.Join(t.TempDir(), "desync-options")
+			require.NoError(t, os.WriteFile(f, []byte(`{"store-options": {"/store/*/":{"n": -1}}}`), 0644))
+			cfgFile = f
+			initConfig()
+
+			var cmdOpt cmdStoreOptions
+			cmd := newTestOptionsCommand(&cmdOpt)
+			cmd.SetArgs(test.args)
+			_, err := cmd.ExecuteC()
+			require.NoError(t, err)
+
+			workers, err := cmdOpt.storeWorkers(test.locations...)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, workers)
+		})
+	}
+}
+
+func TestCPUWorkers(t *testing.T) {
+	assert.Equal(t, 20, cmdStoreOptions{n: 20}.cpuWorkers())
+	assert.Equal(t, runtime.GOMAXPROCS(0), cmdStoreOptions{n: desync.AdaptiveConcurrency}.cpuWorkers())
 }

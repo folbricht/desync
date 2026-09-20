@@ -149,7 +149,7 @@ func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
 		return nil, err
 	}
 	extension := converters.storageExtension()
-	pool := newSessionPool(opt.N, func() (*SFTPStoreBase, error) {
+	pool := newSessionPool(opt.maxConcurrency(), func() (*SFTPStoreBase, error) {
 		return newSFTPStoreBase(location, opt, extension)
 	})
 	// Open the first connection right away to confirm the store can be

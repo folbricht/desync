@@ -70,8 +70,8 @@ func NewS3StoreBase(u *url.URL, s3Creds *credentials.Credentials, region string,
 	if err != nil {
 		return s, errors.Wrap(err, u.String())
 	}
-	transport.MaxIdleConnsPerHost = max(transport.MaxIdleConnsPerHost, opt.N)
-	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.N)
+	transport.MaxIdleConnsPerHost = max(transport.MaxIdleConnsPerHost, opt.maxConcurrency())
+	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.maxConcurrency())
 
 	s.client, err = minio.New(u.Host, &minio.Options{
 		Creds:        s3Creds,

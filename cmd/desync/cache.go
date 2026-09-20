@@ -116,6 +116,11 @@ func runCache(ctx context.Context, opt cacheOptions, args []string) error {
 	// If this is a terminal, we want a progress bar
 	pb := desync.NewProgressBar("")
 
+	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
+	if err != nil {
+		return err
+	}
+
 	// Pull all the chunks, and load them into the cache in the process
-	return desync.Copy(ctx, ids, s, dst, opt.n, pb)
+	return desync.Copy(ctx, ids, s, dst, workers, pb)
 }

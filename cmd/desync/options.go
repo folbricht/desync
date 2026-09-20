@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/folbricht/desync"
@@ -30,7 +33,8 @@ func (o cmdStoreOptions) MergedWith(opt desync.StoreOptions) desync.StoreOptions
 	// value, so it can't just win when it wasn't given. Take the concurrency
 	// from the config unless the flag was set, or the config didn't name a
 	// usable one.
-	if opt.N < 1 || o.FlagSet.Lookup("concurrency").Changed {
+	usable := opt.N >= 1 || opt.N == desync.AdaptiveConcurrency
+	if !usable || o.FlagSet.Lookup("concurrency").Changed {
 		opt.N = o.n
 	}
 
@@ -63,17 +67,54 @@ func (o cmdStoreOptions) validate() error {
 	if (o.clientKey == "") != (o.clientCert == "") {
 		return errors.New("--client-key and --client-cert options need to be provided together")
 	}
-	if o.n < 1 {
+	if o.n < 1 && o.n != desync.AdaptiveConcurrency {
 		// Without workers, nothing reads from the queues the commands feed
 		// chunks into, and they'd block forever.
-		return errors.New("--concurrency needs to be at least 1")
+		return errors.New("--concurrency needs to be at least 1, or -1 to let desync choose")
 	}
 	return nil
 }
 
+// storeWorkers returns the number of goroutines a command runs to make
+// requests to the stores at these locations. If the concurrency of any of
+// them is adaptive, from the command line or the config, that's enough for
+// its limit to reach the maximum.
+func (o cmdStoreOptions) storeWorkers(locations ...string) (int, error) {
+	if o.n == desync.AdaptiveConcurrency {
+		return desync.MaxAdaptiveConcurrency, nil
+	}
+	for _, location := range locations {
+		if location == "" {
+			continue
+		}
+		// Members of a failover group can have options of their own
+		for member := range strings.SplitSeq(location, "|") {
+			opt, err := storeOptionsFor(member, o)
+			if err != nil {
+				return 0, err
+			}
+			if opt.N == desync.AdaptiveConcurrency {
+				return desync.MaxAdaptiveConcurrency, nil
+			}
+		}
+	}
+	return o.n, nil
+}
+
+// cpuWorkers returns the number of goroutines a command runs for work bound
+// by the CPU or local disks, like chunking or hashing.
+func (o cmdStoreOptions) cpuWorkers() int {
+	if o.n == desync.AdaptiveConcurrency {
+		n := runtime.GOMAXPROCS(0)
+		desync.Log.Debugf("using %d goroutines, one per CPU", n)
+		return n
+	}
+	return o.n
+}
+
 // Add common store option flags to a command flagset.
 func addStoreOptions(o *cmdStoreOptions, f *pflag.FlagSet) {
-	f.IntVarP(&o.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	f.IntVarP(&o.n, "concurrency", "n", 10, fmt.Sprintf("number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to %d for transfers", desync.MaxAdaptiveConcurrency))
 	f.StringVar(&o.clientCert, "client-cert", "", "path to client certificate for TLS authentication")
 	f.StringVar(&o.clientKey, "client-key", "", "path to client key for TLS authentication")
 	f.StringVar(&o.caCert, "ca-cert", "", "trust authorities in this file, instead of OS trust store")

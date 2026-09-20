@@ -129,7 +129,11 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 	} else if opt.regenerateInvalidSeeds {
 		invalidSeedAction = desync.InvalidSeedActionRegenerate
 	}
-	assembleOpt := desync.AssembleOptions{N: opt.n, InvalidSeedAction: invalidSeedAction}
+	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
+	if err != nil {
+		return err
+	}
+	assembleOpt := desync.AssembleOptions{N: workers, InvalidSeedAction: invalidSeedAction}
 
 	var stats *desync.ExtractStats
 	if opt.inPlace {

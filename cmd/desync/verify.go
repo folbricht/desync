@@ -33,7 +33,7 @@ invalid chunks are deleted from the store.`,
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "local store to verify")
-	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines")
+	flags.IntVarP(&opt.n, "concurrency", "n", 10, "number of concurrent goroutines, -1 for the number of CPUs")
 	flags.BoolVarP(&opt.repair, "repair", "r", false, "remove invalid chunks from the store")
 	return cmd
 }
@@ -53,5 +53,5 @@ func runVerify(ctx context.Context, opt verifyOptions, args []string) error {
 	if err != nil {
 		return err
 	}
-	return s.Verify(ctx, opt.n, opt.repair, stderr)
+	return s.Verify(ctx, opt.cpuWorkers(), opt.repair, stderr)
 }

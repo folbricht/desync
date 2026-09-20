@@ -205,10 +205,15 @@ func runInfo(ctx context.Context, opt infoOptions, args []string) error {
 			return err
 		}
 
+		workers, err := opt.storeWorkers(opt.stores...)
+		if err != nil {
+			return err
+		}
+
 		// Query the store in parallel for better performance
 		var wg sync.WaitGroup
 		ids := make(chan desync.ChunkID)
-		for i := 0; i < opt.n; i++ {
+		for range workers {
 			wg.Add(1)
 			go func() {
 				for id := range ids {

@@ -3,7 +3,9 @@ package main
 import (
 	"testing"
 
+	"github.com/folbricht/desync"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Commands that write an index do so after chunking and uploading, so a name
@@ -24,4 +26,36 @@ func TestValidateIndexLocation(t *testing.T) {
 	} {
 		assert.Error(t, validateIndexLocation(location), location)
 	}
+}
+
+// With an adaptive concurrency, requests to remote stores go through an
+// AdaptiveStore. Local stores and stores opened for anything other than
+// transfers, like pruning, are left alone.
+func TestTransferStoreFromLocation(t *testing.T) {
+	var cmdOpt cmdStoreOptions
+	cmd := newTestOptionsCommand(&cmdOpt)
+	cmd.SetArgs([]string{"-n", "-1"})
+	_, err := cmd.ExecuteC()
+	require.NoError(t, err)
+
+	s, err := transferStoreFromLocation("http://localhost/store/", cmdOpt)
+	require.NoError(t, err)
+	assert.IsType(t, &desync.AdaptiveWriteStore{}, s)
+
+	s, err = storeFromLocation("http://localhost/store/", cmdOpt)
+	require.NoError(t, err)
+	assert.IsType(t, &desync.RemoteHTTP{}, s)
+
+	s, err = transferStoreFromLocation(t.TempDir(), cmdOpt)
+	require.NoError(t, err)
+	assert.IsType(t, desync.LocalStore{}, s)
+
+	// Without an adaptive concurrency, nothing is wrapped
+	cmd = newTestOptionsCommand(&cmdOpt)
+	cmd.SetArgs([]string{"-n", "10"})
+	_, err = cmd.ExecuteC()
+	require.NoError(t, err)
+	s, err = transferStoreFromLocation("http://localhost/store/", cmdOpt)
+	require.NoError(t, err)
+	assert.IsType(t, &desync.RemoteHTTP{}, s)
 }

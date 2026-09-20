@@ -42,7 +42,7 @@ desync mount-index <index> <mountpoint> [flags]
   -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication
-  -n, --concurrency int                      number of concurrent goroutines (default 10)
+  -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
       --cor-file string                      use a copy-on-read sparse file as cache
       --cor-init-n int                       number of goroutines to use for initialization (with --cor-state-init) (default 10)
       --cor-state-init string                state file to initialize the copy-on-read cache from

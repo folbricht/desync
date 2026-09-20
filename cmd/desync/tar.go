@@ -138,6 +138,10 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 		return err
 	}
 	defer s.Close()
+	workers, err := opt.storeWorkers(opt.store)
+	if err != nil {
+		return err
+	}
 
 	// Prepare the chunker
 	min, avg, max, err := parseChunkSizeParam(opt.chunkSize)
@@ -158,7 +162,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 
 	// Read from the pipe, split the stream and store the chunks. This should
 	// complete when Tar is done and closes the pipe writer
-	index, err := desync.ChunkStream(ctx, c, s, opt.n)
+	index, err := desync.ChunkStream(ctx, c, s, workers)
 	if err != nil {
 		return err
 	}

@@ -127,7 +127,11 @@ func runUntar(ctx context.Context, opt untarOptions, args []string) (err error) 
 		return err
 	}
 
-	return desync.UnTarIndex(ctx, fs, index, s, opt.n, desync.NewProgressBar("Unpacking "))
+	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
+	if err != nil {
+		return err
+	}
+	return desync.UnTarIndex(ctx, fs, index, s, workers, desync.NewProgressBar("Unpacking "))
 }
 
 // closeInto closes c, reporting a failure through err unless something has

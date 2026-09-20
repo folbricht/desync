@@ -59,6 +59,8 @@ func TestExtractCommand(t *testing.T) {
 			[]string{"-s", "testdata/blob2.store", "-s", "testdata/blob1.store", "testdata/blob1.caibx"}, out1},
 		{"extract with multiple stores and cache",
 			[]string{"-n", "1", "-s", "testdata/blob2.store", "-s", "testdata/blob1.store", "--cache", cacheDir, "testdata/blob1.caibx"}, out1},
+		{"extract with adaptive concurrency",
+			[]string{"-n", "-1", "-s", "testdata/blob1.store", "--seed", "testdata/blob2.caibx", "testdata/blob1.caibx"}, out1},
 		{"extract with corrupted seed",
 			[]string{"--store", "testdata/blob1.store", "--seed", "testdata/blob2_corrupted.caibx", "--skip-invalid-seeds", "testdata/blob1.caibx"}, out1},
 		{"extract with multiple corrupted seeds",
@@ -96,6 +98,39 @@ func TestExtractCommand(t *testing.T) {
 
 			// Compare to what we should have gotten
 			got, err := os.ReadFile(test.output)
+			require.NoError(t, err)
+			require.Equal(t, expected, got)
+		})
+	}
+}
+
+// Chunks from a remote store with an adaptive concurrency go through the
+// limiter, from the flag or the config.
+func TestExtractAdaptiveConcurrency(t *testing.T) {
+	expected, err := os.ReadFile("testdata/blob1")
+	require.NoError(t, err)
+
+	ts := httptest.NewServer(http.FileServer(http.Dir("testdata/blob1.store")))
+	defer ts.Close()
+
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{"flag", []string{"-n", "-1", "--store", ts.URL + "/"}},
+		{"flag with cache", []string{"-n", "-1", "--store", ts.URL + "/", "--cache", t.TempDir()}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "out")
+			cmd := newExtractCommand(context.Background())
+			cmd.SetArgs(append(test.args, "testdata/blob1.caibx", out))
+			stderr = io.Discard
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			_, err := cmd.ExecuteC()
+			require.NoError(t, err)
+
+			got, err := os.ReadFile(out)
 			require.NoError(t, err)
 			require.Equal(t, expected, got)
 		})
