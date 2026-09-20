@@ -129,6 +129,9 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
 	transport.MaxIdleConnsPerHost = opt.N
+	// The default transport also caps idle connections in total, which would
+	// close the ones above it after every request.
+	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.N)
 
 	clientTimeout := opt.effectiveTimeout()
 	var rt http.RoundTripper = transport
