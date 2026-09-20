@@ -46,9 +46,14 @@ func TestTransferStoreFromLocation(t *testing.T) {
 	require.NoError(t, err)
 	assert.IsType(t, &desync.RemoteHTTP{}, s)
 
+	// On Windows, local stores come wrapped in a dedup queue
 	s, err = transferStoreFromLocation(t.TempDir(), cmdOpt)
 	require.NoError(t, err)
-	assert.IsType(t, desync.LocalStore{}, s)
+	switch s.(type) {
+	case desync.LocalStore, *desync.WriteDedupQueue:
+	default:
+		assert.Failf(t, "local store was wrapped", "got %T", s)
+	}
 
 	// Without an adaptive concurrency, nothing is wrapped
 	cmd = newTestOptionsCommand(&cmdOpt)
