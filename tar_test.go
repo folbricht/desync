@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,5 +84,45 @@ func TestTar(t *testing.T) {
 		v, err := d.Next()
 		require.NoError(t, err)
 		require.IsType(t, exp, v)
+	}
+}
+
+// TestTarDigestFlag verifies every entry in a catar written by Tar records the
+// digest algorithm in use.
+func TestTarDigestFlag(t *testing.T) {
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "dir"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "dir", "file"), []byte("content"), 0644))
+
+	tests := map[string]struct {
+		digest HashAlgorithm
+		flag   uint64
+	}{
+		"sha512-256": {SHA512256{}, CaFormatSHA512256},
+		"sha256":     {SHA256{}, 0},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			withDigest(t, test.digest)
+
+			b := new(bytes.Buffer)
+			require.NoError(t, Tar(context.Background(), b, NewLocalFS(base, LocalFSOptions{})))
+
+			d := NewFormatDecoder(b)
+			var entries int
+			for {
+				e, err := d.Next()
+				require.NoError(t, err)
+				if e == nil {
+					break
+				}
+				if entry, ok := e.(FormatEntry); ok {
+					assert.Equal(t, test.flag, entry.FeatureFlags&CaFormatSHA512256)
+					entries++
+				}
+			}
+			assert.Equal(t, 3, entries)
+		})
 	}
 }

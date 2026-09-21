@@ -10,7 +10,8 @@ import (
 )
 
 // TarFeatureFlags are used as feature flags in the header of catar archives. These
-// should be used in index files when chunking a catar as well. TODO: Find out what
+// should be used in index files when chunking a catar as well. They don't include
+// the digest flag, which is set according to Digest. TODO: Find out what
 // CaFormatWithPermissions is as that's not set in casync-produced catar archives.
 const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
 	CaFormatWithNSecTime |
@@ -20,7 +21,6 @@ const TarFeatureFlags uint64 = CaFormatWith32BitUIDs |
 	CaFormatWithFIFOs |
 	CaFormatWithSockets |
 	CaFormatWithXattrs |
-	CaFormatSHA512256 |
 	CaFormatExcludeNoDump |
 	CaFormatExcludeFile
 
@@ -59,7 +59,7 @@ func tar(ctx context.Context, enc FormatEncoder, fs *fsBufReader, f *File) (n in
 	// CaFormatEntry
 	entry := FormatEntry{
 		FormatHeader: FormatHeader{Size: 64, Type: CaFormatEntry},
-		FeatureFlags: TarFeatureFlags,
+		FeatureFlags: TarFeatureFlags | digestFeatureFlag(),
 		UID:          f.Uid,
 		GID:          f.Gid,
 		Mode:         f.Mode,

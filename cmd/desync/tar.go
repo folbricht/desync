@@ -163,8 +163,7 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 		return err
 	}
 
-	// ChunkStream already set the digest flag to match the chunk IDs
-	index.Index.FeatureFlags |= desync.TarFeatureFlags &^ desync.CaFormatSHA512256
+	index.Index.FeatureFlags |= desync.TarFeatureFlags
 
 	// See if Tar encountered an error along the way
 	if tarErr != nil {
