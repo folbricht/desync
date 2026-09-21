@@ -4,9 +4,11 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/folbricht/desync"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,4 +34,26 @@ func TestTarCommandIndex(t *testing.T) {
 	cmd.SetArgs([]string{"-s", out, "-i", index, "testdata/tree"})
 	_, err := cmd.ExecuteC()
 	require.NoError(t, err)
+}
+
+func TestTarCommandIndexSHA256(t *testing.T) {
+	old := desync.Digest
+	desync.Digest = desync.SHA256{}
+	t.Cleanup(func() { desync.Digest = old })
+
+	out := t.TempDir()
+	index := filepath.Join(out, "tree.caidx")
+
+	cmd := newTarCommand(context.Background())
+	cmd.SetArgs([]string{"-s", out, "-i", index, "testdata/tree"})
+	_, err := cmd.ExecuteC()
+	require.NoError(t, err)
+
+	// The index must be marked as SHA256 so it can be read back
+	f, err := os.Open(index)
+	require.NoError(t, err)
+	defer f.Close()
+	idx, err := desync.IndexFromReader(f)
+	require.NoError(t, err)
+	require.Zero(t, idx.Index.FeatureFlags&desync.CaFormatSHA512256)
 }

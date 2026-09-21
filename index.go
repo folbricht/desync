@@ -223,7 +223,7 @@ loop:
 	// Build and return the index
 	index := Index{
 		Index: FormatIndex{
-			FeatureFlags: CaFormatExcludeNoDump | CaFormatSHA512256,
+			FeatureFlags: CaFormatExcludeNoDump | digestFeatureFlag(),
 			ChunkSizeMin: c.Min(),
 			ChunkSizeAvg: c.Avg(),
 			ChunkSizeMax: c.Max(),
