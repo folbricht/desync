@@ -137,12 +137,12 @@ func TestIndexFromFileDigestFlag(t *testing.T) {
 		"sha256":     {SHA256{}, 0},
 	}
 
-	// A catar written by desync carries CaFormatSHA512256 in its entry
+	// An archive written with SHA512-256 carries CaFormatSHA512256 in its entry
 	var archive bytes.Buffer
 	enc := NewFormatEncoder(&archive)
 	_, err := enc.Encode(FormatEntry{
 		FormatHeader: FormatHeader{Size: 64, Type: CaFormatEntry},
-		FeatureFlags: TarFeatureFlags,
+		FeatureFlags: TarFeatureFlags | CaFormatSHA512256,
 		Mode:         os.ModeDir | 0755,
 		MTime:        time.Unix(0, 0),
 	})
@@ -165,7 +165,7 @@ func TestIndexFromFileDigestFlag(t *testing.T) {
 				NewProgressBar(""),
 			)
 			require.NoError(t, err)
-			assert.Equal(t, TarFeatureFlags&^CaFormatSHA512256|test.flag, index.Index.FeatureFlags)
+			assert.Equal(t, TarFeatureFlags|test.flag, index.Index.FeatureFlags)
 
 			// The index must pass the digest check when read back
 			var buf bytes.Buffer
