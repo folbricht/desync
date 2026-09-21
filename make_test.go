@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,6 +121,58 @@ func TestIndexFromFileStats(t *testing.T) {
 						"workers should have produced chunks")
 				})
 			}
+		})
+	}
+}
+
+// TestIndexFromFileDigestFlag verifies that when chunking a catar, the index
+// takes the archive's feature flags but records the digest in use, not the
+// digest flag stored in the archive.
+func TestIndexFromFileDigestFlag(t *testing.T) {
+	tests := map[string]struct {
+		digest HashAlgorithm
+		flag   uint64
+	}{
+		"sha512-256": {SHA512256{}, CaFormatSHA512256},
+		"sha256":     {SHA256{}, 0},
+	}
+
+	// A catar written by desync carries CaFormatSHA512256 in its entry
+	var archive bytes.Buffer
+	enc := NewFormatEncoder(&archive)
+	_, err := enc.Encode(FormatEntry{
+		FormatHeader: FormatHeader{Size: 64, Type: CaFormatEntry},
+		FeatureFlags: TarFeatureFlags,
+		Mode:         os.ModeDir | 0755,
+		MTime:        time.Unix(0, 0),
+	})
+	require.NoError(t, err)
+	rnd := make([]byte, 4*ChunkSizeMaxDefault)
+	rand.Read(rnd)
+	archive.Write(rnd)
+	f := filepath.Join(t.TempDir(), "input.catar")
+	require.NoError(t, os.WriteFile(f, archive.Bytes(), 0644))
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			withDigest(t, test.digest)
+
+			index, _, err := IndexFromFile(
+				context.Background(),
+				f,
+				2,
+				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+				NewProgressBar(""),
+			)
+			require.NoError(t, err)
+			assert.Equal(t, TarFeatureFlags&^CaFormatSHA512256|test.flag, index.Index.FeatureFlags)
+
+			// The index must pass the digest check when read back
+			var buf bytes.Buffer
+			_, err = index.WriteTo(&buf)
+			require.NoError(t, err)
+			_, err = IndexFromReader(&buf)
+			require.NoError(t, err)
 		})
 	}
 }

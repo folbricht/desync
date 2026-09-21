@@ -27,3 +27,12 @@ type SHA256 struct{}
 
 func (h SHA256) Sum(data []byte) [32]byte { return sha256.Sum256(data) }
 func (h SHA256) Algorithm() crypto.Hash   { return crypto.SHA256 }
+
+// digestFeatureFlag returns the index feature flag that identifies the
+// algorithm in Digest.
+func digestFeatureFlag() uint64 {
+	if Digest.Algorithm() == crypto.SHA512_256 {
+		return CaFormatSHA512256
+	}
+	return 0
+}

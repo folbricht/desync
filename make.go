@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"crypto"
 	"fmt"
 	"io"
 	"os"
@@ -32,14 +31,9 @@ func IndexFromFile(ctx context.Context,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var digestFlag uint64
-	if Digest.Algorithm() == crypto.SHA512_256 {
-		digestFlag = CaFormatSHA512256
-	}
-
 	index := Index{
 		Index: FormatIndex{
-			FeatureFlags: CaFormatExcludeFile | CaFormatExcludeNoDump | digestFlag,
+			FeatureFlags: CaFormatExcludeFile | CaFormatExcludeNoDump | digestFeatureFlag(),
 			ChunkSizeMin: min,
 			ChunkSizeAvg: avg,
 			ChunkSizeMax: max,
@@ -56,7 +50,9 @@ func IndexFromFile(ctx context.Context,
 	if err == nil {
 		switch t := piece.(type) {
 		case FormatEntry:
-			index.Index.FeatureFlags |= t.FeatureFlags
+			// The digest flag describes the chunk IDs in the index, which
+			// are hashed with Digest, not whatever the archive claims.
+			index.Index.FeatureFlags |= t.FeatureFlags &^ CaFormatSHA512256
 		}
 	}
 	_ = f.Close()

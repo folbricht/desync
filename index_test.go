@@ -144,6 +144,52 @@ func TestChunkStreamIntegrity(t *testing.T) {
 	}
 }
 
+// TestChunkStreamDigestFlag verifies the index written by ChunkStream records
+// the digest algorithm the chunk IDs were hashed with, so that it can be read
+// back with the same algorithm.
+func TestChunkStreamDigestFlag(t *testing.T) {
+	tests := map[string]struct {
+		digest HashAlgorithm
+		flag   uint64
+	}{
+		"sha512-256": {SHA512256{}, CaFormatSHA512256},
+		"sha256":     {SHA256{}, 0},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			withDigest(t, test.digest)
+
+			data := make([]byte, 4*ChunkSizeMaxDefault)
+			for i := range len(data) / 8 {
+				binary.LittleEndian.PutUint64(data[i*8:], uint64(i)*0x9E3779B97F4A7C15)
+			}
+			c, err := NewChunker(bytes.NewReader(data), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+			require.NoError(t, err)
+			s, err := NewLocalStore(t.TempDir(), StoreOptions{})
+			require.NoError(t, err)
+
+			index, err := ChunkStream(context.Background(), c, s, 4)
+			require.NoError(t, err)
+			assert.Equal(t, test.flag, index.Index.FeatureFlags&CaFormatSHA512256)
+
+			// The index must pass the digest check when read back
+			var buf bytes.Buffer
+			_, err = index.WriteTo(&buf)
+			require.NoError(t, err)
+			_, err = IndexFromReader(&buf)
+			require.NoError(t, err)
+		})
+	}
+}
+
+// withDigest sets the global Digest for the duration of the test.
+func withDigest(t *testing.T, h HashAlgorithm) {
+	old := Digest
+	Digest = h
+	t.Cleanup(func() { Digest = old })
+}
+
 // Global var to store benchmark output
 var idx Index
 
