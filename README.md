@@ -10,34 +10,30 @@ desync splits a file into content-defined chunks, stores each distinct chunk onc
 
 It implements the [casync](https://github.com/systemd/casync) format and interoperates with it — same index files, archives and chunk stores — with parallel chunking, more store backends and a Go library API. It is not a drop-in replacement on the command line: the options differ, and desync has commands casync doesn't.
 
-## What it's for
+## Where it fits
 
-- **A/B image updates for appliances and embedded devices.** The device has the running partition on disk. It seeds from that and pulls only the difference.
-- **VM and container image distribution.** Publish each build to the same chunk store; unchanged parts of the filesystem are stored and transferred once across all of them.
-- **Shipping large assets over a CDN.** Chunks are immutable, hash-named static files, which is the friendliest possible thing to cache.
-- **CI artifact caching.** Deduplicate build outputs and toolchains between runs instead of re-fetching whole tarballs.
+- **Updating devices in the field.** An appliance with A/B partitions seeds from the partition it is running and writes the new image straight to the other one, downloading only the chunks that aren't already on disk. An update interrupted by a dropped connection restarts without fetching the completed chunks again.
+- **Serving a fleet from one copy.** Each client works out for itself which chunks it is missing, so one set of static files serves every client, whichever version it is starting from. Hash-named chunks never change, so a CDN can cache them indefinitely, and a `chunk-server` with a local cache at each site means a chunk crosses the WAN once rather than once per machine.
+- **Using an image before it has downloaded.** `mount-index` exposes an index as a file over FUSE and fetches chunks as they are read, so a VM can boot from a disk image in a remote store. With `--cor-file` it fills a local sparse copy on the way.
+- **Keeping every build.** Publish each build to the same store and it grows by what changed, not by another full image. `prune` removes the chunks only old versions still reference.
+- **Hosting on infrastructure you don't control.** With [chunk encryption](docs/encryption.md), the bucket, registry or CDN holding the store sees only ciphertext.
 
-## What it saves
+## What an update costs
 
-Two adjacent Debian point releases, exported as container root filesystems and published to the same chunk store. The client already has 12.7 on disk and uses it as a seed:
+Six builds of the Debian 12 `genericcloud` disk image, 3.2 GB raw with about 1 GB of data, published to one store. Each row is a client updating to the 2026-09-09 build, seeding from the build it already has:
 
-| | |
-| --- | --- |
-| Image size (12.8, uncompressed) | 125.2 MB |
-| Full download, compressed | 50.4 MB |
-| **Download with 12.7 as a seed** | **18.4 MB** |
-| Chunks reused from 12.7 | 1121 of 1570 |
-| Store holding both versions | 68.8 MB, against 100.8 MB for two independent copies |
+| Client has | Downloads | Chunks reused |
+| --- | ---: | ---: |
+| nothing | 292.2 MB | — |
+| the build from 2 days earlier | 109.8 MB | 7,749 of 11,708 |
+| 3 weeks earlier | 112.2 MB | 7,675 |
+| 2 months earlier | 128.5 MB | 7,025 |
+| 6 months earlier | 165.4 MB | 5,750 |
+| 1 year earlier | 167.8 MB | 5,607 |
 
-```bash
-mkdir store
-desync make -s store v12.7.caibx v12.7.tar          # publish the old version
-desync make -s store v12.8.caibx v12.8.tar          # publish the new one
-desync inspect-chunks -s store v12.8.caibx > chunks.json
-desync info --seed v12.7.caibx --chunks-info chunks.json -s store v12.8.caibx
-```
+All six rows are served from the same store, which holds every build in 832 MB, against 1,753 MB for six separate copies. Download sizes are compressed chunks.
 
-How much you save depends entirely on how much actually changed between versions; a rebuild that shifts every file will save nothing. Measure your own data with `desync info` before committing to a design — that is what the command is for.
+How much you save depends on the data: on how much changed between versions, and on whether the build keeps unchanged data byte-identical. A compressed or encrypted payload, for example, changes throughout when a single byte of its input does. Estimate it for your own images with `desync info` before committing to a design, as described in [Update size estimation](docs/cookbook.md#update-size-estimation).
 
 ## How it compares
 
@@ -54,15 +50,15 @@ rsync is the right tool when both ends are machines you control and the destinat
 
 ## Key Features
 
-- **Parallel chunking** — byte-identical output to casync, several times faster given enough cores
-- **Multiple store backends** — local, HTTP(S), S3/GCS, SFTP, SSH, OCI registries
-- **Store chaining and caching** — combine stores with failover groups
-- **Seeds and reflinks** — clone blocks from existing files on Btrfs/XFS
-- **Built-in servers** — HTTP(S) chunk server and index server with proxy support
-- **FUSE mounting** — mount blob indexes as files
-- **Tar interoperability** — create/extract catar from standard tar streams
-- **Chunk encryption** — optional store encryption with XChaCha20-Poly1305 or AES-256-GCM
-- **Cross-platform** — Linux, macOS, Windows (subset), BSD
+- **[Parallel chunking](docs/concepts.md#parallel-chunking)** — byte-identical output to casync, several times faster given enough cores
+- **[Store backends](docs/stores.md)** — local, HTTP(S), [S3/GCS](docs/stores-s3.md), SFTP, SSH, [OCI registries](docs/stores-oci.md)
+- **[Chaining and caching](docs/stores.md#chaining-and-caching)** — combine stores behind a local cache, with [failover groups](docs/stores.md#failover-groups)
+- **[Seeds and reflinks](docs/concepts.md#seeds-and-reflinks)** — reuse local data, cloning blocks instead of copying them on Btrfs/XFS
+- **[Built-in servers](docs/cookbook.md#server-examples)** — HTTP(S) chunk server and index server, usable as a caching proxy
+- **[FUSE mounting](docs/cli/desync_mount-index.md)** — mount blob indexes as files
+- **[Tar interoperability](docs/concepts.md#tar-interoperability)** — create and extract catar archives from standard tar streams
+- **[Chunk encryption](docs/encryption.md)** — optional store encryption with XChaCha20-Poly1305 or AES-256-GCM
+- **[Cross-platform](#platform-support)** — Linux, macOS, Windows (subset), BSD
 
 ## Documentation
 
@@ -96,23 +92,30 @@ cd desync/cmd/desync && go install
 
 ## Quick Start
 
-**Chunk a file** — split a blob into chunks and create an index:
+**Publish two versions** — chunk each into the same store. The second adds only the chunks the first doesn't already have:
 
 ```text
-desync make -s /tmp/store index.caibx /path/to/largefile
+mkdir -p /srv/store
+desync make -s /srv/store image-v1.img.caibx image-v1.img
+desync make -s /srv/store image-v2.img.caibx image-v2.img
 ```
 
-**Extract a file** — reassemble a blob from its index and chunk store:
+Serve `/srv/store` from any web server, or with `desync chunk-server -s /srv/store -l :8080`.
+
+**Install** — a client with nothing on disk fetches every chunk, keeping a local cache:
 
 ```text
-desync extract -s /tmp/store index.caibx /path/to/largefile
+mkdir -p /var/cache/desync
+desync extract -s http://server:8080/ -c /var/cache/desync image-v1.img.caibx image-v1.img
 ```
 
-**Extract with remote store and local cache** — fetch chunks over HTTP, cache locally:
+**Update** — a client that has v1 uses it as a seed and downloads only the chunks v2 adds:
 
 ```text
-desync extract -s http://server/store -c /tmp/cache index.caibx /path/to/largefile
+desync extract -s http://server:8080/ --seed image-v1.img.caibx image-v2.img.caibx image-v2.img
 ```
+
+The seed is the file next to its index, named without the `.caibx` extension; `--seed <index>:<file>` points somewhere else, such as a block device.
 
 ## Platform Support
 
@@ -126,9 +129,9 @@ desync extract -s http://server/store -c /tmp/cache index.caibx /path/to/largefi
 | OpenBSD | Supported | No `mount-index`. Extended attributes are unavailable: `tar` records none, and `untar` refuses an archive that carries them unless `--no-same-xattrs` is given. Otherwise as NetBSD. |
 | DragonFly | Supported | No `mount-index`. Extended attributes as on OpenBSD. `untar` also refuses device entries: `mknod` reports success there but doesn't record the device number, so the node is rejected rather than written with the wrong device. Otherwise as NetBSD. |
 
-## Design Philosophy
+## Differences from casync
 
-- **Performance over storage efficiency** — where upstream casync optimizes for storage efficiency (e.g. using local files as seeds, building temporary indexes), desync optimizes for runtime performance (maintaining a local explicit chunk store, avoiding the need to reindex) at the cost of storage efficiency.
+- **Performance over storage efficiency** — casync chunks seed files at extraction time to find data it can reuse. desync takes the seed's existing index and keeps an explicit local chunk store as a cache, which avoids reindexing at the cost of disk space.
 - **Cross-platform over platform-specific features** — where upstream casync takes full advantage of Linux platform features, desync implements a minimum feature set. High-value platform-specific features (such as Btrfs reflinks) are added while maintaining the ability to build on other platforms.
 - **Hash functions** — both SHA512/256 and SHA256 are supported.
 - **Compression** — only zstd compression and uncompressed stores are supported.
