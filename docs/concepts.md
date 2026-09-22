@@ -31,10 +31,10 @@ While casync supports very small min chunk sizes, optimizations in desync requir
 
 The `-n` (`--concurrency`) option sets how many operations a command runs at the same time, 10 by default. With `-n -1`, desync chooses:
 
-- Work bound by the CPU, like chunking in `make` and hashing in `verify` and `verify-index`, runs one goroutine per available CPU.
+- Work bound by the CPU, like chunking in `make` and hashing in `verify` and `verify-index`, runs one goroutine per available CPU. So do commands that only use local stores.
 - Transfers to and from remote stores (HTTP, S3, GCS, OCI, SFTP and SSH) adapt to the network and the store. The limit of concurrent requests to each store starts at 10 and changes while the command runs, up to 128. Local stores aren't limited.
 
-With a fixed concurrency, throughput is limited to about N × chunk size / round-trip time, so a connection with high latency can stay mostly idle. An adaptive limit measures the throughput and the latency of the requests. It doubles as long as throughput keeps growing. Once throughput stops growing, the limit is kept at twice the number of requests the network and the store can process at once, which is the highest throughput times the lowest latency. The headroom lets throughput grow when the network or the store get faster, and the limit grows with it. A failed request halves the limit.
+With a fixed concurrency, throughput is limited to about N × chunk size / round-trip time, so a connection with high latency can stay mostly idle. An adaptive limit measures the throughput and the latency of the requests. It doubles as long as throughput keeps growing. Once throughput stops growing, the limit is kept at twice the number of requests the network and the store can process at once, which is the highest throughput times the lowest latency. The headroom lets throughput grow when the network or the store get faster, and the limit grows with it. When they get slower, the lowest latency no longer applies. After 10 seconds without seeing it again, desync lets the requests in flight complete and measures the latency again at a limit of 10. A failed request halves the limit.
 
 The concurrency of a single store can be set to -1 as well, with `n` in its [store options](configuration.md#configuration-reference). Other remote stores used by the same command, like a cache or further stores, still get no more concurrent requests than their own concurrency allows. `--verbose` logs every change of a limit.
 

@@ -28,6 +28,11 @@ const (
 	// adaptiveHeadroom is how many times the requests the network and the
 	// store can process at once are allowed to be in flight.
 	adaptiveHeadroom = 2
+
+	// adaptiveLatencyExpiry is how long the lowest latency is trusted without
+	// being seen again. After that, it's measured again at
+	// adaptiveInitialLimit.
+	adaptiveLatencyExpiry = 10 * time.Second
 )
 
 // adaptiveLimiter limits the number of concurrent requests to a store, and
@@ -43,6 +48,13 @@ const (
 // lets throughput grow when the network or the store get faster, and the
 // limit follows, without having to probe for it. A failed request halves the
 // limit and discards what's been measured of the throughput.
+//
+// The network or the store can get slower as well, and a lowest latency from
+// before then keeps the limit too low. Like BBR, the limiter doesn't trust
+// the lowest latency for longer than adaptiveLatencyExpiry. It then lets the
+// requests in flight complete, and measures the latency again at
+// adaptiveInitialLimit. A window at that limit or below measures it as well,
+// and replaces the lowest latency rather than only lowering it.
 type adaptiveLimiter struct {
 	name string           // for logging
 	now  func() time.Time // replaceable for tests
@@ -53,6 +65,8 @@ type adaptiveLimiter struct {
 	max      int
 	inFlight int
 	lowest   time.Duration // lowest average latency of a window
+	lowestAt time.Time     // when the lowest latency was last seen
+	draining bool          // waiting for all requests to complete, to measure the latency
 	rates    []float64     // throughput of recent windows, in requests per second
 
 	// While ramping up, the throughput the last time it grew and the number
@@ -89,7 +103,7 @@ func newAdaptiveLimiter(name string, maxLimit int) *adaptiveLimiter {
 func (l *adaptiveLimiter) acquire() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for l.inFlight >= l.limit {
+	for l.draining || l.inFlight >= l.limit {
 		l.cond.Wait()
 	}
 	l.inFlight++
@@ -102,6 +116,16 @@ func (l *adaptiveLimiter) release(latency time.Duration, failed bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.inFlight--
+	if l.draining {
+		// Requests made at the previous limit don't count towards the
+		// latency at the lower one.
+		if l.inFlight == 0 {
+			l.draining = false
+			l.resetWindow()
+			l.cond.Broadcast()
+		}
+		return
+	}
 	l.completed++
 	if failed {
 		// Back off once per window. A store that's overwhelmed tends to fail
@@ -133,8 +157,11 @@ func (l *adaptiveLimiter) adjust() {
 	if avg <= 0 {
 		return
 	}
-	if l.lowest == 0 || avg < l.lowest {
+	// At a low limit, the latency is close to the lowest the network and
+	// the store allow right now, which may well be higher than before.
+	if l.lowest == 0 || avg <= l.lowest || l.limit <= adaptiveInitialLimit {
 		l.lowest = avg
+		l.lowestAt = l.now()
 	}
 
 	// A window that didn't reach the limit shows what the requests needed,
@@ -166,6 +193,11 @@ func (l *adaptiveLimiter) adjust() {
 			return
 		}
 		l.rampUp = false
+	}
+	if l.limit > adaptiveInitialLimit && l.now().Sub(l.lowestAt) >= adaptiveLatencyExpiry {
+		l.draining = l.inFlight > 0
+		l.setLimit(adaptiveInitialLimit)
+		return
 	}
 	l.setLimit(int(math.Ceil(adaptiveHeadroom * highest * l.lowest.Seconds())))
 }
