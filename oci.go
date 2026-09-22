@@ -128,10 +128,10 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
-	transport.MaxIdleConnsPerHost = opt.N
+	transport.MaxIdleConnsPerHost = opt.maxConcurrency()
 	// The default transport also caps idle connections in total, which would
 	// close the ones above it after every request.
-	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.N)
+	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.maxConcurrency())
 
 	clientTimeout := opt.effectiveTimeout()
 	var rt http.RoundTripper = transport
@@ -391,7 +391,13 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	// each other, so fan them out while the tag listing stays sequential. The
 	// group context also stops the listing once a removal has failed.
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(max(s.opt.N, 1))
+	// Removals don't adapt their concurrency, with an adaptive one they run
+	// as many as an adaptive store starts with.
+	limit := s.opt.N
+	if limit == AdaptiveConcurrency {
+		limit = adaptiveInitialLimit
+	}
+	g.SetLimit(max(limit, 1))
 	tagsErr := s.repo.Tags(ctx, "", func(tags []string) error {
 		for _, tag := range tags {
 			// See if we're meant to stop

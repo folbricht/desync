@@ -21,7 +21,7 @@ desync verify [flags]
 ### Options
 
 ```
-  -n, --concurrency int   number of concurrent goroutines (default 10)
+  -n, --concurrency int   number of concurrent goroutines, -1 for the number of CPUs (default 10)
   -h, --help              help for verify
   -r, --repair            remove invalid chunks from the store
   -s, --store string      local store to verify

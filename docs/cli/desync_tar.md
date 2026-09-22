@@ -38,7 +38,7 @@ desync tar <catar|index> <source> [flags]
   -m, --chunk-size string                    min:avg:max chunk size in kb (default "16:64:256")
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication
-  -n, --concurrency int                      number of concurrent goroutines (default 10)
+  -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
   -e, --error-retry int                      number of times to retry in case of network error (default 3)
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
   -h, --help                                 help for tar
