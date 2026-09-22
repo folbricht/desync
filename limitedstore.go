@@ -11,18 +11,19 @@ var _ WriteStore = &LimitedWriteStore{}
 // concurrencyLimiter decides how many requests can be made to a store at the
 // same time.
 type concurrencyLimiter interface {
-	// acquire blocks until a request can be made.
-	acquire()
+	// acquire blocks until a request can be made. It returns a value to
+	// pass to release.
+	acquire() uint64
 	// release records a completed request, how long it took, and whether it
 	// failed.
-	release(latency time.Duration, failed bool)
+	release(gen uint64, latency time.Duration, failed bool)
 }
 
 // fixedLimiter allows a fixed number of concurrent requests.
 type fixedLimiter chan struct{}
 
-func (l fixedLimiter) acquire()                    { l <- struct{}{} }
-func (l fixedLimiter) release(time.Duration, bool) { <-l }
+func (l fixedLimiter) acquire() uint64                     { l <- struct{}{}; return 0 }
+func (l fixedLimiter) release(uint64, time.Duration, bool) { <-l }
 
 // LimitedStore wraps a store and limits the number of concurrent requests
 // made to it, either to a fixed number or to one that adapts to what the
@@ -102,10 +103,10 @@ func (s *LimitedWriteStore) StoreChunk(chunk *Chunk) error {
 // records how long it took. A missing chunk is an answer like any other, not
 // a failure.
 func (s *LimitedStore) do(request func() error) error {
-	s.l.acquire()
+	gen := s.l.acquire()
 	start := time.Now()
 	err := request()
 	var missing ChunkMissing
-	s.l.release(time.Since(start), err != nil && !errors.As(err, &missing))
+	s.l.release(gen, time.Since(start), err != nil && !errors.As(err, &missing))
 	return err
 }

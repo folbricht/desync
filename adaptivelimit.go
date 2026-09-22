@@ -51,10 +51,10 @@ const (
 //
 // The network or the store can get slower as well, and a lowest latency from
 // before then keeps the limit too low. Like BBR, the limiter doesn't trust
-// the lowest latency for longer than adaptiveLatencyExpiry. It then lets the
-// requests in flight complete, and measures the latency again at
-// adaptiveInitialLimit. A window at that limit or below measures it as well,
-// and replaces the lowest latency rather than only lowering it.
+// the lowest latency for longer than adaptiveLatencyExpiry. It then measures
+// the latency again at adaptiveInitialLimit, from the requests made at that
+// limit. A window at that limit or below measures it as well, and replaces
+// the lowest latency rather than only lowering it.
 type adaptiveLimiter struct {
 	name string           // for logging
 	now  func() time.Time // replaceable for tests
@@ -66,7 +66,7 @@ type adaptiveLimiter struct {
 	inFlight int
 	lowest   time.Duration // lowest average latency of a window
 	lowestAt time.Time     // when the lowest latency was last seen
-	draining bool          // waiting for all requests to complete, to measure the latency
+	gen      uint64        // incremented to measure the latency again, see acquire
 	rates    []float64     // throughput of recent windows, in requests per second
 
 	// While ramping up, the throughput the last time it grew and the number
@@ -99,31 +99,29 @@ func newAdaptiveLimiter(name string, maxLimit int) *adaptiveLimiter {
 }
 
 // acquire blocks until a request can be made within the current limit. Each
-// call needs to be followed by release once the request completed.
-func (l *adaptiveLimiter) acquire() {
+// call needs to be followed by release once the request completed, with the
+// generation acquire returned.
+func (l *adaptiveLimiter) acquire() uint64 {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for l.draining || l.inFlight >= l.limit {
+	for l.inFlight >= l.limit {
 		l.cond.Wait()
 	}
 	l.inFlight++
 	l.peak = max(l.peak, l.inFlight)
+	return l.gen
 }
 
 // release records a completed request, how long it took, and whether it
 // failed.
-func (l *adaptiveLimiter) release(latency time.Duration, failed bool) {
+func (l *adaptiveLimiter) release(gen uint64, latency time.Duration, failed bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.inFlight--
-	if l.draining {
-		// Requests made at the previous limit don't count towards the
-		// latency at the lower one.
-		if l.inFlight == 0 {
-			l.draining = false
-			l.resetWindow()
-			l.cond.Broadcast()
-		}
+	l.cond.Signal()
+	if gen != l.gen {
+		// Made before the limit was lowered to measure the latency again,
+		// it doesn't count towards the latency at the lower limit.
 		return
 	}
 	l.completed++
@@ -144,7 +142,6 @@ func (l *adaptiveLimiter) release(latency time.Duration, failed bool) {
 		l.adjust()
 		l.resetWindow()
 	}
-	l.cond.Signal()
 }
 
 // adjust sets a new limit based on the window of requests that just ended.
@@ -195,7 +192,7 @@ func (l *adaptiveLimiter) adjust() {
 		l.rampUp = false
 	}
 	if l.limit > adaptiveInitialLimit && l.now().Sub(l.lowestAt) >= adaptiveLatencyExpiry {
-		l.draining = l.inFlight > 0
+		l.gen++
 		l.setLimit(adaptiveInitialLimit)
 		return
 	}

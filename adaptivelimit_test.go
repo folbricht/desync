@@ -65,12 +65,13 @@ func simulate(l *adaptiveLimiter, clock *time.Time, rounds int, latency func(n i
 	var limits []int
 	for range rounds {
 		n := l.currentLimit()
-		for range n {
-			l.acquire()
+		gens := make([]uint64, n)
+		for i := range n {
+			gens[i] = l.acquire()
 		}
 		*clock = clock.Add(latency(n))
-		for range n {
-			l.release(latency(n), false)
+		for _, gen := range gens {
+			l.release(gen, latency(n), false)
 		}
 		limits = append(limits, l.currentLimit())
 	}
@@ -115,8 +116,7 @@ func TestAdaptiveLimiterRecoversFromFailure(t *testing.T) {
 	before := simulate(l, clock, 50, k.latency)
 
 	// Fail a request, then continue as before
-	l.acquire()
-	l.release(time.Millisecond, true)
+	l.release(l.acquire(), time.Millisecond, true)
 	assert.Equal(t, before[len(before)-1]/2, l.currentLimit())
 
 	after := simulate(l, clock, 50, k.latency)
@@ -147,7 +147,7 @@ func TestAdaptiveLimiterFollowsLongerRoundTrip(t *testing.T) {
 	assert.GreaterOrEqual(t, k.throughput(final), 0.95*k.best(128), "limits: %v", after)
 }
 
-func TestAdaptiveLimiterDrainsToMeasureLatency(t *testing.T) {
+func TestAdaptiveLimiterMeasuresLatencyAgain(t *testing.T) {
 	l, clock := newTestLimiter(128)
 	simulate(l, clock, 20, func(int) time.Duration { return 50 * time.Millisecond })
 	require.Equal(t, 128, l.currentLimit())
@@ -155,61 +155,59 @@ func TestAdaptiveLimiterDrainsToMeasureLatency(t *testing.T) {
 	// Complete a slower window after the lowest latency expired, with half
 	// the requests of the next one in flight
 	*clock = clock.Add(adaptiveLatencyExpiry)
+	var gens []uint64
 	for range 128 {
-		l.acquire()
+		gens = append(gens, l.acquire())
 	}
+	for _, gen := range gens[:64] {
+		l.release(gen, 60*time.Millisecond, false)
+	}
+	gens = gens[64:]
 	for range 64 {
-		l.release(60*time.Millisecond, false)
+		gens = append(gens, l.acquire())
 	}
-	for range 64 {
-		l.acquire()
+	for _, gen := range gens[:64] {
+		l.release(gen, 60*time.Millisecond, false)
 	}
-	for range 64 {
-		l.release(60*time.Millisecond, false)
-	}
+	gens = gens[64:]
 	require.Equal(t, adaptiveInitialLimit, l.currentLimit())
 
-	// Nothing more is requested until the last of them completed, even
-	// with fewer than the limit in flight
-	for range 63 {
-		l.release(time.Second, false)
+	// One of the requests made before is slow to complete, the others
+	// complete as the new ones are made
+	slow := gens[0]
+	for _, gen := range gens[1:] {
+		l.release(gen, time.Second, false)
 	}
-	acquired := make(chan struct{})
-	go func() {
-		l.acquire()
-		close(acquired)
-	}()
-	select {
-	case <-acquired:
-		require.FailNow(t, "acquired while draining")
-	case <-time.After(50 * time.Millisecond):
-	}
-	l.release(time.Second, false)
-	select {
-	case <-acquired:
-	case <-time.After(time.Minute):
-		require.FailNow(t, "not acquired after draining")
-	}
-	l.release(50*time.Millisecond, false)
 
-	// The window at the lower limit measures the latency again, and the
-	// limit goes back up
-	simulate(l, clock, 2, func(int) time.Duration { return 50 * time.Millisecond })
-	assert.Equal(t, 50*time.Millisecond, l.lowest)
+	// The slow request doesn't hold up those at the lower limit, and none
+	// of the requests made before count towards their latency
+	for range 3 {
+		var measured []uint64
+		for range adaptiveInitialLimit - 1 {
+			measured = append(measured, l.acquire())
+		}
+		*clock = clock.Add(55 * time.Millisecond)
+		for _, gen := range measured {
+			l.release(gen, 55*time.Millisecond, false)
+		}
+	}
+	l.release(slow, 5*time.Second, false)
+	assert.Equal(t, 55*time.Millisecond, l.lowest)
 	assert.Greater(t, l.currentLimit(), adaptiveInitialLimit)
 }
 
 func TestAdaptiveLimiterBacksOffOnFailure(t *testing.T) {
 	l := newAdaptiveLimiter("test", 128)
+	var gens []uint64
 	for range 10 {
-		l.acquire()
+		gens = append(gens, l.acquire())
 	}
 	// Many failures in the same window halve the limit only once
-	for range 5 {
-		l.release(time.Millisecond, true)
+	for _, gen := range gens[:5] {
+		l.release(gen, time.Millisecond, true)
 	}
-	for range 5 {
-		l.release(time.Millisecond, false)
+	for _, gen := range gens[5:] {
+		l.release(gen, time.Millisecond, false)
 	}
 	assert.Equal(t, adaptiveInitialLimit/2, l.currentLimit())
 }
@@ -220,11 +218,12 @@ func TestAdaptiveLimiterIgnoresWindowsBelowLimit(t *testing.T) {
 	// Never more than 5 requests in flight at once, whatever the limit. The
 	// store isn't the bottleneck, so there's no reason to change the limit.
 	for range 100 {
+		var gens []uint64
 		for range 5 {
-			l.acquire()
+			gens = append(gens, l.acquire())
 		}
-		for range 5 {
-			l.release(50*time.Millisecond, false)
+		for _, gen := range gens {
+			l.release(gen, 50*time.Millisecond, false)
 		}
 	}
 	assert.Equal(t, adaptiveInitialLimit, l.currentLimit())
@@ -232,8 +231,9 @@ func TestAdaptiveLimiterIgnoresWindowsBelowLimit(t *testing.T) {
 
 func TestAdaptiveLimiterBlocksAtLimit(t *testing.T) {
 	l := newAdaptiveLimiter("test", 128)
+	var gen uint64
 	for range adaptiveInitialLimit {
-		l.acquire()
+		gen = l.acquire()
 	}
 
 	acquired := make(chan struct{})
@@ -247,7 +247,7 @@ func TestAdaptiveLimiterBlocksAtLimit(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	l.release(time.Millisecond, false)
+	l.release(gen, time.Millisecond, false)
 	select {
 	case <-acquired:
 	case <-time.After(time.Minute):
