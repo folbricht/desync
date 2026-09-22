@@ -367,17 +367,20 @@ func TestStoreWorkers(t *testing.T) {
 		locations []string
 		want      int
 	}{
-		{"default", nil, []string{"/other/"}, 10},
-		{"flag", []string{"-n", "20"}, []string{"/store/a/"}, 20},
-		{"adaptive flag", []string{"-n", "-1"}, []string{"/other/"}, desync.MaxAdaptiveConcurrency},
-		{"adaptive in the config", nil, []string{"/other/", "/store/a/"}, desync.MaxAdaptiveConcurrency},
-		{"adaptive in the config of a group member", nil, []string{"/other/|/store/a/"}, desync.MaxAdaptiveConcurrency},
-		{"adaptive in the config, overridden by the flag", []string{"-n", "20"}, []string{"/store/a/"}, 20},
+		{"default", nil, []string{"https://other/"}, 10},
+		{"flag", []string{"-n", "20"}, []string{"https://store/a/"}, 20},
+		{"adaptive flag", []string{"-n", "-1"}, []string{"https://other/"}, desync.MaxAdaptiveConcurrency},
+		{"adaptive flag, local stores", []string{"-n", "-1"}, []string{"/other/", "/store/a/"}, runtime.GOMAXPROCS(0)},
+		{"adaptive flag, no location", []string{"-n", "-1"}, []string{""}, runtime.GOMAXPROCS(0)},
+		{"adaptive in the config", nil, []string{"https://other/", "https://store/a/"}, desync.MaxAdaptiveConcurrency},
+		{"adaptive in the config of a group member", nil, []string{"https://other/|https://store/a/"}, desync.MaxAdaptiveConcurrency},
+		{"adaptive in the config of a local store", nil, []string{"https://other/", "/store/a/"}, 10},
+		{"adaptive in the config, overridden by the flag", []string{"-n", "20"}, []string{"https://store/a/"}, 20},
 		{"no location", nil, []string{""}, 10},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := filepath.Join(t.TempDir(), "desync-options")
-			require.NoError(t, os.WriteFile(f, []byte(`{"store-options": {"/store/*/":{"n": -1}}}`), 0644))
+			require.NoError(t, os.WriteFile(f, []byte(`{"store-options": {"/store/*/":{"n": -1}, "https://store/*/":{"n": -1}}}`), 0644))
 			cfgFile = f
 			initConfig()
 

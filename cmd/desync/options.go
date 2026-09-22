@@ -80,19 +80,21 @@ func (o cmdStoreOptions) validate() error {
 }
 
 // storeWorkers returns the number of goroutines a command runs to make
-// requests to the stores at these locations. If the concurrency of any of
-// them is adaptive, from the command line or the config, that's enough for
-// its limit to reach the maximum.
+// requests to the stores at these locations. If the concurrency of any remote
+// store is adaptive, from the command line or the config, that's enough for
+// its limit to reach the maximum. Nothing limits requests to local stores,
+// with an adaptive concurrency and no remote store, the work is bound by the
+// CPU or local disks.
 func (o cmdStoreOptions) storeWorkers(locations ...string) (int, error) {
-	if o.n == desync.AdaptiveConcurrency {
-		return desync.MaxAdaptiveConcurrency, nil
-	}
 	for _, location := range locations {
 		if location == "" {
 			continue
 		}
 		// Members of a failover group can have options of their own
 		for member := range strings.SplitSeq(location, "|") {
+			if !isRemoteLocation(member) {
+				continue
+			}
 			opt, err := storeOptionsFor(member, o)
 			if err != nil {
 				return 0, err
@@ -102,7 +104,7 @@ func (o cmdStoreOptions) storeWorkers(locations ...string) (int, error) {
 			}
 		}
 	}
-	return o.n, nil
+	return o.cpuWorkers(), nil
 }
 
 // cpuWorkers returns the number of goroutines a command runs for work bound

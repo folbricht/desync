@@ -144,6 +144,20 @@ func transferStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.
 	}
 }
 
+// isRemoteLocation reports whether a store location names a store that's
+// accessed over the network, rather than a local directory.
+func isRemoteLocation(location string) bool {
+	loc, err := url.Parse(location)
+	if err != nil {
+		return false
+	}
+	switch loc.Scheme {
+	case "ssh", "sftp", "http", "https", "s3+http", "s3+https", "gs", "oci+https", "oci+http":
+		return true
+	}
+	return false
+}
+
 // Parse a single store URL or path and return an initialized instance of it
 func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 	loc, err := url.Parse(location)
