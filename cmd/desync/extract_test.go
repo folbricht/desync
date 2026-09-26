@@ -68,9 +68,10 @@ func TestExtractCommand(t *testing.T) {
 		// Explicitly set blob1 seed because seed-dir skips a seed if it's the same index file we gave in input.
 		{"extract with seed directory without skipping invalid seeds",
 			[]string{"-s", "testdata/blob1.store", "--seed-dir", "testdata", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
-		// Same as above, no need for `--skip-invalid-seeds`
+		// The plan generator processes seeds in order, so the corrupted seed
+		// may get placements that fail validation. Use --skip-invalid-seeds.
 		{"extract with multiple corrupted seeds",
-			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
+			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob2_corrupted.caibx", "--seed", "testdata/blob1.caibx", "--skip-invalid-seeds", "testdata/blob1.caibx"}, out1},
 		{"extract with single seed that has all the expected chunks",
 			[]string{"--store", "testdata/empty.store", "--seed", "testdata/blob1.caibx", "testdata/blob1.caibx"}, out1},
 		// blob2_corrupted is a corrupted blob that doesn't match its seed index. We regenerate the seed index to match
@@ -96,6 +97,53 @@ func TestExtractCommand(t *testing.T) {
 
 			// Compare to what we should have gotten
 			got, err := os.ReadFile(test.output)
+			require.NoError(t, err)
+			require.Equal(t, expected, got)
+		})
+	}
+}
+
+// The output file can be a seed for its own extraction. With --in-place, its
+// data is rearranged within the file. Otherwise it's an ordinary seed for the
+// temporary file that replaces it at the end. The store is empty, so all data
+// has to come from the seed either way.
+func TestExtractWithOutputAsSeed(t *testing.T) {
+	expected, err := os.ReadFile("testdata/blob1")
+	require.NoError(t, err)
+	index, err := os.ReadFile("testdata/blob1.caibx")
+	require.NoError(t, err)
+
+	for _, test := range []struct {
+		name string
+		args func(out string) []string
+	}{
+		{"seed without in-place",
+			func(out string) []string { return []string{"--seed", out + ".caibx"} }},
+		{"seed with in-place",
+			func(out string) []string { return []string{"--in-place", "--seed", out + ".caibx"} }},
+		{"seed directory without in-place",
+			func(out string) []string { return []string{"--seed-dir", filepath.Dir(out)} }},
+		{"seed directory with in-place",
+			func(out string) []string { return []string{"--in-place", "--seed-dir", filepath.Dir(out)} }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// The output and its index next to it. Seeds are given by index
+			// only, "index:data" can't express Windows paths with a drive.
+			dir := t.TempDir()
+			out := filepath.Join(dir, "out")
+			require.NoError(t, os.WriteFile(out, expected, 0644))
+			require.NoError(t, os.WriteFile(out+".caibx", index, 0644))
+
+			cmd := newExtractCommand(context.Background())
+			args := append([]string{"--store", "testdata/empty.store"}, test.args(out)...)
+			cmd.SetArgs(append(args, "testdata/blob1.caibx", out))
+			stderr = io.Discard
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			_, err := cmd.ExecuteC()
+			require.NoError(t, err)
+
+			got, err := os.ReadFile(out)
 			require.NoError(t, err)
 			require.Equal(t, expected, got)
 		})

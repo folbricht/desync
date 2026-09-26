@@ -54,6 +54,14 @@ Extract an image directly onto a block device. The `-k` or `--in-place` option i
 desync extract -k -s /mnt/store image.caibx /dev/sdc
 ```
 
+Update an image on a block device in place, reusing the data already on it. The index of the current image is a seed whose data is the device itself. Chunks that moved are rearranged on the device, and only chunks it doesn't contain yet are read from the store.
+
+```text
+desync extract -k -s /mnt/store --seed image-v1.caibx:/dev/sdc image-v2.caibx /dev/sdc
+```
+
+When chunks swap places, some of them are held in memory until they are written. Set `GOMEMLIMIT` to bound the memory used for that, for example `GOMEMLIMIT=256MiB`. Chunks that don't fit are read from the store instead.
+
 Extract a file using a remote index stored in an HTTP index store.
 
 ```text
