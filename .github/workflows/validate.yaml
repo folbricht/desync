@@ -181,6 +181,7 @@ jobs:
           prepare: |
             v=$(awk '/^go /{print $2}' go.mod)
             ftp -o /tmp/go.tar.gz "https://go.dev/dl/go$v.netbsd-$(uname -m).tar.gz"
+            mkdir -p /usr/local
             tar -xzf /tmp/go.tar.gz -C /usr/local
           run: |
             PATH=/usr/local/go/bin:$PATH
