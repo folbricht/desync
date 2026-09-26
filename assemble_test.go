@@ -889,3 +889,20 @@ func TestExtractEmptyIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, b)
 }
+
+// Cancelling the context fails the assembly, even when the dispatcher notices
+// before a worker does and the workers exit without error.
+func TestAssembleCancelled(t *testing.T) {
+	chunks := randomChunks(64, 64, 64, 64)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Which of the dispatcher and the worker notices first is random, try
+	// often enough to see both.
+	for range 50 {
+		target := filepath.Join(t.TempDir(), "target")
+		_, err := AssembleFile(ctx, target, chunkIndex(chunks...), chunkStore(chunks...), nil,
+			AssembleOptions{N: 1, InvalidSeedAction: InvalidSeedActionBailOut})
+		require.ErrorIs(t, err, context.Canceled)
+	}
+}
