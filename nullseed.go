@@ -11,6 +11,7 @@ import (
 type nullChunkSeed struct {
 	id         ChunkID
 	blockfile  *os.File
+	blockLen   uint64
 	canReflink bool
 }
 
@@ -19,11 +20,17 @@ func newNullChunkSeed(dstFile string, blocksize uint64, max uint64) (*nullChunkS
 	if err != nil {
 		return nil, err
 	}
-	var canReflink bool
+	var (
+		canReflink bool
+		blockLen   uint64
+	)
 	if CanClone(dstFile, blockfile.Name()) {
 		canReflink = true
-		b := make([]byte, blocksize)
-		if _, err := blockfile.Write(b); err != nil {
+		// Make the file of zeros as large as the largest chunk, rounded up to
+		// full blocks, so a run of zeros is cloned in few large pieces rather
+		// than one block at a time.
+		blockLen = (max + blocksize - 1) / blocksize * blocksize
+		if _, err := blockfile.Write(make([]byte, blockLen)); err != nil {
 			return nil, err
 		}
 	}
@@ -31,6 +38,7 @@ func newNullChunkSeed(dstFile string, blocksize uint64, max uint64) (*nullChunkS
 		id:         NewNullChunk(max).ID,
 		canReflink: canReflink,
 		blockfile:  blockfile,
+		blockLen:   blockLen,
 	}, nil
 }
 
@@ -69,6 +77,7 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 		from:       chunks[0].Start,
 		to:         chunks[n-1].Start + chunks[n-1].Size,
 		blockfile:  s.blockfile,
+		blockLen:   s.blockLen,
 		canReflink: s.canReflink,
 	}
 }
@@ -89,6 +98,7 @@ func (s *nullChunkSeed) IsInvalid() bool {
 type nullChunkSection struct {
 	from, to   uint64
 	blockfile  *os.File
+	blockLen   uint64 // Length of the blockfile, a multiple of the blocksize
 	canReflink bool
 }
 
@@ -155,15 +165,17 @@ func (s *nullChunkSection) clone(dst *os.File, offset, length, blocksize uint64)
 	}
 	copied += c2
 
-	for blkOffset := dstAlignStart; blkOffset < dstAlignEnd; blkOffset += blocksize {
-		if err := cloneRange(dst, s.blockfile, 0, blocksize, blkOffset); err != nil {
+	for blkOffset := dstAlignStart; blkOffset < dstAlignEnd; {
+		n := min(s.blockLen, dstAlignEnd-blkOffset)
+		if err := cloneRange(dst, s.blockfile, 0, n, blkOffset); err != nil {
 			// Not every filesystem that passes the CanClone probe can clone
 			// every range. ZFS for example refuses to clone from the blockfile
 			// before it has been committed to disk. Fall back to writing zeros.
 			c3, _, err := s.copy(dst, blkOffset, dstAlignEnd-blkOffset)
 			return copied + c3, cloned, err
 		}
-		cloned += blocksize
+		cloned += n
+		blkOffset += n
 	}
 	return copied, cloned, nil
 }
