@@ -2,7 +2,6 @@ package desync
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -50,9 +49,9 @@ func (s *nullChunkSeed) close() error {
 	return nil
 }
 
-func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
-	if len(chunks) == 0 {
-		return 0, nil
+func (s *nullChunkSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
+	if startPos >= len(chunks) {
+		return 0, 0
 	}
 	var (
 		n     int
@@ -61,7 +60,7 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 	if !s.canReflink {
 		limit = 100
 	}
-	for _, c := range chunks {
+	for _, c := range chunks[startPos:] {
 		if limit != 0 && limit == n {
 			break
 		}
@@ -70,12 +69,25 @@ func (s *nullChunkSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
 		}
 		n++
 	}
-	if n == 0 {
-		return 0, nil
+	return 0, n
+}
+
+// mayClone reports whether null chunks can be cloned, or don't need to be
+// written at all as the target is still blank.
+func (s *nullChunkSeed) mayClone(isBlank bool) bool { return isBlank || s.canReflink }
+
+// clones reports whether null chunks written over the target chunks dst are
+// cloned, or not written at all as the target is still blank.
+func (s *nullChunkSeed) clones(pos int, dst []IndexChunk, blocksize uint64, isBlank bool) bool {
+	if isBlank {
+		return true
 	}
-	return n, &nullChunkSection{
-		from:       chunks[0].Start,
-		to:         chunks[n-1].Start + chunks[n-1].Size,
+	offset := dst[0].Start
+	return s.canReflink && reflinkable(offset, chunkRangeLength(dst), offset, blocksize)
+}
+
+func (s *nullChunkSeed) GetSegment(pos, n int) SeedSegment {
+	return &nullChunkSection{
 		blockfile:  s.blockfile,
 		blockLen:   s.blockLen,
 		canReflink: s.canReflink,
@@ -86,17 +98,7 @@ func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int, attempt int,
 	panic("A nullseed can't be regenerated")
 }
 
-func (s *nullChunkSeed) SetInvalid(value bool) {
-	panic("A nullseed is never expected to be invalid")
-}
-
-func (s *nullChunkSeed) IsInvalid() bool {
-	// A nullseed is never expected to be invalid
-	return false
-}
-
 type nullChunkSection struct {
-	from, to   uint64
 	blockfile  *os.File
 	blockLen   uint64 // Length of the blockfile, a multiple of the blocksize
 	canReflink bool
@@ -111,13 +113,7 @@ func (s *nullChunkSection) FileName() string {
 	return ""
 }
 
-func (s *nullChunkSection) Size() uint64 { return s.to - s.from }
-
 func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uint64, isBlank bool) (uint64, uint64, error) {
-	if length != s.Size() {
-		return 0, 0, fmt.Errorf("unable to copy %d bytes to %s : wrong size", length, dst.Name())
-	}
-
 	// A blank target, a new or truncated file, reads as zeros already. Cloning
 	// or copying zeros into it would only fill in what's a hole now, block by
 	// block when cloning.
@@ -125,7 +121,7 @@ func (s *nullChunkSection) WriteInto(dst *os.File, offset, length, blocksize uin
 		return 0, 0, nil
 	}
 	if !s.canReflink {
-		return s.copy(dst, offset, s.Size())
+		return s.copy(dst, offset, length)
 	}
 	return s.clone(dst, offset, length, blocksize)
 }
