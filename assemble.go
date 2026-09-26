@@ -242,8 +242,9 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 			queue.push(step)
 		}
 	}
+	remaining := len(steps)
 dispatch:
-	for remaining := len(steps); remaining > 0; {
+	for remaining > 0 {
 		next := queue.peek()
 		var out chan<- *planStep
 		if next != nil {
@@ -270,8 +271,13 @@ dispatch:
 	}
 	close(work)
 
-	// Wait for the workers to complete
+	// Wait for the workers to complete. They exit without error when the
+	// context is cancelled while they wait for a step, so the assembly is
+	// only complete if all steps are.
 	err = g.Wait()
+	if err == nil && remaining > 0 {
+		err = ctx.Err()
+	}
 
 	// A seed file that was written to while it was read may have been copied
 	// into the target in its new state. Check the output and take the chunks
