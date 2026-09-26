@@ -31,6 +31,16 @@ type IndexChunk struct {
 	Size  uint64
 }
 
+// chunkRangeLength returns the number of bytes covered by a consecutive run
+// of index chunks.
+func chunkRangeLength(chunks []IndexChunk) uint64 {
+	if len(chunks) == 0 {
+		return 0
+	}
+	last := chunks[len(chunks)-1]
+	return last.Start + last.Size - chunks[0].Start
+}
+
 // IndexFromReader parses a caibx structure (from a reader) and returns a populated Caibx
 // object
 func IndexFromReader(r io.Reader) (c Index, err error) {
