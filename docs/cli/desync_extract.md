@@ -24,9 +24,8 @@ If a seed is invalid, the extract operation is aborted by default. With
 without them. Alternatively, --regenerate-invalid-seeds regenerates invalid
 seed indexes in memory from the available data; neither data nor indexes are
 changed on disk. Seeds are validated once before extraction begins. If a seed
-file is modified while the extraction is running, it could result in a
-corrupted target file. In such cases, use the verify-index command to check
-the integrity of the target afterwards.
+file is modified while the extraction is running, the target is verified
+afterwards and chunks that don't match are taken from the store.
 
 ```
 desync extract <index> <output> [flags]
