@@ -89,3 +89,32 @@ func TestFileSeedSegmentSmallerThanBlock(t *testing.T) {
 	assert.Equal(t, data, got[:size])
 	assert.Equal(t, bytes.Repeat([]byte{0xff}, 3*blocksize-int(size)), got[size:])
 }
+
+// Validating a seed segment reuses its read buffer rather than allocating
+// one per chunk.
+func TestFileSeedSegmentValidateAllocations(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the race detector makes sync.Pool drop buffers at random")
+	}
+	var (
+		chunks []IndexChunk
+		data   []byte
+	)
+	for i := range 100 {
+		b := make([]byte, 4096)
+		b[0] = byte(i)
+		chunks = append(chunks, IndexChunk{ID: Digest.Sum(b), Start: uint64(len(data)), Size: 4096})
+		data = append(data, b...)
+	}
+	name := filepath.Join(t.TempDir(), "seed")
+	require.NoError(t, os.WriteFile(name, data, 0644))
+	f, err := os.Open(name)
+	require.NoError(t, err)
+	defer f.Close()
+
+	segment := newFileSeedSegment(name, chunks, false)
+	allocs := testing.AllocsPerRun(10, func() {
+		require.NoError(t, segment.Validate(f))
+	})
+	require.Less(t, allocs, float64(len(chunks)/10))
+}
