@@ -14,7 +14,7 @@ import (
 // Simulates filesystems like ZFS where CanClone succeeds but the actual
 // cloning of blocks fails, e.g. because the zero blockfile hasn't been
 // committed to disk yet. The null seed is expected to fall back to writing
-// zeros, or to leave a blank target untouched.
+// zeros.
 func TestNullChunkSectionCloneFallback(t *testing.T) {
 	defer func() { cloneRange = CloneRange }()
 
@@ -52,9 +52,13 @@ func TestNullChunkSectionCloneFallback(t *testing.T) {
 		assert.Equal(t, make([]byte, length), got)
 	})
 
-	t.Run("leaves blank target untouched when cloning fails", func(t *testing.T) {
+	t.Run("leaves a blank target alone", func(t *testing.T) {
+		// A new or truncated file reads as zeros already, nothing is cloned
+		// or copied into it even though cloning works
+		var cloneCalls int
 		cloneRange = func(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) error {
-			return errors.New("simulated clone failure")
+			cloneCalls++
+			return nil
 		}
 		dstName := filepath.Join(dir, "out2")
 		dst, err := os.Create(dstName)
@@ -62,9 +66,11 @@ func TestNullChunkSectionCloneFallback(t *testing.T) {
 		defer dst.Close()
 		require.NoError(t, dst.Truncate(int64(length)))
 
-		_, cloned, err := newSection().WriteInto(dst, 0, length, blocksize, true)
+		copied, cloned, err := newSection().WriteInto(dst, 0, length, blocksize, true)
 		require.NoError(t, err)
+		assert.Equal(t, uint64(0), copied)
 		assert.Equal(t, uint64(0), cloned)
+		assert.Equal(t, 0, cloneCalls)
 
 		got, err := os.ReadFile(dstName)
 		require.NoError(t, err)

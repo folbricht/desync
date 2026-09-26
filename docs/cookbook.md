@@ -23,6 +23,8 @@ desync extract -s /local/store \
   image-v3.qcow2.caibx image-v3.qcow2
 ```
 
+On filesystems with reflinks, like Btrfs and XFS, what the new image has in common with a seed is cloned rather than copied. The new file shares those blocks with the seed and only takes up space for what changed, and zero-filled ranges stay holes. This is usually the fastest way to update an image kept as a file: extract the new version next to the old one, then replace or remove the old one.
+
 Extract an image using several seeds present in a directory. Each of the `.caibx` files in the directory needs to have a matching blob of the same name. It is possible for the source index file to be in the same directory also (it'll be skipped automatically).
 
 ```text
