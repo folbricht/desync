@@ -9,70 +9,70 @@ import (
 	"sync"
 )
 
-// inPlaceBuffer holds the source of an in-place move in memory when other
+// stash holds the source of an in-place move in memory when other
 // steps overwrite it before the move runs, which happens in dependency cycles
 // like two chunks swapping places. The first step about to overwrite the
 // source fills it, and the move releases it once it wrote the data. Filling
 // on demand rather than up front keeps the memory held at any time low. If
-// the buffer doesn't fit into the memory budget, it's dropped instead and the
+// the stash doesn't fit into the memory budget, it's dropped instead and the
 // move takes its chunk from the store.
-type inPlaceBuffer struct {
+type stash struct {
 	offset uint64
 	size   uint64
-	budget *memoryBudget
+	budget *stashBudget
 
 	mu    sync.Mutex
-	state bufferState
+	state stashState
 	data  []byte
 }
 
-type bufferState int
+type stashState int
 
 const (
-	bufferEmpty   bufferState = iota // the source is intact and wasn't read
-	bufferFilled                     // the source is held in data
-	bufferTaken                      // the move has the data
-	bufferDropped                    // not held, the move uses the store
+	stashEmpty   stashState = iota // the source is intact and wasn't read
+	stashFilled                    // the source is held in data
+	stashTaken                     // the move has the data
+	stashDropped                   // not held, the move uses the store
 )
 
 // fill reads the source into memory before the calling step overwrites it.
 // It does nothing if that already happened, or if the move ran already.
-func (b *inPlaceBuffer) fill(f *os.File) error {
+func (b *stash) fill(f *os.File) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.state != bufferEmpty {
+	if b.state != stashEmpty {
 		return nil
 	}
 	if !b.budget.take(b.size) {
-		b.state = bufferDropped
+		b.state = stashDropped
 		return nil
 	}
 	data := make([]byte, b.size)
 	if _, err := f.ReadAt(data, int64(b.offset)); err != nil {
 		b.budget.give(b.size)
-		return fmt.Errorf("inPlaceBuffer read at %d: %w", b.offset, err)
+		return fmt.Errorf("stash read at %d: %w", b.offset, err)
 	}
-	b.data, b.state = data, bufferFilled
+	b.data, b.state = data, stashFilled
 	return nil
 }
 
-// take returns the source data for the move and releases the buffer. It
+// take returns the source data for the move and releases the stash. It
 // reads the source directly if nothing overwrote it yet. It returns nil if
-// the buffer was dropped.
-func (b *inPlaceBuffer) take(f *os.File) ([]byte, error) {
+// the stash was dropped.
+func (b *stash) take(f *os.File) ([]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	switch b.state {
-	case bufferEmpty:
+	case stashEmpty:
 		data := make([]byte, b.size)
 		if _, err := f.ReadAt(data, int64(b.offset)); err != nil {
 			return nil, fmt.Errorf("inPlaceCopy read at %d: %w", b.offset, err)
 		}
-		b.state = bufferTaken
+		b.state = stashTaken
 		return data, nil
-	case bufferFilled:
+	case stashFilled:
 		data := b.data
-		b.data, b.state = nil, bufferTaken
+		b.data, b.state = nil, stashTaken
 		b.budget.give(b.size)
 		return data, nil
 	default:
@@ -80,28 +80,28 @@ func (b *inPlaceBuffer) take(f *os.File) ([]byte, error) {
 	}
 }
 
-// pending reports whether the buffer still needs to be filled.
-func (b *inPlaceBuffer) pending() bool {
+// pending reports whether the stash still needs to be filled.
+func (b *stash) pending() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.state == bufferEmpty
+	return b.state == stashEmpty
 }
 
-// dropped reports whether the buffer was dropped for lack of memory.
-func (b *inPlaceBuffer) dropped() bool {
+// dropped reports whether the stash was dropped for lack of memory.
+func (b *stash) dropped() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.state == bufferDropped
+	return b.state == stashDropped
 }
 
-// memoryBudget is the memory the buffers of in-place moves may hold at the
+// stashBudget is the memory the stashes of in-place moves may hold at the
 // same time.
-type memoryBudget struct {
+type stashBudget struct {
 	mu        sync.Mutex
 	available int64
 }
 
-func (b *memoryBudget) take(n uint64) bool {
+func (b *stashBudget) take(n uint64) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if int64(n) > b.available {
@@ -111,15 +111,15 @@ func (b *memoryBudget) take(n uint64) bool {
 	return true
 }
 
-func (b *memoryBudget) give(n uint64) {
+func (b *stashBudget) give(n uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.available += int64(n)
 }
 
-// inPlaceBufferBudget returns the memory in-place buffers may use. It is an
+// stashMemoryLimit returns the memory in-place stashes may use. It is an
 // indirection over memoryLimitBudget for tests.
-var inPlaceBufferBudget = memoryLimitBudget
+var stashMemoryLimit = memoryLimitBudget
 
 // memoryLimitBudget returns the memory left under the Go runtime's memory
 // limit, set with GOMEMLIMIT. Without a limit, the budget is unbounded.

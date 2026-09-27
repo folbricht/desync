@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInPlaceBuffer(t *testing.T) {
+func TestStash(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "target")
 	require.NoError(t, os.WriteFile(name, []byte("0123456789"), 0644))
 	f, err := os.OpenFile(name, os.O_RDWR, 0)
@@ -27,8 +27,8 @@ func TestInPlaceBuffer(t *testing.T) {
 
 	t.Run("taken without filling", func(t *testing.T) {
 		// Nothing overwrote the source, the move reads it directly
-		budget := &memoryBudget{available: 0}
-		b := &inPlaceBuffer{offset: 2, size: 3, budget: budget}
+		budget := &stashBudget{available: 0}
+		b := &stash{offset: 2, size: 3, budget: budget}
 		data, err := b.take(f)
 		require.NoError(t, err)
 		require.Equal(t, []byte("234"), data)
@@ -41,8 +41,8 @@ func TestInPlaceBuffer(t *testing.T) {
 
 	t.Run("filled before being overwritten", func(t *testing.T) {
 		defer reset()
-		budget := &memoryBudget{available: 3}
-		b := &inPlaceBuffer{offset: 2, size: 3, budget: budget}
+		budget := &stashBudget{available: 3}
+		b := &stash{offset: 2, size: 3, budget: budget}
 		require.True(t, b.pending())
 		require.NoError(t, b.fill(f))
 		require.Equal(t, int64(0), budget.available)
@@ -56,7 +56,7 @@ func TestInPlaceBuffer(t *testing.T) {
 
 	t.Run("dropped without budget", func(t *testing.T) {
 		defer reset()
-		b := &inPlaceBuffer{offset: 2, size: 3, budget: &memoryBudget{available: 2}}
+		b := &stash{offset: 2, size: 3, budget: &stashBudget{available: 2}}
 		require.NoError(t, b.fill(f))
 		require.True(t, b.dropped())
 		overwrite()
@@ -68,13 +68,13 @@ func TestInPlaceBuffer(t *testing.T) {
 }
 
 func TestStepQueue(t *testing.T) {
-	pending := &inPlaceBuffer{budget: &memoryBudget{}}
-	filled := &inPlaceBuffer{state: bufferFilled}
+	pending := &stash{budget: &stashBudget{}}
+	filled := &stash{state: stashFilled}
 	var (
-		releasing = &planStep{source: &inPlaceCopy{buffer: pending}}
-		filling   = &planStep{source: &skipInPlace{}, fills: []*inPlaceBuffer{pending}}
+		releasing = &planStep{source: &inPlaceCopy{stash: pending}}
+		filling   = &planStep{source: &skipInPlace{}, fills: []*stash{pending}}
 		plain     = &planStep{source: &skipInPlace{}}
-		refilling = &planStep{source: &skipInPlace{}, fills: []*inPlaceBuffer{filled}}
+		refilling = &planStep{source: &skipInPlace{}, fills: []*stash{filled}}
 	)
 	var q stepQueue
 	for _, s := range []*planStep{filling, plain, refilling, releasing} {
@@ -85,7 +85,7 @@ func TestStepQueue(t *testing.T) {
 		got = append(got, s)
 		q.pop()
 	}
-	// Buffers are released first and new ones filled last. Filling a buffer
+	// Stashes are released first and new ones filled last. Filling a stash
 	// that's filled already doesn't hold more memory.
 	require.Equal(t, []*planStep{releasing, plain, refilling, filling}, got)
 }

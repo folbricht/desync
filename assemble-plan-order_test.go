@@ -19,7 +19,7 @@ import (
 type stepAccess struct {
 	writes, reads byteRange
 	readsOld      bool
-	buffer        *inPlaceBuffer
+	stash         *stash
 }
 
 func accessOf(t *testing.T, step *planStep) stepAccess {
@@ -43,7 +43,7 @@ func accessOf(t *testing.T, step *planStep) stepAccess {
 			writes:   byteRange{s.dstOffset, s.dstOffset + size},
 			reads:    byteRange{src, src + size},
 			readsOld: true,
-			buffer:   s.buffer,
+			stash:    s.stash,
 		}
 	}
 	t.Fatalf("unknown source %T, add what it reads and writes to accessOf", step.source)
@@ -56,7 +56,7 @@ func accessOf(t *testing.T, step *planStep) stepAccess {
 //   - no two steps write the same bytes
 //   - a step that reads what others write during assembly runs after them
 //   - a step that reads the content from before assembly runs before any
-//     other step overwrites it, or that step fills the reader's buffer first
+//     other step overwrites it, or that step fills the reader's stash first
 func requirePlanOrder(t *testing.T, steps []*planStep, msgAndArgs ...any) {
 	t.Helper()
 	fail := func(format string, args ...any) {
@@ -130,8 +130,8 @@ func requirePlanOrder(t *testing.T, steps []*planStep, msgAndArgs ...any) {
 			switch {
 			case !a.readsOld && !before[i][j]:
 				fail("%q reads what %q writes, but can run first", steps[i].source, steps[j].source)
-			case a.readsOld && !before[j][i] && (a.buffer == nil || !slices.Contains(steps[j].fills, a.buffer)):
-				fail("%q can overwrite what %q reads before it's read or buffered", steps[j].source, steps[i].source)
+			case a.readsOld && !before[j][i] && (a.stash == nil || !slices.Contains(steps[j].fills, a.stash)):
+				fail("%q can overwrite what %q reads before it's read or stashed", steps[j].source, steps[i].source)
 			}
 		}
 	}

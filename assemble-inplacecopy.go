@@ -29,11 +29,11 @@ type inPlaceCopy struct {
 	blocksize uint64
 
 	// Moves that are part of a dependency cycle hold their source in a
-	// buffer once other steps are about to overwrite it. If the buffer was
+	// stash once other steps are about to overwrite it. If the stash was
 	// dropped for lack of memory, the chunk is taken from the store. Only
-	// moves of a single chunk are buffered.
-	buffer *inPlaceBuffer
-	store  Store
+	// moves of a single chunk are stashed.
+	stash *stash
+	store Store
 }
 
 // srcOffset is where the move reads its data.
@@ -43,9 +43,9 @@ func (s *inPlaceCopy) srcOffset() uint64 { return s.chunks[0].Start }
 func (s *inPlaceCopy) size() uint64 { return chunkRangeLength(s.chunks) }
 
 func (s *inPlaceCopy) Execute(f *os.File) (copied uint64, cloned uint64, err error) {
-	// Write from the buffer, the source may have been overwritten since.
-	if s.buffer != nil {
-		data, err := s.buffer.take(f)
+	// Write from the stash, the source may have been overwritten since.
+	if s.stash != nil {
+		data, err := s.stash.take(f)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -53,7 +53,7 @@ func (s *inPlaceCopy) Execute(f *os.File) (copied uint64, cloned uint64, err err
 			return s.fromStore().Execute(f)
 		}
 		if _, err := f.WriteAt(data, int64(s.dstOffset)); err != nil {
-			return 0, 0, fmt.Errorf("inPlaceCopy buffer write at %d: %w", s.dstOffset, err)
+			return 0, 0, fmt.Errorf("inPlaceCopy stash write at %d: %w", s.dstOffset, err)
 		}
 		return s.size(), 0, nil
 	}
@@ -114,19 +114,19 @@ func (s *inPlaceCopy) cloneBlocks(f *os.File) (copied uint64, cloned uint64, err
 	return copied, hi - lo, nil
 }
 
-// access reads the content from before assembly, possibly into a buffer.
+// access reads the content from before assembly, possibly into a stash.
 func (s *inPlaceCopy) access() targetAccess {
 	src, size := s.srcOffset(), s.size()
 	return targetAccess{
 		writes:   byteRange{s.dstOffset, s.dstOffset + size},
 		reads:    byteRange{src, src + size},
 		readsOld: true,
-		buffer:   s.buffer,
+		stash:    s.stash,
 	}
 }
 
 func (s *inPlaceCopy) recordStats(stats *ExtractStats, numChunks int) {
-	if s.buffer != nil && s.buffer.dropped() {
+	if s.stash != nil && s.stash.dropped() {
 		s.fromStore().recordStats(stats, numChunks)
 		return
 	}
@@ -134,7 +134,7 @@ func (s *inPlaceCopy) recordStats(stats *ExtractStats, numChunks int) {
 }
 
 // fromStore returns a step writing the chunk from the store, used when the
-// source wasn't held in memory. Only moves of a single chunk are buffered, so
+// source wasn't held in memory. Only moves of a single chunk are stashed, so
 // there's just the one chunk to write.
 func (s *inPlaceCopy) fromStore() *copyFromStore {
 	return &copyFromStore{
@@ -145,8 +145,8 @@ func (s *inPlaceCopy) fromStore() *copyFromStore {
 
 func (s *inPlaceCopy) String() string {
 	var from string
-	if s.buffer != nil {
-		from = " from buffer"
+	if s.stash != nil {
+		from = " from stash"
 	}
 	src, size := s.srcOffset(), s.size()
 	return fmt.Sprintf("InPlace: Copy [%d:%d] to [%d:%d]%s",

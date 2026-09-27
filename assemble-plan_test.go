@@ -229,8 +229,8 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 	t.Run("swap two chunks", func(t *testing.T) {
 		// In-place: [A:200][B:150]
 		// Target:   [B:150][A:200]
-		// One cycle: A↔B, broken by buffering A. The copy of B fills the
-		// buffer before it overwrites A.
+		// One cycle: A↔B, broken by stashing A. The copy of B fills the
+		// stash before it overwrites A.
 		f := writeChunkFile(t, A, B)
 		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B))
 		require.NoError(t, err)
@@ -239,14 +239,14 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 			planWithInPlaceSeed(inPlace), planWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [200:350] to [0:150]",
-			"InPlace: Copy [0:200] to [150:350] from buffer",
+			"InPlace: Copy [0:200] to [150:350] from stash",
 		}
 		require.Equal(t, expected, got)
 	})
 
-	t.Run("buffer filled by the step overwriting it", func(t *testing.T) {
-		// In a swap, A is buffered. The copy of B overwrites A's source, so
-		// it fills the buffer first rather than waiting for A. The copy of A
+	t.Run("stash filled by the step overwriting it", func(t *testing.T) {
+		// In a swap, A is stashed. The copy of B overwrites A's source, so
+		// it fills the stash first rather than waiting for A. The copy of A
 		// still waits for B to read its source.
 		f := writeChunkFile(t, A, B)
 		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B))
@@ -257,7 +257,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		require.Len(t, steps, 2)
 		copyB, copyA := steps[0], steps[1]
 		require.Equal(t, "InPlace: Copy [200:350] to [0:150]", copyB.source.String())
-		require.Equal(t, []*inPlaceBuffer{copyA.source.(*inPlaceCopy).buffer}, copyB.fills)
+		require.Equal(t, []*stash{copyA.source.(*inPlaceCopy).stash}, copyB.fills)
 		require.Empty(t, copyA.fills)
 		require.Empty(t, copyB.dependencies)
 		require.Contains(t, copyA.dependencies, copyB)
@@ -276,9 +276,9 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 			planWithInPlaceSeed(inPlace), planWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [200:350] to [0:150]",
-			"InPlace: Copy [0:200] to [150:350] from buffer",
+			"InPlace: Copy [0:200] to [150:350] from stash",
 			"InPlace: Copy [450:500] to [350:400]",
-			"InPlace: Copy [350:450] to [400:500] from buffer",
+			"InPlace: Copy [350:450] to [400:500] from stash",
 		}
 		require.Equal(t, expected, got)
 	})
@@ -295,7 +295,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 			planWithInPlaceSeed(inPlace), planWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [200:350] to [0:150]",
-			"InPlace: Copy [0:200] to [150:350] from buffer",
+			"InPlace: Copy [0:200] to [150:350] from stash",
 			storeStep(E, 350),
 		}
 		require.Equal(t, expected, got)
@@ -314,7 +314,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 			planWithInPlaceSeed(inPlace), planWithTargetIsBlank(false))
 		expected := []string{
 			"InPlace: Copy [350:450] to [200:300]",
-			"InPlace: Copy [200:350] to [300:450] from buffer",
+			"InPlace: Copy [200:350] to [300:450] from stash",
 			"InPlace: Skip [0:200]",
 		}
 		require.Equal(t, expected, got)

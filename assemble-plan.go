@@ -44,12 +44,12 @@ func planWithBlocksize(blocksize uint64) planOption {
 	}
 }
 
-// planWithBufferBudget sets the memory the buffers of in-place moves may hold
-// at the same time. Moves whose buffer doesn't fit take their chunk from the
+// planWithStashLimit sets the memory the stashes of in-place moves may hold
+// at the same time. Moves whose stash doesn't fit take their chunk from the
 // store instead. It's unbounded if not set.
-func planWithBufferBudget(budget int64) planOption {
+func planWithStashLimit(budget int64) planOption {
 	return func(p *assemblePlan) {
-		p.bufferBudget = budget
+		p.stashLimit = budget
 	}
 }
 
@@ -69,7 +69,7 @@ type assemblePlan struct {
 	inPlaceSeed   *FileSeed
 	targetIsBlank bool
 	blocksize     uint64
-	bufferBudget  int64
+	stashLimit    int64
 
 	// Placements is an intermediate representation of the target index,
 	// capturing what source is used to populate each chunk. It mirrors the
@@ -124,9 +124,9 @@ type targetAccess struct {
 	// Otherwise the step reads what other steps write, and runs after them.
 	readsOld bool
 
-	// buffer, if set, holds what the step reads. Instead of waiting for the
-	// read, the steps overwriting the range fill the buffer first.
-	buffer *inPlaceBuffer
+	// stash, if set, holds what the step reads. Instead of waiting for the
+	// read, the steps overwriting the range fill the stash first.
+	stash *stash
 }
 
 type assembleSeedSource interface {
@@ -150,7 +150,7 @@ func newPlan(name string, idx Index, s Store, opts ...planOption) *assemblePlan 
 		target:        name,
 		store:         s,
 		targetIsBlank: true,
-		bufferBudget:  math.MaxInt64,
+		stashLimit:    math.MaxInt64,
 		placements:    make([]*placement, len(idx.Chunks)),
 	}
 	for _, opt := range opts {
@@ -177,7 +177,7 @@ func (p *assemblePlan) replan(opts ...planOption) *assemblePlan {
 		inPlaceSeed:   p.inPlaceSeed,
 		targetIsBlank: p.targetIsBlank,
 		blocksize:     p.blocksize,
-		bufferBudget:  p.bufferBudget,
+		stashLimit:    p.stashLimit,
 		selfSeed:      p.selfSeed,
 		skips:         p.skips,
 		placements:    make([]*placement, len(p.idx.Chunks)),
@@ -446,9 +446,9 @@ func (p *assemblePlan) Steps() []*planStep {
 				// A step reads what it needs before it writes
 			case !a.readsOld:
 				w.before(pl.step) // read the data once it's written
-			case a.buffer != nil:
-				if !slices.Contains(w.fills, a.buffer) {
-					w.fills = append(w.fills, a.buffer) // hold it before it's overwritten
+			case a.stash != nil:
+				if !slices.Contains(w.fills, a.stash) {
+					w.fills = append(w.fills, a.stash) // hold it before it's overwritten
 				}
 			default:
 				pl.step.before(w) // read the data before it's overwritten
@@ -551,7 +551,7 @@ func (m moveOp) joins(next moveOp) bool {
 // generateInPlace processes an in-place seed for the chunks that aren't
 // already in place. Chunks that exist at different offsets in the seed get
 // inPlaceCopy placements, ordered so that every move reads its source before
-// it's overwritten. Dependency cycles between moves are broken by buffering
+// it's overwritten. Dependency cycles between moves are broken by stashing
 // sources in memory.
 //
 // This is in-place delta reconstruction as described by Burns and Long in
@@ -605,21 +605,21 @@ func (p *assemblePlan) generateInPlace(seed *FileSeed) {
 
 	// Stage 3: Break cycles. Moves in a dependency cycle, like two chunks
 	// swapping places, can't be ordered. Some of them hold their source in
-	// a buffer instead, which removes their outgoing edges.
-	buffered := breakCycles(succ)
+	// a stash instead, which removes their outgoing edges.
+	stashed := breakCycles(succ)
 
 	// Stage 4: Merge the moves of one contiguous shift into a single move,
-	// which then runs as one step. Moves that hold their source in a buffer
-	// stay on their own, a buffer for a whole run would need far more memory.
+	// which then runs as one step. Moves that hold their source in a stash
+	// stay on their own, a stash for a whole run would need far more memory.
 	// Merging can create dependency cycles that the moves didn't have per
 	// chunk, so the runs are checked and split again where it did.
-	if merged, mergedBuffered := mergeMoves(moves, buffered); len(merged) < len(moves) {
-		moves, buffered = splitCycles(merged, mergedBuffered, seed.index.Chunks)
+	if merged, mergedStashed := mergeMoves(moves, stashed); len(merged) < len(moves) {
+		moves, stashed = splitRunsInCycles(merged, mergedStashed, seed.index.Chunks)
 	}
 
-	// Stage 6: Placements. The buffers of all moves share one budget. Steps()
+	// Stage 6: Placements. The stashes of all moves share one budget. Steps()
 	// orders them by the ranges they read and write.
-	budget := &memoryBudget{available: p.bufferBudget}
+	budget := &stashBudget{available: p.stashLimit}
 	for i, m := range moves {
 		ipc := &inPlaceCopy{
 			chunks:    seed.index.Chunks[m.srcIdx : m.srcIdx+m.chunks],
@@ -629,8 +629,8 @@ func (p *assemblePlan) generateInPlace(seed *FileSeed) {
 			blocksize: p.blocksize,
 			store:     p.store,
 		}
-		if buffered[i] {
-			ipc.buffer = &inPlaceBuffer{offset: m.srcStart, size: m.size, budget: budget}
+		if stashed[i] {
+			ipc.stash = &stash{offset: m.srcStart, size: m.size, budget: budget}
 		} else {
 			ipc.clone = seed.canReflink && m.chunks > 1 && !m.overlaps() &&
 				reflinkable(m.srcStart, m.size, m.dstStart, p.blocksize)
@@ -665,34 +665,34 @@ func moveGraph(moves []moveOp) [][]int {
 // mergeMoves combines the moves of one contiguous shift into a single move.
 // Consecutive chunks that all travel the same distance describe one memmove,
 // which is one step instead of one per chunk: fewer dependencies to track, and
-// the data can be moved in one operation. Buffered moves are left alone.
-func mergeMoves(moves []moveOp, buffered []bool) ([]moveOp, []bool) {
+// the data can be moved in one operation. Stashed moves are left alone.
+func mergeMoves(moves []moveOp, stashed []bool) ([]moveOp, []bool) {
 	merged := make([]moveOp, 0, len(moves))
-	mergedBuffered := make([]bool, 0, len(moves))
+	mergedStashed := make([]bool, 0, len(moves))
 	for i, m := range moves {
 		last := len(merged) - 1
-		if last >= 0 && !buffered[i] && !mergedBuffered[last] && merged[last].joins(m) {
+		if last >= 0 && !stashed[i] && !mergedStashed[last] && merged[last].joins(m) {
 			merged[last].size += m.size
 			merged[last].chunks += m.chunks
 			continue
 		}
 		merged = append(merged, m)
-		mergedBuffered = append(mergedBuffered, buffered[i])
+		mergedStashed = append(mergedStashed, stashed[i])
 	}
-	return merged, mergedBuffered
+	return merged, mergedStashed
 }
 
-// splitCycles splits the merged runs that a dependency cycle runs through back
-// into their chunks, so the moves can be ordered with the buffers they needed
+// splitRunsInCycles splits the merged runs that a dependency cycle runs through back
+// into their chunks, so the moves can be ordered with the stashes they needed
 // per chunk. Two regions of a file swapping places for example can't be moved
 // as two runs, however the moves of their chunks interleave. Runs outside of
 // any cycle stay merged. It returns the moves and which of them hold their
-// source in a buffer.
-func splitCycles(moves []moveOp, buffered []bool, seedChunks []IndexChunk) ([]moveOp, []bool) {
+// source in a stash.
+func splitRunsInCycles(moves []moveOp, stashed []bool, seedChunks []IndexChunk) ([]moveOp, []bool) {
 	graph := func() [][]int {
 		succ := moveGraph(moves)
 		for i := range succ {
-			if buffered[i] {
+			if stashed[i] {
 				succ[i] = nil // removed to break a cycle before merging
 			}
 		}
@@ -710,17 +710,17 @@ func splitCycles(moves []moveOp, buffered []bool, seedChunks []IndexChunk) ([]mo
 	if found {
 		// Splitting runs only takes edges away, it can't put another run
 		// into a cycle.
-		moves, buffered = splitRuns(moves, buffered, split, seedChunks)
+		moves, stashed = splitRuns(moves, stashed, split, seedChunks)
 		succ = graph()
 	}
 
 	// A cycle through single chunks alone was there before merging and is
-	// broken by the buffers from then. Nothing is left to buffer, but
+	// broken by the stashes from then. Nothing is left to stash, but
 	// checking costs little and a cycle would stall assembly.
 	for i, b := range breakCycles(succ) {
-		buffered[i] = buffered[i] || b
+		stashed[i] = stashed[i] || b
 	}
-	return moves, buffered
+	return moves, stashed
 }
 
 // movesInCycles reports the moves that take part in a dependency cycle: the
@@ -789,15 +789,15 @@ func movesInCycles(succ [][]int) []bool {
 }
 
 // splitRuns expands the marked runs back into one move per chunk. It's used
-// when merging a run created a dependency cycle, which is broken by buffering
-// a move; only single chunks are buffered so the memory stays bounded.
-func splitRuns(moves []moveOp, buffered, marked []bool, seedChunks []IndexChunk) ([]moveOp, []bool) {
+// when merging a run created a dependency cycle, which is broken by stashing
+// a move; only single chunks are stashed so the memory stays bounded.
+func splitRuns(moves []moveOp, stashed, marked []bool, seedChunks []IndexChunk) ([]moveOp, []bool) {
 	split := make([]moveOp, 0, len(moves))
-	splitBuffered := make([]bool, 0, len(moves))
+	splitStashed := make([]bool, 0, len(moves))
 	for i, m := range moves {
 		if !marked[i] || m.chunks == 1 {
 			split = append(split, m)
-			splitBuffered = append(splitBuffered, buffered[i])
+			splitStashed = append(splitStashed, stashed[i])
 			continue
 		}
 		dst := m.dstStart
@@ -811,11 +811,11 @@ func splitRuns(moves []moveOp, buffered, marked []bool, seedChunks []IndexChunk)
 				dstStart:  dst,
 				size:      c.Size,
 			})
-			splitBuffered = append(splitBuffered, false)
+			splitStashed = append(splitStashed, false)
 			dst += c.Size
 		}
 	}
-	return split, splitBuffered
+	return split, splitStashed
 }
 
 // overlapping returns the range [lo, hi) of chunks overlapping the byte range

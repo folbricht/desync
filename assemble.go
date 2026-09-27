@@ -148,7 +148,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		planWithInPlaceSeed(inPlaceSeed),
 		planWithTargetIsBlank(isBlank),
 		planWithBlocksize(blocksize),
-		planWithBufferBudget(inPlaceBufferBudget()),
+		planWithStashLimit(stashMemoryLimit()),
 	)
 	for {
 		err := plan.Validate()

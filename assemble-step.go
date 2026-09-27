@@ -5,9 +5,9 @@ import "os"
 type planStep struct {
 	source assembleSource
 
-	// fills are the buffers of in-place moves whose source this step
+	// fills are the stashes of in-place moves whose source this step
 	// overwrites. They are filled before the step runs.
-	fills []*inPlaceBuffer
+	fills []*stash
 
 	// numChunks is the number of index chunks this step covers.
 	numChunks int
@@ -37,7 +37,7 @@ func (n *planStep) ready() bool {
 	return len(n.dependencies) == 0
 }
 
-// execute fills the buffers of the in-place moves whose source the step
+// execute fills the stashes of the in-place moves whose source the step
 // overwrites, then runs it.
 func (n *planStep) execute(f *os.File) (copied uint64, cloned uint64, err error) {
 	for _, b := range n.fills {
@@ -48,16 +48,16 @@ func (n *planStep) execute(f *os.File) (copied uint64, cloned uint64, err error)
 	return n.source.Execute(f)
 }
 
-// releasesBuffer reports whether the step is an in-place move with a buffer,
-// which frees the buffer's memory.
-func (n *planStep) releasesBuffer() bool {
+// releasesStash reports whether the step is an in-place move with a stash,
+// which frees the stash's memory.
+func (n *planStep) releasesStash() bool {
 	c, ok := n.source.(*inPlaceCopy)
-	return ok && c.buffer != nil
+	return ok && c.stash != nil
 }
 
-// fillsBuffer reports whether the step has to fill any buffers that aren't
+// fillsStash reports whether the step has to fill any stashes that aren't
 // filled yet.
-func (n *planStep) fillsBuffer() bool {
+func (n *planStep) fillsStash() bool {
 	for _, b := range n.fills {
 		if b.pending() {
 			return true
@@ -67,8 +67,8 @@ func (n *planStep) fillsBuffer() bool {
 }
 
 // stepQueue holds the steps that are ready to run. To keep the memory held by
-// in-place buffers low, it hands out steps that release buffers first, and
-// those that fill new buffers last. Steps are otherwise handed out in the
+// in-place stashes low, it hands out steps that release stashes first, and
+// those that fill new stashes last. Steps are otherwise handed out in the
 // order they became ready.
 type stepQueue struct {
 	releasing []*planStep
@@ -78,9 +78,9 @@ type stepQueue struct {
 
 func (q *stepQueue) push(s *planStep) {
 	switch {
-	case s.releasesBuffer():
+	case s.releasesStash():
 		q.releasing = append(q.releasing, s)
-	case s.fillsBuffer():
+	case s.fillsStash():
 		q.filling = append(q.filling, s)
 	default:
 		q.other = append(q.other, s)

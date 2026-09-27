@@ -451,9 +451,9 @@ var testAssembleOptions = AssembleOptions{N: 4, InvalidSeedAction: InvalidSeedAc
 
 // TestAssembleIntegration exercises the full assembly pipeline end-to-end,
 // combining all source types in a single reconstruction: in-place skips,
-// in-place copies (including cycles broken by buffering), self-seed,
+// in-place copies (including cycles broken by stashing), self-seed,
 // file seeds, and store fetches. It uses variable-size chunks so that
-// byte-offset calculations, overlap detection, and buffer sizing are tested
+// byte-offset calculations, overlap detection, and stash sizing are tested
 // with non-uniform boundaries.
 //
 // Each scenario writes an "old" file (the in-place seed), then calls
@@ -462,7 +462,7 @@ var testAssembleOptions = AssembleOptions{N: 4, InvalidSeedAction: InvalidSeedAc
 // chunk statistics reported by ExtractStats.
 func TestAssembleIntegration(t *testing.T) {
 	// Chunks of different sizes make sure the offset math in overlap
-	// detection, the buffer sizing of in-place moves and cycle breaking
+	// detection, the stash sizing of in-place moves and cycle breaking
 	// are exercised with non-trivial byte boundaries.
 	chunks := randomChunks(1024, 768, 512, 896, 640, 1152, 384, 1280, 576, 704)
 
@@ -517,7 +517,7 @@ func TestAssembleIntegration(t *testing.T) {
 		//   Pos 0 (B): in-place copy — B exists at seed offset 1024, target offset 0.
 		//              Part of A↔B cycle (asymmetric sizes: 1024 vs 768).
 		//   Pos 1 (A): in-place copy — A exists at seed offset 0, target offset 768.
-		//              Part of A↔B cycle, broken by buffering A.
+		//              Part of A↔B cycle, broken by stashing A.
 		//   Pos 2 (C): skip in-place — C is at offset 1792 in both seed and target.
 		//   Pos 3 (F): file seed — F is not in the in-place seed, found in file seed.
 		//              D's in-place read [2304:3200] overlaps F's write [2304:3456],
@@ -617,7 +617,7 @@ func TestAssembleIntegration(t *testing.T) {
 		//
 		// H is written over the sources of G and X, and G and X are written
 		// over the source of H. That's two cycles sharing H, which can't
-		// be broken by buffering a single chunk per cycle blindly.
+		// be broken by stashing a single chunk per cycle blindly.
 		{
 			name:           "nested cycles",
 			inPlaceIndices: []int{H, G, X},
@@ -771,11 +771,11 @@ func TestAssembleInPlaceRandomized(t *testing.T) {
 		return layout
 	}
 
-	// Without a memory budget for buffers, cycles are broken with the store
+	// Without a memory budget for stashes, cycles are broken with the store
 	// instead. The chunks taken from there aren't in place.
 	for _, budget := range []int64{math.MaxInt64, 0, 512} {
 		t.Run(fmt.Sprintf("budget %d", budget), func(t *testing.T) {
-			setBufferBudget(t, budget)
+			setStashLimit(t, budget)
 			dir := t.TempDir()
 			for i := range 300 {
 				oldLayout, newLayout := randomLayout(), randomLayout()
@@ -813,18 +813,18 @@ func TestAssembleInPlaceRandomized(t *testing.T) {
 	}
 }
 
-// setBufferBudget sets the memory in-place buffers may hold for the test.
-func setBufferBudget(t *testing.T, budget int64) {
+// setStashLimit sets the memory in-place stashes may hold for the test.
+func setStashLimit(t *testing.T, budget int64) {
 	t.Helper()
-	orig := inPlaceBufferBudget
-	inPlaceBufferBudget = func() int64 { return budget }
-	t.Cleanup(func() { inPlaceBufferBudget = orig })
+	orig := stashMemoryLimit
+	stashMemoryLimit = func() int64 { return budget }
+	t.Cleanup(func() { stashMemoryLimit = orig })
 }
 
 // A swap needs one of the chunks held in memory. Without any memory for it,
 // that chunk comes from the store.
-func TestAssembleSwapWithoutBufferBudget(t *testing.T) {
-	setBufferBudget(t, 0)
+func TestAssembleSwapWithoutStashLimit(t *testing.T) {
+	setStashLimit(t, 0)
 
 	chunks := randomChunks(1024, 768)
 	a, b := chunks[0], chunks[1]
