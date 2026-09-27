@@ -553,6 +553,15 @@ func (m moveOp) joins(next moveOp) bool {
 // inPlaceCopy placements, ordered so that every move reads its source before
 // it's overwritten. Dependency cycles between moves are broken by buffering
 // sources in memory.
+//
+// This is in-place delta reconstruction as described by Burns and Long in
+// "In-place reconstruction of delta compressed files" (1998): a graph of which
+// copy has to read before another one writes, ordered topologically, with
+// cycles broken by taking data from elsewhere. Android's block-based OTA
+// updates break them the same way used here, by stashing sources in memory up
+// to a limit. Beyond the limit, the data comes from the store. Merging the
+// chunks of one shift into runs, and splitting runs that end up in a cycle,
+// is added on top so that larger ranges are moved or cloned at once.
 func (p *assemblePlan) generateInPlace(seed *FileSeed) {
 	// Stage 1: Operation list — walk target index and classify each chunk.
 	var moves []moveOp
