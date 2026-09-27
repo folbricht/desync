@@ -62,8 +62,8 @@ func TestInPlaceMoveClones(t *testing.T) {
 		// Aligned and apart, but a swap moves the chunks one by one
 		got := moveClones(t, true, []testChunk{a, b}, b, a)
 		require.Equal(t, map[string]bool{
-			"InPlace: Copy [256:512] to [0:256]":             false,
-			"InPlace: Copy [0:256] to [256:512] from buffer": false,
+			"InPlace: Copy [256:512] to [0:256]":            false,
+			"InPlace: Copy [0:256] to [256:512] from stash": false,
 		}, got)
 	})
 }
