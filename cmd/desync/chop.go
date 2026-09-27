@@ -63,6 +63,12 @@ func runChop(ctx context.Context, opt chopOptions, args []string) error {
 	indexFile := args[0]
 	dataFile := args[1]
 
+	workers, err := opt.storeWorkers(opt.store)
+	if err != nil {
+		return err
+	}
+	opt.workers = workers
+
 	// Open the target store
 	s, err := WritableStore(opt.store, opt.cmdStoreOptions)
 	if err != nil {
@@ -120,7 +126,7 @@ func runChop(ctx context.Context, opt chopOptions, args []string) error {
 	pb := desync.NewProgressBar("")
 
 	// Chop up the file into chunks and store them in the target store
-	return desync.ChopFile(ctx, dataFile, chunks, s, opt.n, pb)
+	return desync.ChopFile(ctx, dataFile, chunks, s, workers, pb)
 }
 
 // Read a list of chunk IDs from a file. Blank lines are skipped.

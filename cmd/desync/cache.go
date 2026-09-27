@@ -101,6 +101,12 @@ func runCache(ctx context.Context, opt cacheOptions, args []string) error {
 		ids = append(ids, id)
 	}
 
+	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
+	if err != nil {
+		return err
+	}
+	opt.workers = workers
+
 	s, err := multiStoreWithRouter(opt.cmdStoreOptions, opt.stores...)
 	if err != nil {
 		return err
@@ -117,5 +123,5 @@ func runCache(ctx context.Context, opt cacheOptions, args []string) error {
 	pb := desync.NewProgressBar("")
 
 	// Pull all the chunks, and load them into the cache in the process
-	return desync.Copy(ctx, ids, s, dst, opt.n, pb)
+	return desync.Copy(ctx, ids, s, dst, workers, pb)
 }

@@ -65,12 +65,12 @@ func multiStoreWithRouter(cmdOpt cmdStoreOptions, storeLocations ...string) (des
 // no "|" in the string, this is a nop.
 func storeGroup(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 	if !strings.ContainsAny(location, "|") {
-		return storeFromLocation(location, cmdOpt)
+		return transferStoreFromLocation(location, cmdOpt)
 	}
 	var stores []desync.Store
 	members := strings.SplitSeq(location, "|")
 	for m := range members {
-		s, err := storeFromLocation(m, cmdOpt)
+		s, err := transferStoreFromLocation(m, cmdOpt)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +84,7 @@ func storeGroup(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 // which type of writable store is needed, instantiates and returns a
 // single desync.WriteStore.
 func WritableStore(location string, cmdOpt cmdStoreOptions) (desync.WriteStore, error) {
-	s, err := storeFromLocation(location, cmdOpt)
+	s, err := transferStoreFromLocation(location, cmdOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +95,69 @@ func WritableStore(location string, cmdOpt cmdStoreOptions) (desync.WriteStore, 
 	return store, nil
 }
 
+// storeOptionsFor returns the options for the store at a location, those from
+// the config with the ones given on the command line applied on top.
+func storeOptionsFor(location string, cmdOpt cmdStoreOptions) (desync.StoreOptions, error) {
+	configOptions, err := cfg.GetStoreOptionsFor(location)
+	if err != nil {
+		return desync.StoreOptions{}, err
+	}
+	return cmdOpt.MergedWith(configOptions), nil
+}
+
+// transferStoreFromLocation returns the store at a location like
+// storeFromLocation does, for commands that transfer chunks concurrently. If
+// the concurrency of a remote store is adaptive, requests to it go through a
+// limiter that adapts. If an adaptive store raised the number of workers above
+// the concurrency given on the command line, a remote store with a fixed
+// concurrency is held to it.
+func transferStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
+	opt, err := storeOptionsFor(location, cmdOpt)
+	if err != nil {
+		return nil, err
+	}
+	s, err := storeFromLocation(location, cmdOpt)
+	if err != nil {
+		return nil, err
+	}
+	adaptive := opt.N == desync.AdaptiveConcurrency
+	limited := !adaptive && cmdOpt.workers > cmdOpt.n && cmdOpt.workers > opt.N
+	if !adaptive && !limited {
+		return s, nil
+	}
+	switch s.(type) {
+	case desync.LocalStore, *desync.WriteDedupQueue:
+		return s, nil
+	}
+	ws, writable := s.(desync.WriteStore)
+	switch {
+	case adaptive:
+		desync.Log.WithField("store", location).Debugf("adaptive concurrency, up to %d", desync.MaxAdaptiveConcurrency)
+		if writable {
+			return desync.NewAdaptiveWriteStore(ws, desync.MaxAdaptiveConcurrency), nil
+		}
+		return desync.NewAdaptiveStore(s, desync.MaxAdaptiveConcurrency), nil
+	case writable:
+		return desync.NewLimitedWriteStore(ws, opt.N), nil
+	default:
+		return desync.NewLimitedStore(s, opt.N), nil
+	}
+}
+
+// isRemoteLocation reports whether a store location names a store that's
+// accessed over the network, rather than a local directory.
+func isRemoteLocation(location string) bool {
+	loc, err := url.Parse(location)
+	if err != nil {
+		return false
+	}
+	switch loc.Scheme {
+	case "ssh", "sftp", "http", "https", "s3+http", "s3+https", "gs", "oci+https", "oci+http":
+		return true
+	}
+	return false
+}
+
 // Parse a single store URL or path and return an initialized instance of it
 func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, error) {
 	loc, err := url.Parse(location)
@@ -102,13 +165,10 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		return nil, fmt.Errorf("unable to parse store location %s : %s", location, err)
 	}
 
-	// Get any store options from the config if present and overwrite with settings from
-	// the command line
-	configOptions, err := cfg.GetStoreOptionsFor(location)
+	opt, err := storeOptionsFor(location, cmdOpt)
 	if err != nil {
 		return nil, err
 	}
-	opt := cmdOpt.MergedWith(configOptions)
 
 	var s desync.Store
 	switch loc.Scheme {

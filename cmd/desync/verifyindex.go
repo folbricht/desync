@@ -47,5 +47,5 @@ func runVerifyIndex(ctx context.Context, opt verifyIndexOptions, args []string) 
 	pb := desync.NewProgressBar("")
 
 	// Chop up the file into chunks and store them in the target store
-	return desync.VerifyIndex(ctx, dataFile, idx, opt.n, pb)
+	return desync.VerifyIndex(ctx, dataFile, idx, opt.cpuWorkers(), pb)
 }

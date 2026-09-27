@@ -51,7 +51,7 @@ desync chunk-server [flags]
       --client-ca string                     acceptable client certificate or CA
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication
-  -n, --concurrency int                      number of concurrent goroutines (default 10)
+  -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
       --encryption                           serve chunks encrypted, expects the key in $DESYNC_ENCRYPTION_KEY unless --encryption-key is given
       --encryption-algorithm string          encryption algorithm, xchacha20-poly1305 (default) or aes-256-gcm, implies --encryption
       --encryption-key string                serve chunks encrypted with this hex-encoded 256-bit key, implies --encryption

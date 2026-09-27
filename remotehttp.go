@@ -52,7 +52,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	tr := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
 		DisableCompression:  true,
-		MaxIdleConnsPerHost: opt.N,
+		MaxIdleConnsPerHost: opt.maxConcurrency(),
 		IdleConnTimeout:     60 * time.Second,
 		TLSClientConfig:     tlsConfig,
 		ForceAttemptHTTP2:   true,

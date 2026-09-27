@@ -16,6 +16,18 @@ import (
 const DefaultErrorRetry = 3
 const DefaultErrorRetryBaseInterval = 500 * time.Millisecond
 
+const (
+	// AdaptiveConcurrency as the concurrency of a store (StoreOptions.N) lets
+	// the number of concurrent requests follow what the store and the network
+	// can handle. Requests need to go through NewAdaptiveStore for that, the
+	// store itself only prepares for up to MaxAdaptiveConcurrency of them.
+	AdaptiveConcurrency = -1
+
+	// MaxAdaptiveConcurrency is the most concurrent requests an adaptive
+	// store allows.
+	MaxAdaptiveConcurrency = 128
+)
+
 // Store is a generic interface implemented by read-only stores, like SSH or
 // HTTP remote stores currently.
 type Store interface {
@@ -56,7 +68,8 @@ type IndexWriteStore interface {
 // error retry or timeouts. Not all options available are applicable to all types of stores.
 type StoreOptions struct {
 	// Concurrency used in the store. Depending on store type, it's used for
-	// the number of goroutines, processes, or connection pool size.
+	// the number of goroutines, processes, or connection pool size. Can be
+	// AdaptiveConcurrency.
 	N int `json:"n,omitempty"`
 
 	// Cert file name for HTTP SSL connections that require mutual SSL.
@@ -220,6 +233,15 @@ func (o StoreOptions) contextWithTimeout(ctx context.Context) (context.Context, 
 		return context.WithCancel(ctx)
 	}
 	return context.WithTimeout(ctx, timeout)
+}
+
+// maxConcurrency returns the most concurrent requests the store needs to
+// support, which is the configured concurrency unless it's adaptive.
+func (o StoreOptions) maxConcurrency() int {
+	if o.N == AdaptiveConcurrency {
+		return MaxAdaptiveConcurrency
+	}
+	return o.N
 }
 
 // effectiveTimeout returns the HTTP client timeout for a network store. If no
