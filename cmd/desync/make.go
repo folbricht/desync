@@ -2,19 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/folbricht/desync"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
 type makeOptions struct {
 	cmdStoreOptions
+	cmdChunkerOptions
 	store      string
-	chunkSize  string
 	printStats bool
 }
 
@@ -38,9 +34,9 @@ to STDOUT.`,
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store")
-	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print chunking statistics to stderr when done")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
+	addChunkerOptions(&opt.cmdChunkerOptions, flags)
 	return cmd
 }
 
@@ -49,7 +45,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 		return err
 	}
 
-	min, avg, max, err := parseChunkSizeParam(opt.chunkSize)
+	chunkerParams, err := opt.cmdChunkerOptions.ToChunkerParams()
 	if err != nil {
 		return err
 	}
@@ -79,7 +75,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 
 	// Split up the file and create and index from it
 	pb := desync.NewProgressBar("Chunking ")
-	index, stats, err := desync.IndexFromFile(ctx, dataFile, opt.cpuWorkers(), min, avg, max, pb)
+	index, stats, err := desync.IndexFromFile(ctx, dataFile, opt.cpuWorkers(), opt.cmdChunkerOptions.name, chunkerParams, pb)
 	if err != nil {
 		return err
 	}
@@ -95,27 +91,4 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 		_ = printJSON(stderr, stats) // write to stderr since stdout could be used for index data
 	}
 	return storeCaibxFile(index, indexFile, opt.cmdStoreOptions)
-}
-
-func parseChunkSizeParam(s string) (min, avg, max uint64, err error) {
-	sizes := strings.Split(s, ":")
-	if len(sizes) != 3 {
-		return 0, 0, 0, fmt.Errorf("invalid chunk size '%s'", s)
-	}
-	num, err := strconv.Atoi(sizes[0])
-	if err != nil {
-		return 0, 0, 0, errors.Wrap(err, "min chunk size")
-	}
-	min = uint64(num) * 1024
-	num, err = strconv.Atoi(sizes[1])
-	if err != nil {
-		return 0, 0, 0, errors.Wrap(err, "avg chunk size")
-	}
-	avg = uint64(num) * 1024
-	num, err = strconv.Atoi(sizes[2])
-	if err != nil {
-		return 0, 0, 0, errors.Wrap(err, "max chunk size")
-	}
-	max = uint64(num) * 1024
-	return
 }

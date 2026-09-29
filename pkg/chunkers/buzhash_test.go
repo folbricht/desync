@@ -1,8 +1,9 @@
-package desync
+package chunkers
 
 import (
 	"bytes"
 	"crypto/sha512"
+	"encoding/hex"
 	"math/bits"
 	"os"
 	"testing"
@@ -11,14 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	ChunkSizeAvgDefault uint64 = 64 * 1024
-	ChunkSizeMinDefault        = ChunkSizeAvgDefault / 4
-	ChunkSizeMaxDefault        = ChunkSizeAvgDefault * 4
-)
-
-func TestChunkerLargeFile(t *testing.T) {
-	f, err := os.Open("testdata/chunker.input")
+func TestBuzhashLargeFile(t *testing.T) {
+	f, err := os.Open("../../testdata/chunker.input")
 	require.NoError(t, err)
 	defer f.Close()
 
@@ -49,14 +44,14 @@ func TestChunkerLargeFile(t *testing.T) {
 		{Start: 982644, Size: 65932, ID: "a8bfdadaecbee1ed16ce23d8bf771d1b3fbca2e631fc71b5adb3846c1bb2d542"},
 	}
 
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(DefaultChunkerName, f, DefaultChunkerParams())
 	require.NoError(t, err)
 
 	for i, e := range expected {
 		start, buf, err := c.Next()
 		require.NoError(t, err)
-		chunkID := ChunkID(sha512.Sum512_256(buf))
-		require.Equal(t, e.ID, chunkID.String(), "chunk #%d hash", i+1)
+		chunkID := sha512.Sum512_256(buf)
+		require.Equal(t, e.ID, hex.EncodeToString(chunkID[:]), "chunk #%d hash", i+1)
 		require.Equal(t, e.Start, start, "chunk #%d start", i+1)
 		require.Equal(t, e.Size, uint64(len(buf)), "chunk #%d size", i+1)
 	}
@@ -66,9 +61,9 @@ func TestChunkerLargeFile(t *testing.T) {
 	require.Empty(t, buf, "expected size 0 at the end")
 }
 
-func TestChunkerEmptyFile(t *testing.T) {
+func TestBuzhashEmptyFile(t *testing.T) {
 	r := bytes.NewReader([]byte{})
-	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(DefaultChunkerName, r, DefaultChunkerParams())
 	require.NoError(t, err)
 	start, buf, err := c.Next()
 	require.NoError(t, err)
@@ -76,10 +71,10 @@ func TestChunkerEmptyFile(t *testing.T) {
 	require.Equal(t, uint64(0), start)
 }
 
-func TestChunkerSmallFile(t *testing.T) {
+func TestBuzhashSmallFile(t *testing.T) {
 	b := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	r := bytes.NewReader(b)
-	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(DefaultChunkerName, r, DefaultChunkerParams())
 	require.NoError(t, err)
 
 	start, buf, err := c.Next()
@@ -90,10 +85,10 @@ func TestChunkerSmallFile(t *testing.T) {
 
 // There are no chunk boundaries when all data is nil, make sure we get the
 // max chunk size
-func TestChunkerNoBoundary(t *testing.T) {
+func TestBuzhashNoBoundary(t *testing.T) {
 	b := make([]byte, 1024*1024)
 	r := bytes.NewReader(b)
-	c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(DefaultChunkerName, r, DefaultChunkerParams())
 	require.NoError(t, err)
 	for {
 		start, buf, err := c.Next()
@@ -101,25 +96,25 @@ func TestChunkerNoBoundary(t *testing.T) {
 		if len(buf) == 0 {
 			break
 		}
-		require.Equal(t, ChunkSizeMaxDefault, uint64(len(buf)))
-		require.Zero(t, start%ChunkSizeMaxDefault, "unexpected start position %d", start)
+		require.Equal(t, DefaultChunkSizeMax, uint64(len(buf)))
+		require.Zero(t, start%DefaultChunkSizeMax, "unexpected start position %d", start)
 	}
 }
 
 // Test with exactly min, avg, max chunk size of data
-func TestChunkerBounds(t *testing.T) {
+func TestBuzhashBounds(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		size uint64
 	}{
-		{"chunker with exactly min chunk size data", ChunkSizeMinDefault},
-		{"chunker with exactly avg chunk size data", ChunkSizeAvgDefault},
-		{"chunker with exactly max chunk size data", ChunkSizeMaxDefault},
+		{"chunker with exactly min chunk size data", DefaultChunkSizeMin},
+		{"chunker with exactly avg chunk size data", DefaultChunkSizeAvg},
+		{"chunker with exactly max chunk size data", DefaultChunkSizeMax},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			b := make([]byte, c.size)
 			r := bytes.NewReader(b)
-			c, err := NewChunker(r, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+			c, err := NewChunker(DefaultChunkerName, r, DefaultChunkerParams())
 			require.NoError(t, err)
 
 			start, buf, err := c.Next()
@@ -131,7 +126,7 @@ func TestChunkerBounds(t *testing.T) {
 }
 
 // Test to confirm advancing through the input without producing chunks works.
-func TestChunkerAdvance(t *testing.T) {
+func TestBuzhashAdvance(t *testing.T) {
 	// Build an input slice that is NullChunk + <dataA> + Nullchunk + <dataB>.
 	// Then skip over the data slices and we should be left with only Null chunks.
 	dataA := make([]byte, 128) // Short slice
@@ -139,23 +134,24 @@ func TestChunkerAdvance(t *testing.T) {
 		dataA[i] = 'a'
 	}
 
-	dataB := make([]byte, 12*ChunkSizeMaxDefault) // Long slice to ensure we read past the chunker-internal buffer
+	dataB := make([]byte, 12*DefaultChunkSizeMax) // Long slice to ensure we read past the chunker-internal buffer
 	for i := range dataB {
 		dataB[i] = 'b'
 	}
 
-	nullChunk := NewNullChunk(ChunkSizeMaxDefault)
+	//nullChunk := NewNullChunk(DefaultChunkSizeMax)
+	nullChunk := make([]byte, DefaultChunkSizeMax)
 
 	// Build the input slice consisting of Null+dataA+Null+dataB
-	input := join(nullChunk.Data, dataA, nullChunk.Data, dataB)
+	input := join(nullChunk, dataA, nullChunk, dataB)
 
-	c, err := NewChunker(bytes.NewReader(input), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := NewChunker(DefaultChunkerName, bytes.NewReader(input), DefaultChunkerParams())
 	require.NoError(t, err)
 
 	// Chunk the first part, this should be a null chunk
 	_, buf, err := c.Next()
 	require.NoError(t, err)
-	require.Equal(t, nullChunk.Data, buf, "expected null chunk")
+	require.Equal(t, nullChunk, buf, "expected null chunk")
 
 	// Now skip the dataA slice
 	require.NoError(t, c.Advance(len(dataA)))
@@ -163,7 +159,7 @@ func TestChunkerAdvance(t *testing.T) {
 	// Read the 2nd null chunk
 	_, buf, err = c.Next()
 	require.NoError(t, err)
-	require.Equal(t, nullChunk.Data, buf, "expected null chunk")
+	require.Equal(t, nullChunk, buf, "expected null chunk")
 
 	// Skip over dataB
 	require.NoError(t, c.Advance(len(dataB)))
@@ -174,6 +170,14 @@ func TestChunkerAdvance(t *testing.T) {
 	require.Empty(t, buf, "expected end of input")
 }
 
+func join(slices ...[]byte) []byte {
+	var out []byte
+	for _, b := range slices {
+		out = append(out, b...)
+	}
+	return out
+}
+
 // Global vars used for results during the benchmark to prevent optimizer
 // from optimizing away some operations
 var (
@@ -181,16 +185,17 @@ var (
 	chunkBuf   []byte
 )
 
-// TestChunkerBoundaryTest verifies that the division-free boundary test built
+// TestBuzhashBoundaryTest verifies that the division-free boundary test built
 // from the precomputed constants in NewChunker behaves exactly like the
 // plain "hValue % d == d-1" for all edge cases, in particular the values
 // where hValue+1 or hValue-(d-1) would wrap around 2^32. An earlier version
 // of the fast test declared a false boundary for one hash value per
 // discriminator (e.g. 14413 for the default 64KB average chunk size).
-func TestChunkerBoundaryTest(t *testing.T) {
+func TestBuzhashBoundaryTest(t *testing.T) {
 	for _, avg := range []uint64{16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024} {
-		c, err := NewChunker(bytes.NewReader(nil), avg/4, avg, avg*4)
+		chunker, err := NewChunker(DefaultChunkerName, bytes.NewReader(nil), ChunkerParams{avg / 4, avg, avg * 4, ""})
 		require.NoError(t, err)
+		c := chunker.(*BuzhashChunker)
 		d := c.hDiscriminator
 
 		check := func(h uint32) {
@@ -220,7 +225,8 @@ func BenchmarkChunker(b *testing.B) {
 	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for b.Loop() {
-		c, err := NewChunker(bytes.NewReader(data), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+
+		c, err := NewChunker(DefaultChunkerName, bytes.NewReader(data), DefaultChunkerParams())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -242,7 +248,7 @@ func benchmarkChunkNull(b *testing.B, size int) {
 	in := make([]byte, size)
 	b.SetBytes(int64(size))
 	for b.Loop() {
-		c, err := NewChunker(bytes.NewReader(in), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+		c, err := NewChunker(DefaultChunkerName, bytes.NewReader(in), DefaultChunkerParams())
 		if err != nil {
 			b.Fatal(err)
 		}

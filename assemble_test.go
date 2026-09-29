@@ -13,6 +13,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +39,7 @@ func TestExtract(t *testing.T) {
 	for range 4 { // Replicate it a few times to make sure we get dupes
 		b = append(b, b...)
 	}
-	b = append(b, make([]byte, 2*ChunkSizeMaxDefault)...) // want to have at least one null-chunk in the input
+	b = append(b, make([]byte, 2*chunkers.DefaultChunkSizeMax)...) // want to have at least one null-chunk in the input
 	tmp := t.TempDir()
 	in := filepath.Join(tmp, "in")
 	require.NoError(t, os.WriteFile(in, b, 0644))
@@ -51,7 +52,8 @@ func TestExtract(t *testing.T) {
 		context.Background(),
 		in,
 		10,
-		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		chunkers.DefaultChunkerName,
+		chunkers.DefaultChunkerParams(),
 		NewProgressBar(""),
 	)
 	require.NoError(t, err)
@@ -114,10 +116,10 @@ func TestSeed(t *testing.T) {
 	// and seed files with varying amount of duplication
 	data1, err := os.ReadFile("testdata/chunker.input")
 	require.NoError(t, err)
-	null := make([]byte, 4*ChunkSizeMaxDefault)
-	rand1 := make([]byte, 4*ChunkSizeMaxDefault)
+	null := make([]byte, 4*chunkers.DefaultChunkSizeMax)
+	rand1 := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rand1)
-	rand2 := make([]byte, 4*ChunkSizeMaxDefault)
+	rand2 := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rand2)
 
 	// Setup a temporary store
@@ -180,7 +182,8 @@ func TestSeed(t *testing.T) {
 				context.Background(),
 				dst,
 				10,
-				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+				chunkers.DefaultChunkerName,
+				chunkers.DefaultChunkerParams(),
 				NewProgressBar(""),
 			)
 			require.NoError(t, err)
@@ -198,7 +201,8 @@ func TestSeed(t *testing.T) {
 					context.Background(),
 					seedFile,
 					10,
-					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+					chunkers.DefaultChunkerName,
+					chunkers.DefaultChunkerParams(),
 					NewProgressBar(""),
 				)
 				require.NoError(t, err)
@@ -320,9 +324,9 @@ func TestSelfSeedInPlace(t *testing.T) {
 // file over an existing file full of non-zero data to confirm the null sections
 // are still written out correctly.
 func TestExtractNullsOverExistingFile(t *testing.T) {
-	data := make([]byte, 4*ChunkSizeMaxDefault)
+	data := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(data)
-	null := make([]byte, 4*ChunkSizeMaxDefault)
+	null := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	b := join(null, data, null)
 
 	tmp := t.TempDir()
@@ -334,7 +338,8 @@ func TestExtractNullsOverExistingFile(t *testing.T) {
 		context.Background(),
 		in,
 		10,
-		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		chunkers.DefaultChunkerName,
+		chunkers.DefaultChunkerParams(),
 		NewProgressBar(""),
 	)
 	require.NoError(t, err)
@@ -644,7 +649,7 @@ func TestAssembleIntegration(t *testing.T) {
 			// and destination are the same file.
 			inPlaceIdx := buildIndex(sc.inPlaceIndices...)
 			inPlaceSeed, err := NewFileSeed(targetPath, targetPath, inPlaceIdx)
-			require.NoError(t, err)
+	require.NoError(t, err)
 			seeds := []Seed{inPlaceSeed}
 
 			// If the scenario includes a file seed, write it to a separate
@@ -655,7 +660,7 @@ func TestAssembleIntegration(t *testing.T) {
 				require.NoError(t, os.WriteFile(seedPath, seedContent, 0644))
 				seedIdx := buildIndex(sc.fileSeedIndices...)
 				fs, err := NewFileSeed(targetPath, seedPath, seedIdx)
-				require.NoError(t, err)
+	require.NoError(t, err)
 				seeds = append(seeds, fs)
 			}
 
@@ -894,9 +899,9 @@ func TestExtractEmptyIndex(t *testing.T) {
 	index := Index{
 		Index: FormatIndex{
 			FeatureFlags: CaFormatSHA512256,
-			ChunkSizeMin: ChunkSizeMinDefault,
-			ChunkSizeAvg: ChunkSizeAvgDefault,
-			ChunkSizeMax: ChunkSizeMaxDefault,
+			ChunkSizeMin: chunkers.DefaultChunkSizeMin,
+			ChunkSizeAvg: chunkers.DefaultChunkSizeAvg,
+			ChunkSizeMax: chunkers.DefaultChunkSizeMax,
 		},
 	}
 	store, err := NewLocalStore(t.TempDir(), StoreOptions{})
