@@ -11,15 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestParallelChunking(t *testing.T) {
-	null := make([]byte, 4*ChunkSizeMaxDefault)
-	rand1 := make([]byte, 4*ChunkSizeMaxDefault)
+	null := make([]byte, 4*chunkers.DefaultChunkSizeMax)
+	rand1 := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rand1)
-	rand2 := make([]byte, 4*ChunkSizeMaxDefault)
+	rand2 := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rand2)
 
 	tests := map[string][][]byte{
@@ -39,7 +40,7 @@ func TestParallelChunking(t *testing.T) {
 
 			// Chunk the file single stream first to use the results as reference for
 			// the parallel chunking
-			c, err := NewChunker(bytes.NewReader(b), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+			c, err := chunkers.NewChunker(chunkers.DefaultChunkerName, bytes.NewReader(b), chunkers.DefaultChunkerParams())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +64,8 @@ func TestParallelChunking(t *testing.T) {
 						context.Background(),
 						f,
 						n,
-						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+						chunkers.DefaultChunkerName,
+						chunkers.DefaultChunkerParams(),
 						NewProgressBar(""),
 					)
 					if err != nil {
@@ -88,8 +90,8 @@ func TestParallelChunking(t *testing.T) {
 // join in place the counters must be complete and deterministic for every
 // worker count. Run under -race to catch a regression of the join.
 func TestIndexFromFileStats(t *testing.T) {
-	null := make([]byte, 4*ChunkSizeMaxDefault)
-	rnd := make([]byte, 4*ChunkSizeMaxDefault)
+	null := make([]byte, 4*chunkers.DefaultChunkSizeMax)
+	rnd := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rnd)
 
 	tests := map[string][][]byte{
@@ -109,7 +111,8 @@ func TestIndexFromFileStats(t *testing.T) {
 						context.Background(),
 						f,
 						n,
-						ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+						chunkers.DefaultChunkerName,
+						chunkers.DefaultChunkerParams(),
 						NewProgressBar(""),
 					)
 					require.NoError(t, err)
@@ -147,7 +150,7 @@ func TestIndexFromFileDigestFlag(t *testing.T) {
 		MTime:        time.Unix(0, 0),
 	})
 	require.NoError(t, err)
-	rnd := make([]byte, 4*ChunkSizeMaxDefault)
+	rnd := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rnd)
 	archive.Write(rnd)
 	f := filepath.Join(t.TempDir(), "input.catar")
@@ -161,7 +164,8 @@ func TestIndexFromFileDigestFlag(t *testing.T) {
 				context.Background(),
 				f,
 				2,
-				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+				chunkers.DefaultChunkerName,
+				chunkers.DefaultChunkerParams(),
 				NewProgressBar(""),
 			)
 			require.NoError(t, err)

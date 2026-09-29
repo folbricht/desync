@@ -7,6 +7,8 @@ import (
 	"os"
 	"slices"
 	"sync"
+
+	"github.com/folbricht/desync/pkg/chunkers"
 )
 
 // FileSeed is used to copy or clone blocks from an existing index+blob during
@@ -81,8 +83,15 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 
 func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
 	chunkingPrefix := fmt.Sprintf("Attempt %d: Chunking Seed %d ", attempt, seedNumber)
-	index, _, err := IndexFromFile(ctx, s.srcFile, n, s.index.Index.ChunkSizeMin, s.index.Index.ChunkSizeAvg,
-		s.index.Index.ChunkSizeMax, NewProgressBar(chunkingPrefix))
+	// TODO: this should depend on params that index was built with, including selected chunker!
+	index, _, err := IndexFromFile(ctx, s.srcFile, n,
+		chunkers.DefaultChunkerName,
+		chunkers.ChunkerParams{
+			s.index.Index.ChunkSizeMin,
+			s.index.Index.ChunkSizeAvg,
+			s.index.Index.ChunkSizeMax,
+			"",
+		}, NewProgressBar(chunkingPrefix))
 	if err != nil {
 		return err
 	}

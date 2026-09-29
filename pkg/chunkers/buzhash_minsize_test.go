@@ -1,4 +1,4 @@
-package desync
+package chunkers
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 // exactly min bytes. desync used to skip that test, making min+1 the smallest
 // chunk it could emit and causing the two to disagree whenever a boundary fell
 // on min. See the comment in Chunker.Next.
-func TestChunkerBoundaryAtMinSize(t *testing.T) {
+func TestBuzhashBoundaryAtMinSize(t *testing.T) {
 	const (
 		min = 64
 		avg = 1024
@@ -23,16 +23,16 @@ func TestChunkerBoundaryAtMinSize(t *testing.T) {
 	disc := discriminatorFromAvg(avg)
 
 	// Find a window whose hash lands on a boundary. The chunker seeds its hash
-	// over the ChunkerWindowSize bytes immediately before min, so those are the
+	// over the BuzhashWindowSize bytes immediately before min, so those are the
 	// bytes that decide whether there is a boundary at exactly min.
 	rng := rand.New(rand.NewSource(1))
-	window := make([]byte, ChunkerWindowSize)
+	window := make([]byte, BuzhashWindowSize)
 	var found bool
 	for i := 0; i < 1e6 && !found; i++ {
 		rng.Read(window)
 		var h uint32
 		for j, b := range window {
-			h ^= bits.RotateLeft32(hashTable[b], ChunkerWindowSize-j-1)
+			h ^= bits.RotateLeft32(hashTable[b], BuzhashWindowSize-j-1)
 		}
 		found = h%disc == disc-1
 	}
@@ -42,9 +42,9 @@ func TestChunkerBoundaryAtMinSize(t *testing.T) {
 	// data before and after it.
 	in := make([]byte, max*2)
 	rng.Read(in)
-	copy(in[min-ChunkerWindowSize:min], window)
+	copy(in[min-BuzhashWindowSize:min], window)
 
-	c, err := NewChunker(bytes.NewReader(in), min, avg, max)
+	c, err := NewChunker(DefaultChunkerName, bytes.NewReader(in), ChunkerParams{min, avg, max, ""})
 	require.NoError(t, err)
 
 	_, chunk, err := c.Next()

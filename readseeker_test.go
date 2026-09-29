@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +23,7 @@ func TestIndexReadSeekerSizeMismatchPanic(t *testing.T) {
 
 	// The index lies: it claims the chunk is 1000 bytes long.
 	idx := Index{
-		Index: FormatIndex{ChunkSizeMax: ChunkSizeMaxDefault},
+		Index: FormatIndex{ChunkSizeMax: chunkers.DefaultChunkSizeMax},
 		Chunks: []IndexChunk{
 			{ID: chunkID(data), Start: 0, Size: 1000},
 		},
@@ -56,7 +57,7 @@ func TestIndexReadSeekerSizeMismatchNoLoop(t *testing.T) {
 	// First chunk claims 1000 bytes but only 4 are stored, and it's followed by
 	// another chunk so the "last chunk" short-read break does not apply.
 	idx := Index{
-		Index: FormatIndex{ChunkSizeMax: ChunkSizeMaxDefault},
+		Index: FormatIndex{ChunkSizeMax: chunkers.DefaultChunkSizeMax},
 		Chunks: []IndexChunk{
 			{ID: chunkID(short), Start: 0, Size: 1000},
 			{ID: chunkID(tail), Start: 1000, Size: uint64(len(tail))},
@@ -86,7 +87,7 @@ func TestIndexReadSeekerSizeMismatchNoLoop(t *testing.T) {
 // from memory, and that seeking works.
 func TestIndexReadSeekerValid(t *testing.T) {
 	head := []byte("hello, world")
-	null := make([]byte, ChunkSizeMaxDefault)
+	null := make([]byte, chunkers.DefaultChunkSizeMax)
 	tail := []byte("goodbye, world")
 
 	store := &TestStore{Chunks: map[ChunkID][]byte{
@@ -96,11 +97,11 @@ func TestIndexReadSeekerValid(t *testing.T) {
 	}}
 
 	idx := Index{
-		Index: FormatIndex{ChunkSizeMax: ChunkSizeMaxDefault},
+		Index: FormatIndex{ChunkSizeMax: chunkers.DefaultChunkSizeMax},
 		Chunks: []IndexChunk{
 			{ID: chunkID(head), Start: 0, Size: uint64(len(head))},
-			{ID: NewNullChunk(ChunkSizeMaxDefault).ID, Start: uint64(len(head)), Size: ChunkSizeMaxDefault},
-			{ID: chunkID(tail), Start: uint64(len(head)) + ChunkSizeMaxDefault, Size: uint64(len(tail))},
+			{ID: NewNullChunk(chunkers.DefaultChunkSizeMax).ID, Start: uint64(len(head)), Size: chunkers.DefaultChunkSizeMax},
+			{ID: chunkID(tail), Start: uint64(len(head)) + chunkers.DefaultChunkSizeMax, Size: uint64(len(tail))},
 		},
 	}
 
@@ -113,7 +114,7 @@ func TestIndexReadSeekerValid(t *testing.T) {
 	assert.Equal(t, want, got)
 
 	// Seek to the start of the last chunk and read its content.
-	off := int64(len(head)) + int64(ChunkSizeMaxDefault)
+	off := int64(len(head)) + int64(chunkers.DefaultChunkSizeMax)
 	_, err = r.Seek(off, io.SeekStart)
 	require.NoError(t, err)
 	got, err = io.ReadAll(r)
@@ -125,7 +126,7 @@ func TestIndexReadSeekerValid(t *testing.T) {
 // behave like an empty file rather than panic.
 func TestIndexReadSeekerEmptyIndex(t *testing.T) {
 	idx := Index{
-		Index: FormatIndex{ChunkSizeMax: ChunkSizeMaxDefault},
+		Index: FormatIndex{ChunkSizeMax: chunkers.DefaultChunkSizeMax},
 	}
 	store := &TestStore{}
 

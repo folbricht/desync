@@ -1,13 +1,16 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/folbricht/desync"
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/spf13/pflag"
 )
 
@@ -169,4 +172,55 @@ func addServerOptions(o *cmdServerOptions, f *pflag.FlagSet) {
 	f.BoolVar(&o.mutualTLS, "mutual-tls", false, "require valid client certificate")
 	f.StringVar(&o.clientCA, "client-ca", "", "acceptable client certificate or CA")
 	f.StringVar(&o.auth, "authorization", "", "expected value of the authorization header in requests")
+}
+
+// cmdChunkerOptions hold command line options to configure a cunker
+type cmdChunkerOptions struct {
+	name    string
+	sizes   string
+	options string
+}
+
+func addChunkerOptions(o *cmdChunkerOptions, f *pflag.FlagSet) {
+	f.StringVar(&o.name, "chunker", chunkers.DefaultChunkerName, fmt.Sprintf("chunking algorithm to use, pick from %v", chunkers.RegisteredNames()))
+	defaultChunkSizes := fmt.Sprintf("%v:%v:%v",
+		chunkers.DefaultChunkSizeMin/1024,
+		chunkers.DefaultChunkSizeAvg/1024,
+		chunkers.DefaultChunkSizeMax/1024,
+	)
+	f.StringVarP(&o.sizes, "chunk-size", "m", defaultChunkSizes, "min:avg:max chunk size in kb")
+	f.StringVar(&o.options, "chunker-options", "", "additional chunker-specific options")
+}
+
+func (o *cmdChunkerOptions) ToChunkerParams() (result chunkers.ChunkerParams, err error) {
+	result.Min, result.Avg, result.Max, err = parseChunkSizeParam(o.sizes)
+	if err != nil {
+		return
+	}
+
+	result.Options = o.options
+	return
+}
+
+func parseChunkSizeParam(s string) (min, avg, max uint64, err error) {
+	sizes := strings.Split(s, ":")
+	if len(sizes) != 3 {
+		return 0, 0, 0, fmt.Errorf("invalid chunk size '%s'", s)
+	}
+	num, err := strconv.Atoi(sizes[0])
+	if err != nil {
+		return 0, 0, 0, errors.Wrap(err, "min chunk size")
+	}
+	min = uint64(num) * 1024
+	num, err = strconv.Atoi(sizes[1])
+	if err != nil {
+		return 0, 0, 0, errors.Wrap(err, "avg chunk size")
+	}
+	avg = uint64(num) * 1024
+	num, err = strconv.Atoi(sizes[2])
+	if err != nil {
+		return 0, 0, 0, errors.Wrap(err, "max chunk size")
+	}
+	max = uint64(num) * 1024
+	return
 }
