@@ -12,7 +12,7 @@ It implements the [casync](https://github.com/systemd/casync) format and interop
 
 ## Where it fits
 
-- **Updating devices in the field.** An appliance with A/B partitions seeds from the partition it is running and writes the new image straight to the other one, downloading only the chunks that aren't already on disk. An update interrupted by a dropped connection restarts without fetching the completed chunks again.
+- **Updating devices in the field.** An appliance with A/B partitions seeds from the partition it is running and writes the new image straight to the other one, downloading only the chunks that aren't already on disk. An update interrupted by a dropped connection restarts without fetching the completed chunks again. A device with a single copy of the image can be updated in place instead, rearranging the data already on it and downloading only the chunks it lacks.
 - **Serving a fleet from one copy.** Each client works out for itself which chunks it is missing, so one set of static files serves every client, whichever version it is starting from. Hash-named chunks never change, so a CDN can cache them indefinitely, and a `chunk-server` with a local cache at each site means a chunk crosses the WAN once rather than once per machine.
 - **Using an image before it has downloaded.** `mount-index` exposes an index as a file over FUSE and fetches chunks as they are read, so a VM can boot from a disk image in a remote store. With `--cor-file` it fills a local sparse copy on the way.
 - **Keeping every build.** Publish each build to the same store and it grows by what changed, not by another full image. `prune` removes the chunks only old versions still reference.
@@ -39,7 +39,7 @@ How much you save depends on the data: on how much changed between versions, and
 
 | | desync | casync | rsync | zsync | OCI / ORAS |
 | --- | --- | --- | --- | --- | --- |
-| Reuses local data as a seed | yes | yes | yes, the destination file | yes | no |
+| Reuses local data as a seed | yes, including the destination file | yes | yes, the destination file | yes | no |
 | Server-side work per client | none | none | delta computed per transfer | none | none |
 | Server requirement | any static file host | any static file host | rsync daemon or SSH | static host with range requests | registry |
 | Deduplication across versions in the store | yes | yes | no | no | whole layers only |
