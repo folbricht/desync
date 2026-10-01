@@ -18,6 +18,14 @@ type selfSeed struct {
 	file string
 	seedIndex
 	blocksize uint64
+
+	// inPlace looks up the chunks that are already in place in the target.
+	// Nothing writes over them, so unlike the rest of the target they can
+	// be copied from in either direction without waiting for other steps.
+	// inPlaceRun holds the number of consecutive chunks in place from each
+	// position.
+	inPlace    seedIndex
+	inPlaceRun []int
 }
 
 func newSelfSeed(file string, index Index, blocksize uint64) *selfSeed {
@@ -35,18 +43,58 @@ func newSelfSeed(file string, index Index, blocksize uint64) *selfSeed {
 	return s
 }
 
-// LongestMatchFrom returns the longest sequence of matching chunks after a
+// useInPlace records the chunks found in place in the target, given the
+// skips of the plan, one per chunk position, nil where the chunk isn't in
+// place.
+func (s *selfSeed) useInPlace(skips []*skipInPlace) {
+	s.inPlace = seedIndex{index: s.index, pos: make(map[ChunkID][]int), canReflink: s.canReflink}
+	s.inPlaceRun = make([]int, len(skips))
+	for i := len(skips) - 1; i >= 0; i-- {
+		if skips[i] == nil {
+			continue
+		}
+		s.inPlaceRun[i] = 1
+		if i+1 < len(skips) {
+			s.inPlaceRun[i] += s.inPlaceRun[i+1]
+		}
+	}
+	for i, sk := range skips {
+		id := s.index.Chunks[i].ID
+		// Leave out the null chunk, just like the other positions: it's
+		// the only chunk missing from s.pos.
+		if _, ok := s.pos[id]; sk != nil && ok {
+			s.inPlace.pos[id] = append(s.inPlace.pos[id], i)
+		}
+	}
+}
+
+// LongestMatchFrom returns the longest sequence of matching chunks for a
 // given starting position. It returns the chunk position of the match and
-// the number of matching chunks, or (0, 0) if there is no match. Only
-// positions after startPos are considered, and matches are clamped so the
-// source and destination ranges can't overlap.
+// the number of matching chunks, or (0, 0) if there is no match. Positions
+// after startPos are considered, with matches clamped so the source and
+// destination ranges can't overlap, as well as runs of chunks already in
+// place anywhere in the target.
 func (s *selfSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int, int) {
-	return s.longestMatchFrom(chunks, startPos, startPos+1, selfSeedMaxCandidates, func(p int) int {
+	pos, n := s.longestMatchFrom(chunks, startPos, startPos+1, selfSeedMaxCandidates, func(p int) int {
 		// The source run [p, p+n) may not overlap the destination run
 		// [startPos, startPos+n), which limits a usable run to the distance
 		// between the two.
 		return p - startPos
 	})
+	// Chunks in place before startPos are only found here, if the target
+	// was checked for them. They're preferred over an equally long match
+	// elsewhere, as reading them doesn't depend on any other step.
+	inPos, inN := s.inPlace.longestMatchFrom(chunks, startPos, 0, selfSeedMaxCandidates, func(p int) int {
+		run := s.inPlaceRun[p]
+		if p > startPos {
+			run = min(run, p-startPos)
+		}
+		return run
+	})
+	if inN > 0 && inN >= n {
+		return inPos, inN
+	}
+	return pos, n
 }
 
 // GetSegment returns a segment copying n chunks starting at chunk position

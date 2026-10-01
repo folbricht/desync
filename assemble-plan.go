@@ -290,6 +290,7 @@ func (p *assemblePlan) generate() {
 	if !p.targetIsBlank {
 		if p.skips == nil {
 			p.skips = p.generateSkips()
+			p.selfSeed.useInPlace(p.skips)
 		}
 		p.placeSkips()
 		if p.inPlaceSeed != nil {

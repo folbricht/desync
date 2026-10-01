@@ -749,6 +749,27 @@ func TestAssembleSeedOnTarget(t *testing.T) {
 	})
 }
 
+// TestAssembleDuplicateOfChunkInPlace extracts over a file that holds a chunk
+// in place which the output repeats later. Without a seed, the later copy
+// still comes from the file rather than the store.
+func TestAssembleDuplicateOfChunkInPlace(t *testing.T) {
+	chunks := randomChunks(1024, 768)
+	a, b := chunks[0], chunks[1]
+	target := writeChunkFile(t, a, filledChunk(768, 0xFF), filledChunk(1024, 0xFF))
+	idx := chunkIndex(a, b, a)
+
+	// The store doesn't have the chunk that's in place
+	stats, err := AssembleFile(context.Background(), target, idx, chunkStore(b), nil, testAssembleOptions)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), stats.ChunksInPlace)
+	assert.Equal(t, uint64(1), stats.ChunksFromSeeds)
+	assert.Equal(t, uint64(1), stats.ChunksFromStore)
+
+	got, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, chunkContent(a, b, a), got)
+}
+
 // TestAssembleInPlaceRandomized rearranges random in-place layouts into random
 // targets. Every chunk available in the old file has to be taken from there,
 // and the output has to match the target regardless of how the moves overlap.

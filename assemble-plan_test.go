@@ -805,6 +805,61 @@ func TestReplanReusesTarget(t *testing.T) {
 	require.Equal(t, []string{"InPlace: Skip [0:100]"}, stepStrings(replanned.Steps()))
 }
 
+func TestSelfSeedFromInPlaceChunks(t *testing.T) {
+	chunks := randomChunks(100, 100, 100, 100)
+	garbage := filledChunk(100, 0xFF)
+	storeCopy := func(c testChunk, start int) string {
+		return fmt.Sprintf("Store: Copy %s to [%d:%d]", &c.id, start, start+100)
+	}
+
+	tests := map[string]struct {
+		target   []testChunk
+		output   []int
+		expected []string
+	}{
+		"in place before the duplicate": {
+			target: []testChunk{chunks[0], garbage, garbage},
+			output: []int{0, 1, 0},
+			expected: []string{
+				"InPlace: Skip [0:100]",
+				storeCopy(chunks[1], 100),
+				"SelfSeed: Copy [0:100] to [200:300]",
+			},
+		},
+		"run in place before the duplicate": {
+			target: []testChunk{chunks[0], chunks[1], garbage, garbage, garbage, garbage},
+			output: []int{0, 1, 2, 3, 0, 1},
+			expected: []string{
+				"InPlace: Skip [0:200]",
+				storeCopy(chunks[2], 200),
+				storeCopy(chunks[3], 300),
+				"SelfSeed: Copy [0:200] to [400:600]",
+			},
+		},
+		"match limited to the run in place": {
+			// Positions 3 and 4 match 0 and 1, but only 0 is in place.
+			// 1 is copied from 4 in turn, which comes from the store.
+			target: []testChunk{chunks[0], garbage, garbage, garbage, garbage},
+			output: []int{0, 1, 2, 0, 1},
+			expected: []string{
+				"InPlace: Skip [0:100]",
+				"SelfSeed: Copy [400:500] to [100:200]",
+				storeCopy(chunks[2], 200),
+				"SelfSeed: Copy [0:100] to [300:400]",
+				storeCopy(chunks[1], 400),
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			target := writeChunkFile(t, test.target...)
+			idx := chunkIndex(pickChunks(chunks, test.output...)...)
+			require.Equal(t, test.expected, planStrings(target, idx, planWithTargetIsBlank(false)))
+		})
+	}
+}
+
 func TestOverlapping(t *testing.T) {
 	// Chunks at [0:100] [100:200] [200:300]
 	chunks := indexSequence(1, 2, 3).Chunks
