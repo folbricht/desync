@@ -155,3 +155,36 @@ func TestAssembleSeedUnchanged(t *testing.T) {
 	assert.Equal(t, uint64(0), stats.ChunksBackfilled)
 	assert.Equal(t, int32(1), fetched.Load())
 }
+
+func TestChunksInTargetNullChunks(t *testing.T) {
+	data := randomChunks(64)[0]
+	null := testChunk{id: NewNullChunk(64).ID, data: make([]byte, 64)}
+	idx := chunkIndex(null, data, null)
+
+	tests := map[string]struct {
+		content  []byte
+		expected []bool
+	}{
+		"zeros in place": {
+			content:  chunkContent(null, data, null),
+			expected: []bool{true, true, true},
+		},
+		"one byte set": {
+			content:  join(make([]byte, 63), []byte{1}, data.data, make([]byte, 64)),
+			expected: []bool{false, true, true},
+		},
+		"file too short": {
+			content:  chunkContent(null, data, null)[:150],
+			expected: []bool{true, true, false},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			name := filepath.Join(t.TempDir(), "target")
+			require.NoError(t, os.WriteFile(name, test.content, 0644))
+			found, err := chunksInTarget(name, idx, 2)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, found)
+		})
+	}
+}
