@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"sync"
@@ -47,7 +48,9 @@ func (s seedFileState) changed(name string) bool {
 }
 
 // chunksInTarget reports for every chunk of the index whether the file holds
-// its data at the chunk's position, hashing them with n goroutines.
+// its data at the chunk's position, hashing them with n goroutines. Null
+// chunks are compared with zeros instead, which is much cheaper than hashing
+// in images that are mostly empty space.
 func chunksInTarget(name string, idx Index, n int) ([]bool, error) {
 	f, err := os.Open(name)
 	if err != nil {
@@ -55,6 +58,7 @@ func chunksInTarget(name string, idx Index, n int) ([]bool, error) {
 	}
 	defer f.Close()
 
+	null := NewNullChunk(idx.Index.ChunkSizeMax)
 	found := make([]bool, len(idx.Chunks))
 	var wg sync.WaitGroup
 	work := make(chan int)
@@ -62,7 +66,14 @@ func chunksInTarget(name string, idx Index, n int) ([]bool, error) {
 		wg.Go(func() {
 			buf := make([]byte, idx.Index.ChunkSizeMax)
 			for i := range work {
-				found[i] = chunkInPlace(f, idx.Chunks[i], buf)
+				c := idx.Chunks[i]
+				if c.ID != null.ID {
+					found[i] = chunkInPlace(f, c, buf)
+					continue
+				}
+				b := buf[:c.Size]
+				_, err := f.ReadAt(b, int64(c.Start))
+				found[i] = err == nil && bytes.Equal(b, null.Data)
 			}
 		})
 	}
