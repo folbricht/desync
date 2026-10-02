@@ -1,14 +1,12 @@
-package desync
+package chunkers
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"math/bits"
 )
 
-// ChunkerWindowSize is the number of bytes in the rolling hash window
-const ChunkerWindowSize = 48
+// BuzhashWindowSize is the number of bytes in the rolling hash window
+const BuzhashWindowSize = 48
 
 func discriminatorFromAvg(avg uint64) uint32 {
 	return uint32(float64(avg) / (-1.42888852e-7*float64(avg) + 1.33237515))
@@ -94,26 +92,18 @@ var hashTable = [256]uint32{
 	0x7bf7cabc, 0xf9c18d66, 0x593ade65, 0xd95ddf11,
 }
 
-// hashTableRotated contains hashTable values pre-rotated by ChunkerWindowSize,
+// hashTableRotated contains hashTable values pre-rotated by BuzhashWindowSize,
 // eliminating a RotateLeft32 call per byte in the hot loop.
 var hashTableRotated [256]uint32
 
 func init() {
 	for i := range hashTable {
-		hashTableRotated[i] = bits.RotateLeft32(hashTable[i], ChunkerWindowSize)
+		hashTableRotated[i] = bits.RotateLeft32(hashTable[i], BuzhashWindowSize)
 	}
 }
 
-// Chunker is used to break up a data stream into chunks of data.
-type Chunker struct {
-	r             io.Reader
-	min, avg, max uint64
-
-	start uint64
-
-	buf        []byte
-	backingBuf []byte // reusable backing buffer for fillBuffer
-	hitEOF     bool   // true once the reader returned EOF
+type BuzhashChunker struct {
+	ChunkerBase
 
 	hDiscriminator uint32
 
@@ -131,20 +121,9 @@ type Chunker struct {
 }
 
 // NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
-func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
-	if min < ChunkerWindowSize {
-		return Chunker{}, fmt.Errorf("min chunk size too small, must be over %d", ChunkerWindowSize)
-	}
-	if min > max {
-		return Chunker{}, errors.New("min chunk size must not be greater than max")
-	}
-	if min > avg {
-		return Chunker{}, errors.New("min chunk size must not be greater than avg")
-	}
-	if avg > max {
-		return Chunker{}, errors.New("avg chunk size must not be greater than max")
-	}
-	disc := discriminatorFromAvg(avg)
+func NewBuzhashChunker(r io.Reader, params ChunkerParams) (*BuzhashChunker, error) {
+
+	disc := discriminatorFromAvg(params.Avg)
 
 	// Precompute the fast divisibility constants, see the Chunker struct
 	// for how they are used. We test "hValue % disc == disc-1" as
@@ -157,11 +136,8 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 		qBias = 1
 	}
 
-	return Chunker{
-		r:              r,
-		min:            min,
-		avg:            avg,
-		max:            max,
+	return &BuzhashChunker{
+		ChunkerBase:    *NewChunkerBase(r, params),
 		hDiscriminator: disc,
 		hInverseOdd:    inverseOdd,
 		hQMax:          ^uint32(0)/disc - qBias,
@@ -170,71 +146,38 @@ func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
 	}, nil
 }
 
-// Make a new buffer with 10*max bytes and copy anything that may be leftover
-// from before into it, then fill it up with new bytes. Don't fail on EOF.
-func (c *Chunker) fillBuffer() (n int, err error) {
-	if c.hitEOF { // We won't get anymore here, no need for more allocations
-		return
-	}
-	size := 10 * c.max
-	// Reuse the backing buffer if it has sufficient capacity
-	var buf []byte
-	if uint64(cap(c.backingBuf)) >= size {
-		buf = c.backingBuf[:size]
-	} else {
-		buf = make([]byte, int(size))
-		c.backingBuf = buf
-	}
-	n = copy(buf, c.buf)                 // copy the remaining bytes from the old buffer
-	for uint64(n) < size && err == nil { // read until the buffer is at max or we get an EOF
-		var nn int
-		nn, err = c.r.Read(buf[n:])
-		n += nn
-	}
-	c.buf = buf[:n] // we are not going to get any more, resize the buffer
-	if err == io.EOF {
-		c.hitEOF = true
-		err = nil
-	}
-	return
-}
-
-// Next returns the starting position as well as the chunk data. Returns
-// an empty byte slice when complete. The returned byte slice is only valid
-// until the next call to Next; callers that pass the slice to other
-// goroutines must copy it first.
-func (c *Chunker) Next() (uint64, []byte, error) {
+func (c *BuzhashChunker) Next() (uint64, []byte, error) {
 	if len(c.buf) < int(c.max) {
-		n, err := c.fillBuffer()
+		n, err := c.FillBuffer()
 		if err != nil {
-			return c.split(n, err)
+			return c.Split(n, err)
 		}
 	}
 
 	// No need to carry on if we don't have enough bytes left to even fill the min chunk
 	if len(c.buf) <= int(c.min) {
-		return c.split(len(c.buf), nil)
+		return c.Split(len(c.buf), nil)
 	}
 
 	// m is the upper boundary for the current chunk. It's either c.max if we have
 	// enough bytes in the buffer, or len(c.buf)
 	m := min(len(c.buf), int(c.max))
 
-	// Initialize the rolling hash over the ChunkerWindowSize bytes
+	// Initialize the rolling hash over the BuzhashWindowSize bytes
 	// immediately prior to min size
 	var hValue uint32
-	for i, b := range c.buf[c.min-ChunkerWindowSize : c.min] {
-		hValue ^= bits.RotateLeft32(hashTable[b], ChunkerWindowSize-i-1)
+	for i, b := range c.buf[c.min-BuzhashWindowSize : c.min] {
+		hValue ^= bits.RotateLeft32(hashTable[b], BuzhashWindowSize-i-1)
 	}
 
 	// The window bytes all live in c.buf, so instead of maintaining a ring
 	// buffer, the byte leaving the window at position pos is simply
-	// c.buf[pos-ChunkerWindowSize]. in and out are the incoming and
+	// c.buf[pos-BuzhashWindowSize]. in and out are the incoming and
 	// outgoing byte ranges, sliced to equal length n.
 	base := int(c.min)
 	n := m - base
 	in := c.buf[base : base+n]
-	out := c.buf[base-ChunkerWindowSize : base-ChunkerWindowSize+n]
+	out := c.buf[base-BuzhashWindowSize : base-BuzhashWindowSize+n]
 
 	// Hoist frequently accessed struct fields and the table addresses into
 	// locals to avoid repeated pointer dereferences in the hot loop.
@@ -251,7 +194,7 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 	// desync can produce is min+1, and the two disagree whenever a boundary
 	// falls on min.
 	if bits.RotateLeft32((hValue+1)*inverseOdd, rot)-qBias <= qMax {
-		return c.split(base, nil)
+		return c.Split(base, nil)
 	}
 
 	// Process two bytes per iteration. Rolling one byte is
@@ -272,59 +215,18 @@ func (c *Chunker) Next() (uint64, []byte, error) {
 		hValue = bits.RotateLeft32(hValue, 2) ^ bits.RotateLeft32(a0, 1) ^ a1
 
 		if bits.RotateLeft32((h1+1)*inverseOdd, rot)-qBias <= qMax {
-			return c.split(base+i+1, nil)
+			return c.Split(base+i+1, nil)
 		}
 		if bits.RotateLeft32((hValue+1)*inverseOdd, rot)-qBias <= qMax {
-			return c.split(base+i+2, nil)
+			return c.Split(base+i+2, nil)
 		}
 	}
 
 	// No boundary found before reaching the max chunk size. If n is odd, the
 	// leftover byte needs no processing: a boundary there would split at m
 	// anyway, and the hash state is discarded on split.
-	return c.split(m, nil)
+	return c.Split(m, nil)
 }
-
-func (c *Chunker) split(i int, err error) (uint64, []byte, error) {
-	// save the remaining bytes (after the split position) for the next round
-	start := c.start
-	b := c.buf[:i]
-	c.buf = c.buf[i:]
-	c.start += uint64(i)
-	return start, b, err
-}
-
-// Advance n bytes without producing chunks. This can be used if the content of the next
-// section in the file is known (i.e. it is known that there are a number of null chunks
-// coming). This resets everything in the chunker and behaves as if the streams starts
-// at (current position+n).
-func (c *Chunker) Advance(n int) error {
-	// We might still have bytes in the buffer. These count towards the move forward.
-	// It's possible the advance stays within the buffer and doesn't impact the reader.
-	c.start += uint64(n)
-	if n <= len(c.buf) {
-		c.buf = c.buf[n:]
-		return nil
-	}
-	readerN := int64(n - len(c.buf))
-	c.buf = nil
-	rs, ok := c.r.(io.Seeker)
-	if ok {
-		_, err := rs.Seek(readerN, io.SeekCurrent)
-		return err
-	}
-	_, err := io.CopyN(io.Discard, c.r, readerN)
-	return err
-}
-
-// Min returns the minimum chunk size
-func (c *Chunker) Min() uint64 { return c.min }
-
-// Avg returns the average chunk size
-func (c *Chunker) Avg() uint64 { return c.avg }
-
-// Max returns the maximum chunk size
-func (c *Chunker) Max() uint64 { return c.max }
 
 // Hash implements the rolling hash algorithm used to find chunk boundaries
 // in a stream of bytes.
@@ -377,4 +279,20 @@ func (h *Hash) IsBoundary() bool {
 func (h *Hash) Reset() {
 	h.idx = 0
 	h.value = 0
+}
+
+func init() {
+	err := RegisterChunker(ChunkerDesc{
+		Name:     "buzhash",
+		HelpText: `Buzhash chunker implementation compatible with casync.`,
+		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
+			return NewBuzhashChunker(r, params)
+		},
+		WindowSize:     BuzhashWindowSize,
+		Parallelizable: true,
+	})
+
+	if err != nil {
+		panic(err)
+	}
 }

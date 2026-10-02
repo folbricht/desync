@@ -9,13 +9,14 @@ import (
 	"runtime"
 
 	"github.com/folbricht/desync"
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/spf13/cobra"
 )
 
 type tarOptions struct {
 	cmdStoreOptions
+	cmdChunkerOptions
 	store       string
-	chunkSize   string
 	createIndex bool
 	desync.LocalFSOptions
 	inFormat string
@@ -52,7 +53,6 @@ the input can be a tar file or a stream from STDIN with '-'.
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&opt.store, "store", "s", "", "target store (used with -i)")
-	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
 	flags.BoolVarP(&opt.createIndex, "index", "i", false, "create index file (caidx), not catar")
 	flags.StringVar(&opt.inFormat, "input-format", "disk", "input format, 'disk' or 'tar'")
 	flags.BoolVarP(&opt.NoTime, "no-time", "", false, "set file timestamps to zero in the archive")
@@ -63,6 +63,7 @@ the input can be a tar file or a stream from STDIN with '-'.
 	}
 
 	addStoreOptions(&opt.cmdStoreOptions, flags)
+	addChunkerOptions(&opt.cmdChunkerOptions, flags)
 	return cmd
 }
 
@@ -146,11 +147,11 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	defer s.Close()
 
 	// Prepare the chunker
-	min, avg, max, err := parseChunkSizeParam(opt.chunkSize)
+	chunkerParams, err := opt.cmdChunkerOptions.ToChunkerParams()
 	if err != nil {
 		return err
 	}
-	c, err := desync.NewChunker(r, min, avg, max)
+	c, err := chunkers.NewChunker(opt.cmdChunkerOptions.name, r, chunkerParams)
 	if err != nil {
 		return err
 	}
