@@ -73,6 +73,9 @@ func IndexFromFile(ctx context.Context,
 	}
 	span := size / uint64(n) // initial spacing between chunkers
 
+	if chunkerName == "" {
+		chunkerName = chunkers.DefaultChunkerName
+	}
 	chunkerDesc := chunkers.FindChunkerByName(chunkerName)
 	if chunkerDesc == nil {
 		return index, stats, fmt.Errorf("unknown chunker '%s'", chunkerName)

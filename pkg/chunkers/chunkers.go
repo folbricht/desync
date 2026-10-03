@@ -9,7 +9,7 @@ const (
 	DefaultChunkerName = "buzhash"
 
 	// Note: casync's buzhash descriminator value calculation is tuned for min/avg/max sizes
-	// having differ by a factor of 4. Different relation will skew average chunk size.
+	// differ by a factor of 4. Different relation will skew average chunk size.
 	DefaultChunkSizeAvg uint64 = 64 * 1024
 	DefaultChunkSizeMin        = DefaultChunkSizeAvg / 4
 	DefaultChunkSizeMax        = DefaultChunkSizeAvg * 4

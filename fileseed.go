@@ -87,10 +87,10 @@ func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seed
 	index, _, err := IndexFromFile(ctx, s.srcFile, n,
 		chunkers.DefaultChunkerName,
 		chunkers.ChunkerParams{
-			s.index.Index.ChunkSizeMin,
-			s.index.Index.ChunkSizeAvg,
-			s.index.Index.ChunkSizeMax,
-			"",
+			Min:     s.index.Index.ChunkSizeMin,
+			Avg:     s.index.Index.ChunkSizeAvg,
+			Max:     s.index.Index.ChunkSizeMax,
+			Options: "",
 		}, NewProgressBar(chunkingPrefix))
 	if err != nil {
 		return err
