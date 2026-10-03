@@ -29,7 +29,7 @@ type Seed interface {
 	// position pos in the seed. pos must be a position returned by
 	// LongestMatchFrom; n may be smaller than the reported match length.
 	GetSegment(pos, n int) SeedSegment
-	RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error
+	RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int, chunkerName string, chunkerOptions string) error
 }
 
 // seedIndex holds a seed's index along with a lookup table of chunk positions

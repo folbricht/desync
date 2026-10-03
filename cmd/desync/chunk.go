@@ -59,6 +59,11 @@ func runChunk(ctx context.Context, opt chunkOptions, args []string) error {
 	if uint64(s) != opt.startPos {
 		return fmt.Errorf("requested seek to position %d, but got %d", opt.startPos, s)
 	}
+	// HACK: segmentaware chunker only supports reading from offset 0, segment sizes should be patched otherwise.
+	// TODO: Chunker.Advance instead of direct file seek here?
+	if opt.startPos != 0 && opt.cmdChunkerOptions.name == "segmentaware" {
+		return fmt.Errorf("'segmentaware' chunker doesn't support --start")
+	}
 
 	// Prepare the chunker
 	c, err := chunkers.NewChunker(opt.cmdChunkerOptions.name, f, chunkerParams)

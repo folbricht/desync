@@ -26,6 +26,8 @@ const (
 type AssembleOptions struct {
 	N                 int
 	InvalidSeedAction InvalidSeedAction
+	ChunkerName       string
+	ChunkerOptions    string
 }
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n
@@ -157,8 +159,8 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		}
 		var seedError SeedInvalid
 		if !errors.As(err, &seedError) {
-			return stats, err
-		}
+		return stats, err
+	}
 
 		switch options.InvalidSeedAction {
 		case InvalidSeedActionBailOut:
@@ -209,30 +211,30 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	// Bring up the workers
 	for range options.N {
 		g.Go(func() error {
-			f, err := os.OpenFile(name, os.O_RDWR, 0666)
-			if err != nil {
+		f, err := os.OpenFile(name, os.O_RDWR, 0666)
+		if err != nil {
 				return fmt.Errorf("unable to open file %s, %s", name, err)
-			}
-			defer f.Close()
+		}
+		defer f.Close()
 			for step := range work {
 				copied, cloned, err := step.execute(f)
-				if err != nil {
-					return err
-				}
+					if err != nil {
+						return err
+					}
 				// Update byte-level stats
-				stats.addBytesCopied(copied)
-				stats.addBytesCloned(cloned)
+						stats.addBytesCopied(copied)
+						stats.addBytesCloned(cloned)
 				// Update chunk-level stats
 				step.source.recordStats(stats, step.numChunks)
 				select {
 				case completed <- step:
 				case <-ctx.Done():
 					return ctx.Err()
-				}
-			}
+					}
+						}
 			return nil
 		})
-	}
+								}
 
 	// Hand out the steps as they become ready, until all are complete or
 	// a worker failed.
@@ -240,8 +242,8 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 	for _, step := range steps {
 		if step.ready() {
 			queue.push(step)
-		}
-	}
+							}
+						}
 	remaining := len(steps)
 dispatch:
 	for remaining > 0 {
@@ -249,7 +251,7 @@ dispatch:
 		var out chan<- *planStep
 		if next != nil {
 			out = work
-		}
+					}
 		select {
 		case out <- next:
 			queue.pop()
@@ -264,10 +266,10 @@ dispatch:
 				if b.ready() {
 					queue.push(b)
 				}
-			}
+				}
 		case <-ctx.Done():
 			break dispatch
-		}
+				}
 	}
 	close(work)
 
@@ -277,7 +279,7 @@ dispatch:
 	err = g.Wait()
 	if err == nil && remaining > 0 {
 		err = ctx.Err()
-	}
+			}
 
 	// A seed file that was written to while it was read may have been copied
 	// into the target in its new state. Check the output and take the chunks
@@ -287,9 +289,9 @@ dispatch:
 			Log.WithField("seeds", changed).Warn("Seeds changed during assembly, verifying the output")
 			if err := backfill(name, idx, s, options.N, stats); err != nil {
 				return stats, err
+				}
 			}
 		}
-	}
 
 	// Shrink the file now that all in-place reads are complete.
 	if err == nil && shrinkAfter {

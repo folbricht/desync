@@ -15,6 +15,7 @@ import (
 
 type extractOptions struct {
 	cmdStoreOptions
+	cmdChunkerOptions
 	stores                 []string
 	cache                  string
 	seeds                  []string
@@ -73,6 +74,7 @@ afterwards and chunks that don't match are taken from the store.`,
 	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")
 	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print extraction statistics to stdout when done")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
+	addChunkerOptions(&opt.cmdChunkerOptions, flags)
 	return cmd
 }
 
@@ -136,7 +138,12 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 	} else if opt.regenerateInvalidSeeds {
 		invalidSeedAction = desync.InvalidSeedActionRegenerate
 	}
-	assembleOpt := desync.AssembleOptions{N: workers, InvalidSeedAction: invalidSeedAction}
+	assembleOpt := desync.AssembleOptions{
+		N:                 workers,
+		InvalidSeedAction: invalidSeedAction,
+		ChunkerName:       opt.cmdChunkerOptions.name,
+		ChunkerOptions:    opt.cmdChunkerOptions.options,
+	}
 
 	var stats *desync.ExtractStats
 	if opt.inPlace {
