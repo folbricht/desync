@@ -98,7 +98,7 @@ func TestExtract(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			if _, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
-				AssembleOptions{10, InvalidSeedActionBailOut},
+				AssembleOptions{10, InvalidSeedActionBailOut, "", ""},
 			); err != nil {
 				t.Fatal(err)
 			}
@@ -226,7 +226,7 @@ func TestSeed(t *testing.T) {
 			}
 
 			if _, err := AssembleFile(context.Background(), dst, dstIndex, s, seeds,
-				AssembleOptions{10, InvalidSeedActionBailOut},
+				AssembleOptions{10, InvalidSeedActionBailOut, "", ""},
 			); err != nil {
 				t.Fatal(err)
 			}
@@ -323,7 +323,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 
 			// Extract the file
 			stats, err := AssembleFile(context.Background(), dst, idx, s, nil,
-				AssembleOptions{1, InvalidSeedActionBailOut},
+				AssembleOptions{1, InvalidSeedActionBailOut, "", ""},
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -387,7 +387,7 @@ func TestExtractNullsOverExistingFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(out, garbage, 0644))
 
 	_, err = AssembleFile(context.Background(), out, index, s, nil,
-		AssembleOptions{10, InvalidSeedActionBailOut})
+		AssembleOptions{10, InvalidSeedActionBailOut, "", ""})
 	require.NoError(t, err)
 
 	got, err := os.ReadFile(out)
@@ -433,7 +433,7 @@ func TestExtractEmptyIndex(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = AssembleFile(context.Background(), out, index, store, nil,
-		AssembleOptions{10, InvalidSeedActionBailOut})
+		AssembleOptions{10, InvalidSeedActionBailOut, "", ""})
 	require.NoError(t, err)
 
 	b, err := os.ReadFile(out)
@@ -468,7 +468,7 @@ func TestExtractWithNonStaticSeeds(t *testing.T) {
 	err = plan.Validate(context.Background(), n, NullProgressBar{})
 	require.NoError(t, err)
 
-	options := AssembleOptions{n, InvalidSeedActionRegenerate}
+	options := AssembleOptions{n, InvalidSeedActionRegenerate, "", ""}
 	_, err = AssembleFile(context.Background(), out, index, store, seeds, options)
 	require.NoError(t, err)
 

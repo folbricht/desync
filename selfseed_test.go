@@ -100,7 +100,7 @@ func TestSelfSeed(t *testing.T) {
 
 			// Extract the file
 			stats, err := AssembleFile(context.Background(), dst, idx, s, nil,
-				AssembleOptions{1, InvalidSeedActionBailOut},
+				AssembleOptions{1, InvalidSeedActionBailOut, "", ""},
 			)
 			require.NoError(t, err)
 

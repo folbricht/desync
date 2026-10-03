@@ -79,7 +79,7 @@ func (s *selfSeed) getChunk(id ChunkID) SeedSegment {
 	return newFileSeedSegment(s.file, s.index.Chunks[first:first+1], s.canReflink)
 }
 
-func (s *selfSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
+func (s *selfSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int, chunkerName string, chunkerOptions string) error {
 	panic("A selfSeed can't be regenerated")
 }
 

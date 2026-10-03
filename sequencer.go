@@ -2,8 +2,9 @@ package desync
 
 import (
 	"context"
-	"golang.org/x/sync/errgroup"
 	"os"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // SeedSequencer is used to find sequences of chunks from seed files when assembling
@@ -85,11 +86,11 @@ func (s SeedSegmentCandidate) isFileSeed() bool {
 }
 
 // RegenerateInvalidSeeds regenerates the index to match the unexpected seed content
-func (r *SeedSequencer) RegenerateInvalidSeeds(ctx context.Context, n int, attempt int) error {
+func (r *SeedSequencer) RegenerateInvalidSeeds(ctx context.Context, n int, attempt int, chunkerName string, chunkerOptions string) error {
 	seedNumber := 1
 	for _, s := range r.seeds {
 		if s.IsInvalid() {
-			if err := s.RegenerateIndex(ctx, n, attempt, seedNumber); err != nil {
+			if err := s.RegenerateIndex(ctx, n, attempt, seedNumber, chunkerName, chunkerOptions); err != nil {
 				return err
 			}
 			seedNumber += 1
