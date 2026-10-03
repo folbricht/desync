@@ -69,13 +69,14 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 		switch kv[0] {
 		case "segmentsSource":
 			options.segmentsSource = kv[1]
-			break
 		case "segmentsSourceFormat":
 			options.segmentsSourceFormat = kv[1]
-			break
+
+		case "subchunker":
+			options.subchunker = kv[1]
+
 		case "mergeSmallSegments":
 			options.mergeSmallSegments = !(kv[1] == "false" || kv[1] == "0")
-			break
 		case "smallSegmentBreakpoint":
 			var kbValue int
 			kbValue, err = strconv.Atoi(kv[1])
@@ -84,7 +85,10 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 			}
 
 			options.smallSegmentBreakpoint = uint32(kbValue * 1024)
-			break
+
+		default:
+			err = fmt.Errorf("unknown key in chunker options: '%s'", kv[0])
+			return
 		}
 	}
 	return
@@ -107,7 +111,13 @@ func NewSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChu
 	}
 
 	subchunkerDesc := FindChunkerByName(segmentAwareChunkerOptions.subchunker)
-	// TODO: check subchunker window size?
+	if subchunkerDesc == nil {
+		return nil, fmt.Errorf("unknown subchunker: '%s'", segmentAwareChunkerOptions.subchunker)
+	}
+	if uint64(subchunkerDesc.WindowSize) > params.Min {
+		return nil, fmt.Errorf("subchunker '%s' WindowSize %v is greater than min chunk size requested",
+			segmentAwareChunkerOptions.subchunker, subchunkerDesc.WindowSize)
+	}
 	subchunkerParams := ChunkerParams{params.Min, params.Avg, params.Max, ""}
 	subchunker, err := subchunkerDesc.Constructor(nil, subchunkerParams)
 	if err != nil {
@@ -250,14 +260,19 @@ func (c *SegmentAwareChunker) fillSegmentSizes() error {
 			return fmt.Errorf("fillSegmentSizes: no segmentsSource provided")
 		}
 
-		// Start reading from the beginning, but reset read position after finishing.
-		curPos, err := fileBeingChunked.Seek(0, 1)
-		if err != nil {
+		// Start reading from the beginning, reseek after finishing.
+		// BUG: can't handle being fed segment sizes "from the start of the file", while actual reader being offset.
+		// So just seek to 0 here!
+
+		// curPos, err := fileBeingChunked.Seek(0, 1)
+		// if err != nil {
+		// 	return fmt.Errorf("fillSegmentSizes: %w", err)
+		// }
+		defer func() { _, _ = fileBeingChunked.Seek(0, 0) }()
+
+		if _, err := fileBeingChunked.Seek(0, 0); err != nil {
 			return fmt.Errorf("fillSegmentSizes: %w", err)
 		}
-		defer fileBeingChunked.Seek(curPos, 0)
-
-		fileBeingChunked.Seek(curPos, 0)
 		chunkSourceR = fileBeingChunked
 		segmentSourceExt = fileBeingChunkedExt
 	}
@@ -361,7 +376,7 @@ func (c *SegmentAwareChunker) nextFromMergedSegments() (uint64, []byte, error) {
 	for segmentsConsumed < c.mergedSegmentsCount {
 		sizeConsumed += c.segmentSizes[firstMergedSegmentIdx+segmentsConsumed]
 		segmentsConsumed++
-		if sizeConsumed > uint64(subchunkLen) {
+		if sizeConsumed >= uint64(subchunkLen) {
 			break
 		}
 	}

@@ -23,13 +23,16 @@ func readSegmensFromCSV(reader io.Reader) ([]uint64, error) {
 		if err == io.EOF {
 			return result, nil
 		}
+		if err != nil {
+			return nil, fmt.Errorf("readSegmensFromCSV: %w", err)
+		}
 
 		intValue, err := strconv.Atoi(strValues[0])
 		if err != nil {
-			return nil, fmt.Errorf("fillSegmentSizes: %w", err)
+			return nil, fmt.Errorf("readSegmensFromCSV: %w", err)
 		}
 		if intValue <= 0 {
-			return nil, fmt.Errorf("fillSegmentSizes: invalid segment size '%v'", strValues[0])
+			return nil, fmt.Errorf("readSegmensFromCSV: invalid segment size '%v'", strValues[0])
 		}
 		result = append(result, uint64(intValue))
 	}

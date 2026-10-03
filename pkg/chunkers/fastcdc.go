@@ -123,7 +123,7 @@ func (c *FastCDCChunker) Next() (uint64, []byte, error) {
 
 	// Allow boundary exactly at c.min
 	if (hValue & c.lazyMask) == 0 {
-		c.Split(int(c.min), nil)
+		return c.Split(int(c.min), nil)
 	}
 
 	// Lazy and eager loops.
