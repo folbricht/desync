@@ -24,8 +24,7 @@ import (
 func IndexFromFile(ctx context.Context,
 	name string,
 	n int,
-	chunkerName string,
-	chunkerParams chunkers.ChunkerParams,
+	chunkingSettings chunkers.ChunkingSettings,
 	pb ProgressBar,
 ) (Index, ChunkingStats, error) {
 
@@ -38,9 +37,9 @@ func IndexFromFile(ctx context.Context,
 	index := Index{
 		Index: FormatIndex{
 			FeatureFlags: CaFormatExcludeFile | CaFormatExcludeNoDump | digestFeatureFlag(),
-			ChunkSizeMin: chunkerParams.Min,
-			ChunkSizeAvg: chunkerParams.Avg,
-			ChunkSizeMax: chunkerParams.Max,
+			ChunkSizeMin: chunkingSettings.ChunkerParams.Min,
+			ChunkSizeAvg: chunkingSettings.ChunkerParams.Avg,
+			ChunkSizeMax: chunkingSettings.ChunkerParams.Max,
 		},
 	}
 
@@ -67,18 +66,15 @@ func IndexFromFile(ctx context.Context,
 	}
 
 	// Adjust n if it's a small file that doesn't have n*max bytes
-	nn := size/chunkerParams.Max + 1
+	nn := size/chunkingSettings.ChunkerParams.Max + 1
 	if nn < uint64(n) {
 		n = int(nn)
 	}
 	span := size / uint64(n) // initial spacing between chunkers
 
-	if chunkerName == "" {
-		chunkerName = chunkers.DefaultChunkerName
-	}
-	chunkerDesc := chunkers.FindChunkerByName(chunkerName)
+	chunkerDesc := chunkers.FindChunkerByName(chunkingSettings.ChunkerName)
 	if chunkerDesc == nil {
-		return index, stats, fmt.Errorf("unknown chunker '%s'", chunkerName)
+		return index, stats, fmt.Errorf("unknown chunker '%s'", chunkingSettings.ChunkerName)
 	}
 
 	// Can we paralellize that chunker?
@@ -94,7 +90,7 @@ func IndexFromFile(ctx context.Context,
 	// Null chunks is produced when a large section of null bytes is chunked. There are no
 	// split points in those sections so it's always of max chunk size. Used for optimizations
 	// when chunking files with large empty sections.
-	nullChunk := NewNullChunk(chunkerParams.Max)
+	nullChunk := NewNullChunk(chunkingSettings.ChunkerParams.Max)
 
 	// Create/initialize the workers
 	worker := make([]*pChunker, n)
@@ -104,8 +100,8 @@ func IndexFromFile(ctx context.Context,
 			return index, stats, err
 		}
 		defer f.Close()
-		start := span * uint64(i)                     // starting position for this chunker
-		mChunks := (size-start)/chunkerParams.Min + 1 // max # of chunks this worker can produce
+		start := span * uint64(i)                                      // starting position for this chunker
+		mChunks := (size-start)/chunkingSettings.ChunkerParams.Min + 1 // max # of chunks this worker can produce
 		s, err := f.Seek(int64(start), io.SeekStart)
 		if err != nil {
 			return index, stats, err
@@ -113,7 +109,7 @@ func IndexFromFile(ctx context.Context,
 		if uint64(s) != start {
 			return index, stats, fmt.Errorf("requested seek to position %d, but got %d", start, s)
 		}
-		c, err := chunkers.NewChunker(chunkerName, f, chunkerParams)
+		c, err := chunkers.NewChunkerFromSettings(f, chunkingSettings)
 		if err != nil {
 			return index, stats, err
 		}

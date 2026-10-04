@@ -120,7 +120,6 @@ type BuzhashChunker struct {
 	hRot        int    // -k, right-rotation by the power-of-2 factor
 }
 
-// NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
 func NewBuzhashChunker(r io.Reader, params ChunkerParams) (*BuzhashChunker, error) {
 
 	disc := discriminatorFromAvg(params.Avg)

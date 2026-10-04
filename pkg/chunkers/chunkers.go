@@ -57,6 +57,15 @@ func DefaultChunkerParams() ChunkerParams {
 	}
 }
 
+type ChunkingSettings struct {
+	ChunkerName string
+	ChunkerParams
+}
+
+func DefaultChunkingSettings() ChunkingSettings {
+	return ChunkingSettings{ChunkerName: DefaultChunkerName, ChunkerParams: DefaultChunkerParams()}
+}
+
 type ChunkerConstructor func(r io.Reader, params ChunkerParams) (Chunker, error)
 
 type ChunkerDesc struct {
@@ -131,6 +140,10 @@ func NewChunker(name string, r io.Reader, params ChunkerParams) (Chunker, error)
 	}
 
 	return chunkerDesc.Constructor(r, params)
+}
+
+func NewChunkerFromSettings(r io.Reader, settings ChunkingSettings) (Chunker, error) {
+	return NewChunker(settings.ChunkerName, r, settings.ChunkerParams)
 }
 
 func RegisteredNames() (result []string) {

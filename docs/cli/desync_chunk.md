@@ -21,9 +21,11 @@ desync chunk <file> [flags]
 ### Options
 
 ```
-  -m, --chunk-size string   min:avg:max chunk size in kb (default "16:64:256")
-  -h, --help                help for chunk
-  -S, --start uint          starting position in bytes
+  -m, --chunk-size string        min:avg:max chunk size in kb (default "16:64:256")
+      --chunker string           chunking algorithm to use, pick from [buzhash fastcdc segmentaware] (default "buzhash")
+      --chunker-options string   additional chunker-specific options
+  -h, --help                     help for chunk
+  -S, --start uint               starting position in bytes
 ```
 
 ### Options inherited from parent commands

@@ -11,29 +11,41 @@ import (
 	"github.com/folbricht/desync/pkg/chunkers"
 )
 
+// Controls how to regenerate invalid index.
+type IndexRegenerationSettings struct {
+	chunkers.ChunkingSettings
+}
+
 // FileSeed is used to copy or clone blocks from an existing index+blob during
 // file extraction.
 type FileSeed struct {
-	srcFile    string
-	index      Index
-	pos        map[ChunkID][]int
-	canReflink bool
-	isInvalid  bool
-	mu         sync.RWMutex
+	srcFile            string
+	index              Index
+	indexRegenSettings IndexRegenerationSettings
+	pos                map[ChunkID][]int
+	canReflink         bool
+	isInvalid          bool
+	mu                 sync.RWMutex
 }
 
 // NewIndexSeed initializes a new seed that uses an existing index and its blob
-func NewIndexSeed(dstFile string, srcFile string, index Index) (*FileSeed, error) {
+func NewIndexSeed(dstFile string, srcFile string, index Index, regenSettings IndexRegenerationSettings) (*FileSeed, error) {
 	s := FileSeed{
-		srcFile:    srcFile,
-		pos:        make(map[ChunkID][]int),
-		index:      index,
-		canReflink: CanClone(dstFile, srcFile),
-		isInvalid:  false,
+		srcFile:            srcFile,
+		pos:                make(map[ChunkID][]int),
+		index:              index,
+		indexRegenSettings: regenSettings,
+		canReflink:         CanClone(dstFile, srcFile),
+		isInvalid:          false,
 	}
 	for i, c := range s.index.Chunks {
 		s.pos[c.ID] = append(s.pos[c.ID], i)
 	}
+	// Make sure chunking sizes match with provided index.
+	// TODO: would be nice if IndexRegenerationSettings could be restored from index entirely.
+	s.indexRegenSettings.ChunkingSettings.ChunkerParams.Min = s.index.Index.ChunkSizeMin
+	s.indexRegenSettings.ChunkingSettings.ChunkerParams.Avg = s.index.Index.ChunkSizeAvg
+	s.indexRegenSettings.ChunkingSettings.ChunkerParams.Max = s.index.Index.ChunkSizeMax
 	return &s, nil
 }
 
@@ -81,17 +93,10 @@ func (s *FileSeed) LongestMatchWith(chunks []IndexChunk) (int, SeedSegment) {
 	return max, newFileSeedSegment(s.srcFile, match, s.canReflink)
 }
 
-func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int, chunkerName string, chunkerOptions string) error {
+func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
 	chunkingPrefix := fmt.Sprintf("Attempt %d: Chunking Seed %d ", attempt, seedNumber)
 
-	index, _, err := IndexFromFile(ctx, s.srcFile, n,
-		chunkerName,
-		chunkers.ChunkerParams{
-			Min:     s.index.Index.ChunkSizeMin,
-			Avg:     s.index.Index.ChunkSizeAvg,
-			Max:     s.index.Index.ChunkSizeMax,
-			Options: chunkerOptions,
-		}, NewProgressBar(chunkingPrefix))
+	index, _, err := IndexFromFile(ctx, s.srcFile, n, s.indexRegenSettings.ChunkingSettings, NewProgressBar(chunkingPrefix))
 	if err != nil {
 		return err
 	}

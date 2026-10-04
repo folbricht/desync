@@ -192,13 +192,22 @@ func addChunkerOptions(o *cmdChunkerOptions, f *pflag.FlagSet) {
 	f.StringVar(&o.options, "chunker-options", "", "additional chunker-specific options")
 }
 
-func (o *cmdChunkerOptions) ToChunkerParams() (result chunkers.ChunkerParams, err error) {
-	result.Min, result.Avg, result.Max, err = parseChunkSizeParam(o.sizes)
-	if err != nil {
-		return
+func (o *cmdChunkerOptions) ToChunkingSettings() (result chunkers.ChunkingSettings, err error) {
+	result = chunkers.DefaultChunkingSettings()
+
+	if o.name != "" {
+		result.ChunkerName = o.name
+	}
+	if o.sizes != "" {
+		result.ChunkerParams.Min, result.ChunkerParams.Avg, result.ChunkerParams.Max, err = parseChunkSizeParam(o.sizes)
+		if err != nil {
+			return
+		}
 	}
 
-	result.Options = o.options
+	if o.options != "" {
+		result.ChunkerParams.Options = o.options
+	}
 	return
 }
 

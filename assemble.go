@@ -25,8 +25,6 @@ const (
 type AssembleOptions struct {
 	N                 int
 	InvalidSeedAction InvalidSeedAction
-	ChunkerName       string
-	ChunkerOptions    string
 }
 
 // writeChunk tries to write a chunk by looking at the self seed, if it is already existing in the
@@ -276,7 +274,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 				return stats, err
 			case InvalidSeedActionRegenerate:
 				Log.WithError(err).Info("Unable to use one of the chosen seeds, regenerating it")
-				if err := seq.RegenerateInvalidSeeds(ctx, options.N, attempt, options.ChunkerName, options.ChunkerOptions); err != nil {
+				if err := seq.RegenerateInvalidSeeds(ctx, options.N, attempt); err != nil {
 					return stats, err
 				}
 			case InvalidSeedActionSkip:

@@ -9,13 +9,13 @@ import (
 	"strings"
 
 	"github.com/folbricht/desync"
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/folbricht/tempfile"
 	"github.com/spf13/cobra"
 )
 
 type extractOptions struct {
 	cmdStoreOptions
-	cmdChunkerOptions
 	stores                 []string
 	cache                  string
 	seeds                  []string
@@ -24,6 +24,7 @@ type extractOptions struct {
 	printStats             bool
 	skipInvalidSeeds       bool
 	regenerateInvalidSeeds bool
+	indexRegenChunker      string
 }
 
 func newExtractCommand(ctx context.Context) *cobra.Command {
@@ -69,11 +70,13 @@ will be taken from the self seed, or the store, instead of aborting.`,
 	flags.StringSliceVar(&opt.seedDirs, "seed-dir", nil, "directory with seed index files")
 	flags.BoolVar(&opt.skipInvalidSeeds, "skip-invalid-seeds", false, "skip seeds with invalid chunks")
 	flags.BoolVar(&opt.regenerateInvalidSeeds, "regenerate-invalid-seeds", false, "regenerate seed indexes with invalid chunks")
+	// TODO: pass chunker options too. Pretty shure all of that should be done per-seed, or stored as some extended info in .caibx.
+	flags.StringVar(&opt.indexRegenChunker, "index-regeneration-chunker", chunkers.DefaultChunkerName, "chunker to use for seed regeneration")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")
 	flags.BoolVarP(&opt.printStats, "print-stats", "", false, "print extraction statistics to stdout when done")
 	addStoreOptions(&opt.cmdStoreOptions, flags)
-	addChunkerOptions(&opt.cmdChunkerOptions, flags)
+
 	return cmd
 }
 
@@ -117,14 +120,18 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 		return err
 	}
 
+	indexRegenSettings := desync.IndexRegenerationSettings{ChunkingSettings: chunkers.ChunkingSettings{
+		ChunkerName: opt.indexRegenChunker, ChunkerParams: chunkers.DefaultChunkerParams(),
+	}}
+
 	// Build a list of seeds if any were given in the command line
-	seeds, err := readSeeds(outFile, opt.seeds, opt.cmdStoreOptions)
+	seeds, err := readSeeds(outFile, opt.seeds, opt.cmdStoreOptions, indexRegenSettings)
 	if err != nil {
 		return err
 	}
 
 	// Expand the list of seeds with all found in provided directories
-	dSeeds, err := readSeedDirs(outFile, inFile, opt.seedDirs, opt.cmdStoreOptions)
+	dSeeds, err := readSeedDirs(outFile, inFile, opt.seedDirs, opt.cmdStoreOptions, indexRegenSettings)
 	if err != nil {
 		return err
 	}
@@ -140,8 +147,6 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 	assembleOpt := desync.AssembleOptions{
 		N:                 workers,
 		InvalidSeedAction: invalidSeedAction,
-		ChunkerName:       opt.cmdChunkerOptions.name,
-		ChunkerOptions:    opt.cmdChunkerOptions.options,
 	}
 
 	var stats *desync.ExtractStats
@@ -186,7 +191,7 @@ func writeInplace(ctx context.Context, name string, idx desync.Index, s desync.S
 	return desync.AssembleFile(ctx, name, idx, s, seeds, assembleOpt)
 }
 
-func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desync.Seed, error) {
+func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions, indexRegenSettings desync.IndexRegenerationSettings) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	for _, seedInfo := range seedsInfo {
 		var (
@@ -214,7 +219,7 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desy
 			return nil, err
 		}
 
-		seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
+		seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex, indexRegenSettings)
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +228,7 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions) ([]desy
 	return seeds, nil
 }
 
-func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOptions) ([]desync.Seed, error) {
+func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOptions, indexRegenSettings desync.IndexRegenerationSettings) ([]desync.Seed, error) {
 	var seeds []desync.Seed
 	absIn, err := filepath.Abs(dstIdxFile)
 	if err != nil {
@@ -258,7 +263,7 @@ func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOption
 			if err != nil {
 				return err
 			}
-			seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex)
+			seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex, indexRegenSettings)
 			if err != nil {
 				return err
 			}

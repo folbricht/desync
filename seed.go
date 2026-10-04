@@ -17,7 +17,7 @@ var cloneRange = CloneRange
 // existing chunks or blocks into the target from.
 type Seed interface {
 	LongestMatchWith(chunks []IndexChunk) (int, SeedSegment)
-	RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int, chunkerName string, chunkerOptions string) error
+	RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error
 	SetInvalid(value bool)
 	IsInvalid() bool
 }
