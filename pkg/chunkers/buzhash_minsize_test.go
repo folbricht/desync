@@ -44,7 +44,7 @@ func TestBuzhashBoundaryAtMinSize(t *testing.T) {
 	rng.Read(in)
 	copy(in[min-BuzhashWindowSize:min], window)
 
-	c, err := NewChunker(DefaultChunkerName, bytes.NewReader(in), ChunkerParams{min, avg, max, ""})
+	c, err := NewChunker("buzhash", bytes.NewReader(in), ChunkerParams{min, avg, max, ""})
 	require.NoError(t, err)
 
 	_, chunk, err := c.Next()

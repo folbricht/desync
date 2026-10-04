@@ -94,7 +94,7 @@ func (s *nullChunkSeed) GetSegment(pos, n int) SeedSegment {
 	}
 }
 
-func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int, chunkerName string, chunkerOptions string) error {
+func (s *nullChunkSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
 	panic("A nullseed can't be regenerated")
 }
 

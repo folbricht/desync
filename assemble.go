@@ -26,8 +26,6 @@ const (
 type AssembleOptions struct {
 	N                 int
 	InvalidSeedAction InvalidSeedAction
-	ChunkerName       string
-	ChunkerOptions    string
 }
 
 // AssembleFile re-assembles a file based on a list of index chunks. It runs n

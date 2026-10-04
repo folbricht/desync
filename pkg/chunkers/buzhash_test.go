@@ -44,7 +44,7 @@ func TestBuzhashLargeFile(t *testing.T) {
 		{Start: 982644, Size: 65932, ID: "a8bfdadaecbee1ed16ce23d8bf771d1b3fbca2e631fc71b5adb3846c1bb2d542"},
 	}
 
-	c, err := NewChunker(DefaultChunkerName, f, DefaultChunkerParams())
+	c, err := NewChunker("buzhash", f, DefaultChunkerParams())
 	require.NoError(t, err)
 
 	for i, e := range expected {
@@ -69,14 +69,14 @@ var (
 )
 
 // TestBuzhashBoundaryTest verifies that the division-free boundary test built
-// from the precomputed constants in NewChunker behaves exactly like the
+// from the precomputed constants in buzhash chunker behaves exactly like the
 // plain "hValue % d == d-1" for all edge cases, in particular the values
 // where hValue+1 or hValue-(d-1) would wrap around 2^32. An earlier version
 // of the fast test declared a false boundary for one hash value per
 // discriminator (e.g. 14413 for the default 64KB average chunk size).
 func TestBuzhashBoundaryTest(t *testing.T) {
 	for _, avg := range []uint64{16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024} {
-		chunker, err := NewChunker(DefaultChunkerName, bytes.NewReader(nil), ChunkerParams{avg / 4, avg, avg * 4, ""})
+		chunker, err := NewChunker("buzhash", bytes.NewReader(nil), ChunkerParams{avg / 4, avg, avg * 4, ""})
 		require.NoError(t, err)
 		c := chunker.(*BuzhashChunker)
 		d := c.hDiscriminator

@@ -45,7 +45,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 		return err
 	}
 
-	chunkerParams, err := opt.cmdChunkerOptions.ToChunkerParams()
+	chunkingSettings, err := opt.cmdChunkerOptions.ToChunkingSettings()
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func runMake(ctx context.Context, opt makeOptions, args []string) error {
 
 	// Split up the file and create and index from it
 	pb := desync.NewProgressBar("Chunking ")
-	index, stats, err := desync.IndexFromFile(ctx, dataFile, opt.cpuWorkers(), opt.cmdChunkerOptions.name, chunkerParams, pb)
+	index, stats, err := desync.IndexFromFile(ctx, dataFile, opt.cpuWorkers(), chunkingSettings, pb)
 	if err != nil {
 		return err
 	}

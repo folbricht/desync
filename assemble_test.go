@@ -52,8 +52,7 @@ func TestExtract(t *testing.T) {
 		context.Background(),
 		in,
 		10,
-		chunkers.DefaultChunkerName,
-		chunkers.DefaultChunkerParams(),
+		chunkers.DefaultChunkingSettings(),
 		NewProgressBar(""),
 	)
 	require.NoError(t, err)
@@ -98,7 +97,7 @@ func TestExtract(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			_, err := AssembleFile(context.Background(), test.outfile, index, test.store, nil,
-				AssembleOptions{10, InvalidSeedActionBailOut, "", ""},
+				AssembleOptions{10, InvalidSeedActionBailOut},
 			)
 			require.NoError(t, err)
 
@@ -182,8 +181,7 @@ func TestSeed(t *testing.T) {
 				context.Background(),
 				dst,
 				10,
-				chunkers.DefaultChunkerName,
-				chunkers.DefaultChunkerParams(),
+				chunkers.DefaultChunkingSettings(),
 				NewProgressBar(""),
 			)
 			require.NoError(t, err)
@@ -201,8 +199,7 @@ func TestSeed(t *testing.T) {
 					context.Background(),
 					seedFile,
 					10,
-					chunkers.DefaultChunkerName,
-					chunkers.DefaultChunkerParams(),
+					chunkers.DefaultChunkingSettings(),
 					NewProgressBar(""),
 				)
 				require.NoError(t, err)
@@ -212,7 +209,7 @@ func TestSeed(t *testing.T) {
 			}
 
 			_, err = AssembleFile(context.Background(), dst, dstIndex, s, seeds,
-				AssembleOptions{10, InvalidSeedActionBailOut, "", ""},
+				AssembleOptions{10, InvalidSeedActionBailOut},
 			)
 			require.NoError(t, err)
 			b, err := os.ReadFile(dst)
@@ -300,7 +297,7 @@ func TestSelfSeedInPlace(t *testing.T) {
 
 			// Extract the file
 			stats, err := AssembleFile(context.Background(), dst, idx, s, nil,
-				AssembleOptions{1, InvalidSeedActionBailOut, "", ""},
+				AssembleOptions{1, InvalidSeedActionBailOut},
 			)
 			require.NoError(t, err)
 
@@ -338,8 +335,7 @@ func TestExtractNullsOverExistingFile(t *testing.T) {
 		context.Background(),
 		in,
 		10,
-		chunkers.DefaultChunkerName,
-		chunkers.DefaultChunkerParams(),
+		chunkers.DefaultChunkingSettings(),
 		NewProgressBar(""),
 	)
 	require.NoError(t, err)
@@ -356,7 +352,7 @@ func TestExtractNullsOverExistingFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(out, garbage, 0644))
 
 	_, err = AssembleFile(context.Background(), out, index, s, nil,
-		AssembleOptions{10, InvalidSeedActionBailOut, "", ""})
+		AssembleOptions{10, InvalidSeedActionBailOut})
 	require.NoError(t, err)
 
 	got, err := os.ReadFile(out)
@@ -908,7 +904,7 @@ func TestExtractEmptyIndex(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = AssembleFile(context.Background(), out, index, store, nil,
-		AssembleOptions{10, InvalidSeedActionBailOut, "", ""})
+		AssembleOptions{10, InvalidSeedActionBailOut})
 	require.NoError(t, err)
 
 	b, err := os.ReadFile(out)

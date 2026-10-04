@@ -147,11 +147,11 @@ func runTar(ctx context.Context, opt tarOptions, args []string) error {
 	defer s.Close()
 
 	// Prepare the chunker
-	chunkerParams, err := opt.cmdChunkerOptions.ToChunkerParams()
+	chunkingSettings, err := opt.cmdChunkerOptions.ToChunkingSettings()
 	if err != nil {
 		return err
 	}
-	c, err := chunkers.NewChunker(opt.cmdChunkerOptions.name, r, chunkerParams)
+	c, err := chunkers.NewChunkerFromSettings(r, chunkingSettings)
 	if err != nil {
 		return err
 	}

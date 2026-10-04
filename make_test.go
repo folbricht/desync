@@ -40,7 +40,7 @@ func TestParallelChunking(t *testing.T) {
 
 			// Chunk the file single stream first to use the results as reference for
 			// the parallel chunking
-			c, err := chunkers.NewChunker(chunkers.DefaultChunkerName, bytes.NewReader(b), chunkers.DefaultChunkerParams())
+			c, err := chunkers.NewChunkerFromSettings(bytes.NewReader(b), chunkers.DefaultChunkingSettings())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,8 +64,7 @@ func TestParallelChunking(t *testing.T) {
 						context.Background(),
 						f,
 						n,
-						chunkers.DefaultChunkerName,
-						chunkers.DefaultChunkerParams(),
+						chunkers.DefaultChunkingSettings(),
 						NewProgressBar(""),
 					)
 					if err != nil {
@@ -111,8 +110,7 @@ func TestIndexFromFileStats(t *testing.T) {
 						context.Background(),
 						f,
 						n,
-						chunkers.DefaultChunkerName,
-						chunkers.DefaultChunkerParams(),
+						chunkers.DefaultChunkingSettings(),
 						NewProgressBar(""),
 					)
 					require.NoError(t, err)
@@ -164,8 +162,7 @@ func TestIndexFromFileDigestFlag(t *testing.T) {
 				context.Background(),
 				f,
 				2,
-				chunkers.DefaultChunkerName,
-				chunkers.DefaultChunkerParams(),
+				chunkers.DefaultChunkingSettings(),
 				NewProgressBar(""),
 			)
 			require.NoError(t, err)

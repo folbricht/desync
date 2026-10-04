@@ -210,7 +210,7 @@ func splitBlob(b *testing.B) {
 	defer f.Close()
 
 	// Create a chunker
-	c, err := chunkers.NewChunker(chunkers.DefaultChunkerName, f, chunkers.DefaultChunkerParams())
+	c, err := chunkers.NewChunkerFromSettings(f, chunkers.DefaultChunkingSettings())
 	if err != nil {
 		b.Fatal(err)
 	}
