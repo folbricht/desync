@@ -5,7 +5,10 @@ import (
 	"sync"
 )
 
-// FileSeed is used to populate a contiguous seed during extraction in order
+// TODO: selfSeed doesn't have a LongestMatchWith!
+// var _ Seed = &selfSeed{}
+
+// selfSeed is used to populate a contiguous seed during extraction in order
 // to copy/clone ranges that were written to the output file earlier. This is
 // to potentially dedup/reflink duplicate chunks or ranges of chunks within the
 // same file.
@@ -79,7 +82,7 @@ func (s *selfSeed) getChunk(id ChunkID) SeedSegment {
 	return newFileSeedSegment(s.file, s.index.Chunks[first:first+1], s.canReflink)
 }
 
-func (s *selfSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int, chunkerName string, chunkerOptions string) error {
+func (s *selfSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
 	panic("A selfSeed can't be regenerated")
 }
 

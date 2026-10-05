@@ -3,6 +3,7 @@ package chunkers
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 
@@ -148,6 +149,35 @@ func testChunkerAdvance(t *testing.T, chunkerName string) {
 
 func TestChunkerAdvance(t *testing.T) {
 	runTestForChunkers(t, testChunkerAdvance)
+}
+
+func TestChunkersContiguous(t *testing.T) {
+	data := make([]byte, 4<<20)
+	rand.New(rand.NewSource(1)).Read(data)
+	for _, chunkerName := range RegisteredNames() {
+		if chunkerName == "segmentaware" {
+			continue // needs a segment source; cover separately
+		}
+		t.Run(chunkerName, func(t *testing.T) {
+			c, err := NewChunker(chunkerName, bytes.NewReader(data),
+				ChunkerParams{Min: 256, Avg: 256 * 4, Max: 256 * 4 * 4})
+			require.NoError(t, err)
+			var pos uint64
+			var out []byte
+			for {
+				start, b, err := c.Next()
+				require.NoError(t, err)
+				if len(b) == 0 {
+					break
+				}
+				require.Equal(t, pos, start, "gap or overlap")
+				require.LessOrEqual(t, len(b), 4096)
+				pos += uint64(len(b))
+				out = append(out, b...)
+			}
+			require.Equal(t, data, out)
+		})
+	}
 }
 
 func join(slices ...[]byte) []byte {

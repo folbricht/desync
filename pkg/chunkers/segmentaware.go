@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path"
 	"strconv"
@@ -78,12 +79,10 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 		case "mergeSmallSegments":
 			options.mergeSmallSegments = !(kv[1] == "false" || kv[1] == "0")
 		case "smallSegmentBreakpoint":
-			var kbValue int
-			kbValue, err = strconv.Atoi(kv[1])
-			if err != nil {
-				return
+			kbValue, err := strconv.ParseUint(kv[1], 10, 32)
+			if err != nil || kbValue > math.MaxUint32/1024 {
+				return options, fmt.Errorf("invalid smallSegmentBreakpoint '%s'", kv[1])
 			}
-
 			options.smallSegmentBreakpoint = uint32(kbValue * 1024)
 
 		default:
@@ -323,20 +322,16 @@ func (c *SegmentAwareChunker) canMergeNextSegment() bool {
 
 func (c *SegmentAwareChunker) mergeMoreSmallSegments() error {
 	for !c.isSegmentsEOF() && c.isNextSegmentSmall() && c.canMergeNextSegment() {
-		readSizeLeft := c.segmentSizes[c.nextSegmentIdx]
-		if readSizeLeft <= 0 {
+		segmentSize := c.segmentSizes[c.nextSegmentIdx]
+		if segmentSize <= 0 {
 			return fmt.Errorf("invalid segment size %v for segmentIdx %v", c.segmentSizes[c.nextSegmentIdx], c.nextSegmentIdx)
 		}
 
-		for readSizeLeft > 0 {
-			n, err := c.r.Read(c.mergedSegments[c.mergedSegmentsSize:int(c.mergedSegmentsSize+readSizeLeft)])
-			// EOF here is a real error condition: we rely on provided segment sizes being correct.
-			if err != nil {
-				return err
-			}
-			readSizeLeft -= uint64(n)
-			c.mergedSegmentsSize += uint64(n)
+		_, err := io.ReadFull(c.r, c.mergedSegments[c.mergedSegmentsSize:int(c.mergedSegmentsSize+segmentSize)])
+		if err != nil {
+			return err
 		}
+		c.mergedSegmentsSize += uint64(segmentSize)
 		c.mergedSegmentsCount++
 		c.nextSegmentIdx++
 	}

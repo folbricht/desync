@@ -11,6 +11,8 @@ import (
 	"github.com/folbricht/desync/pkg/chunkers"
 )
 
+var _ Seed = &FileSeed{}
+
 // Controls how to regenerate invalid index.
 type IndexRegenerationSettings struct {
 	chunkers.ChunkingSettings
