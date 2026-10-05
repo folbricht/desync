@@ -7,12 +7,13 @@ import (
 	"os"
 
 	"github.com/folbricht/desync"
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/spf13/cobra"
 )
 
 type chunkOptions struct {
-	chunkSize string
-	startPos  uint64
+	cmdChunkerOptions
+	startPos uint64
 }
 
 func newChunkCommand(ctx context.Context) *cobra.Command {
@@ -33,12 +34,12 @@ chunking parameters before running 'make'.`,
 	}
 	flags := cmd.Flags()
 	flags.Uint64VarP(&opt.startPos, "start", "S", 0, "starting position in bytes")
-	flags.StringVarP(&opt.chunkSize, "chunk-size", "m", "16:64:256", "min:avg:max chunk size in kb")
+	addChunkerOptions(&opt.cmdChunkerOptions, flags)
 	return cmd
 }
 
 func runChunk(ctx context.Context, opt chunkOptions, args []string) error {
-	min, avg, max, err := parseChunkSizeParam(opt.chunkSize)
+	chunkingSettings, err := opt.cmdChunkerOptions.ToChunkingSettings()
 	if err != nil {
 		return err
 	}
@@ -58,9 +59,14 @@ func runChunk(ctx context.Context, opt chunkOptions, args []string) error {
 	if uint64(s) != opt.startPos {
 		return fmt.Errorf("requested seek to position %d, but got %d", opt.startPos, s)
 	}
+	// HACK: segmentaware chunker only supports reading from offset 0, segment sizes should be patched otherwise.
+	// TODO: Chunker.Advance instead of direct file seek here?
+	if opt.startPos != 0 && chunkingSettings.ChunkerName == "segmentaware" {
+		return fmt.Errorf("'segmentaware' chunker doesn't support --start")
+	}
 
 	// Prepare the chunker
-	c, err := desync.NewChunker(f, min, avg, max)
+	c, err := chunkers.NewChunkerFromSettings(f, chunkingSettings)
 	if err != nil {
 		return err
 	}

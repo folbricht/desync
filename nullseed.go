@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 )
 
+var _ Seed = &nullChunkSeed{}
+
 type nullChunkSeed struct {
 	id         ChunkID
 	blockfile  *os.File

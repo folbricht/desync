@@ -52,6 +52,7 @@ desync extract <index> <output> [flags]
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
   -h, --help                                 help for extract
   -k, --in-place                             extract the file in place and keep it in case of error
+      --index-regeneration-chunker string    chunker to use for seed regeneration (default "buzhash")
       --print-stats                          print extraction statistics to stdout when done
       --regenerate-invalid-seeds             regenerate seed indexes with invalid chunks
       --seed strings                         seed indexes

@@ -38,6 +38,7 @@ stores can also be combined into one failover group by separating them with
 * [desync chop](desync_chop.md)	 - Read chunks from a file according to an index
 * [desync chunk](desync_chunk.md)	 - Chunk input file and print chunk boundaries and IDs
 * [desync chunk-server](desync_chunk-server.md)	 - Server for chunks over HTTP(S)
+* [desync chunkers](desync_chunkers.md)	 - Lists available chunkers
 * [desync completion](desync_completion.md)	 - Generate the autocompletion script for the specified shell
 * [desync config](desync_config.md)	 - Show or write config file
 * [desync extract](desync_extract.md)	 - Read an index and build a blob from it

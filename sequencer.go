@@ -2,8 +2,9 @@ package desync
 
 import (
 	"context"
-	"golang.org/x/sync/errgroup"
 	"os"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // SeedSequencer is used to find sequences of chunks from seed files when assembling

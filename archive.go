@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/folbricht/desync/pkg/chunkers"
 )
 
 type Xattrs map[string]string
@@ -257,4 +259,65 @@ loop:
 	}
 
 	return nil, nil
+}
+
+func splitSegmentsFromCatar(r io.Reader) ([]uint64, error) {
+	// Very simple split: every casync format element as a sesparate segment.
+	// TODO: Files are our main concern, so form segments around them, attaching "preamble" to the file body?
+	decoder := NewFormatDecoder(r)
+
+	result := make([]uint64, 0, 1024)
+
+	var entrySize uint64
+	for {
+		c, err := decoder.Next()
+		if err != nil {
+			return nil, fmt.Errorf("splitSegmentsFromCatar: %w", err)
+		}
+
+		switch d := c.(type) {
+		case FormatEntry:
+			entrySize = d.FormatHeader.Size
+		case FormatUser:
+			entrySize = d.FormatHeader.Size
+		case FormatGroup:
+			entrySize = d.FormatHeader.Size
+		case FormatSELinux:
+			entrySize = d.FormatHeader.Size
+		case FormatACLUser:
+			entrySize = d.FormatHeader.Size
+		case FormatACLGroup:
+			entrySize = d.FormatHeader.Size
+		case FormatACLGroupObj:
+			entrySize = d.FormatHeader.Size
+		case FormatACLDefault:
+			entrySize = d.FormatHeader.Size
+		case FormatFCaps:
+			entrySize = d.FormatHeader.Size
+		case FormatPayload:
+			entrySize = d.FormatHeader.Size
+		case FormatXAttr:
+			entrySize = d.FormatHeader.Size
+		case FormatSymlink:
+			entrySize = d.FormatHeader.Size
+		case FormatDevice:
+			entrySize = d.FormatHeader.Size
+		case FormatFilename:
+			entrySize = d.FormatHeader.Size
+		case FormatGoodbye:
+			entrySize = d.FormatHeader.Size
+
+		case nil:
+			return result, nil
+
+		default:
+			return nil, fmt.Errorf("splitSegmentsFromCatar: unsupported element %s in archive", reflect.TypeOf(d))
+		}
+
+		result = append(result, entrySize)
+	}
+}
+
+func init() {
+	chunkers.Segmenters["catar"] = splitSegmentsFromCatar
 }

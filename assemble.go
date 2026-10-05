@@ -3,9 +3,10 @@ package desync
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"os"
 	"slices"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // InvalidSeedAction represents the action that we will take if a seed

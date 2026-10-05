@@ -26,6 +26,8 @@ desync make <index> <file> [flags]
       --ca-cert string                       trust authorities in this file, instead of OS trust store
   -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
   -m, --chunk-size string                    min:avg:max chunk size in kb (default "16:64:256")
+      --chunker string                       chunking algorithm to use, pick from [buzhash fastcdc segmentaware] (default "buzhash")
+      --chunker-options string               additional chunker-specific options
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication
   -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)

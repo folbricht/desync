@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,7 +22,7 @@ func TestExtract(t *testing.T) {
 	for range 4 { // Replicate it a few times to make sure we get dupes
 		b = append(b, b...)
 	}
-	b = append(b, make([]byte, 2*ChunkSizeMaxDefault)...) // want to have at least one null-chunk in the input
+	b = append(b, make([]byte, 2*chunkers.DefaultChunkSizeMax)...) // want to have at least one null-chunk in the input
 	tmp := t.TempDir()
 	in := filepath.Join(tmp, "in")
 	require.NoError(t, os.WriteFile(in, b, 0644))
@@ -34,7 +35,7 @@ func TestExtract(t *testing.T) {
 		context.Background(),
 		in,
 		10,
-		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		chunkers.DefaultChunkingSettings(),
 		NewProgressBar(""),
 	)
 	if err != nil {
@@ -119,10 +120,10 @@ func TestSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	null := make([]byte, 4*ChunkSizeMaxDefault)
-	rand1 := make([]byte, 4*ChunkSizeMaxDefault)
+	null := make([]byte, 4*chunkers.DefaultChunkSizeMax)
+	rand1 := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rand1)
-	rand2 := make([]byte, 4*ChunkSizeMaxDefault)
+	rand2 := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(rand2)
 
 	// Setup a temporary store
@@ -187,7 +188,7 @@ func TestSeed(t *testing.T) {
 				context.Background(),
 				dst,
 				10,
-				ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+				chunkers.DefaultChunkingSettings(),
 				NewProgressBar(""),
 			)
 			if err != nil {
@@ -208,13 +209,13 @@ func TestSeed(t *testing.T) {
 					context.Background(),
 					seedFile,
 					10,
-					ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+					chunkers.DefaultChunkingSettings(),
 					NewProgressBar(""),
 				)
 				if err != nil {
 					t.Fatal(err)
 				}
-				seed, err := NewIndexSeed(dst, seedFile, seedIndex)
+				seed, err := NewIndexSeed(dst, seedFile, seedIndex, IndexRegenerationSettings{})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -351,9 +352,9 @@ func TestSelfSeedInPlace(t *testing.T) {
 // file over an existing file full of non-zero data to confirm the null sections
 // are still written out correctly.
 func TestExtractNullsOverExistingFile(t *testing.T) {
-	data := make([]byte, 4*ChunkSizeMaxDefault)
+	data := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	rand.Read(data)
-	null := make([]byte, 4*ChunkSizeMaxDefault)
+	null := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 	b := join(null, data, null)
 
 	tmp := t.TempDir()
@@ -365,7 +366,7 @@ func TestExtractNullsOverExistingFile(t *testing.T) {
 		context.Background(),
 		in,
 		10,
-		ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault,
+		chunkers.DefaultChunkingSettings(),
 		NewProgressBar(""),
 	)
 	require.NoError(t, err)
@@ -419,9 +420,9 @@ func TestExtractEmptyIndex(t *testing.T) {
 	index := Index{
 		Index: FormatIndex{
 			FeatureFlags: CaFormatSHA512256,
-			ChunkSizeMin: ChunkSizeMinDefault,
-			ChunkSizeAvg: ChunkSizeAvgDefault,
-			ChunkSizeMax: ChunkSizeMaxDefault,
+			ChunkSizeMin: chunkers.DefaultChunkSizeMin,
+			ChunkSizeAvg: chunkers.DefaultChunkSizeAvg,
+			ChunkSizeMax: chunkers.DefaultChunkSizeMax,
 		},
 	}
 	store, err := NewLocalStore(t.TempDir(), StoreOptions{})
@@ -453,7 +454,8 @@ func TestExtractWithNonStaticSeeds(t *testing.T) {
 
 	var seeds []Seed
 	srcIndex := readCaibxFile(t, "testdata/blob2_corrupted.caibx")
-	seed, err := NewIndexSeed(out, "testdata/blob2_corrupted", srcIndex)
+	indexRegenSettings := IndexRegenerationSettings{chunkers.DefaultChunkingSettings()}
+	seed, err := NewIndexSeed(out, "testdata/blob2_corrupted", srcIndex, indexRegenSettings)
 	require.NoError(t, err)
 	seeds = append(seeds, seed)
 
