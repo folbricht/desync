@@ -93,6 +93,6 @@ func TestTLSClientCertSentRegardlessOfAcceptableCAs(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	resp, err := client.Get(srv.URL)
 	require.NoError(t, err, "client certificate was likely not sent")
-	resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	require.Equal(t, "client", gotCN)
 }
