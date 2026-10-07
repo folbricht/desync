@@ -45,12 +45,18 @@ Copy-on-write filesystems such as Btrfs and XFS support cloning of blocks betwee
 - **Null Seed** — a built-in seed for chunks of max size containing only 0 bytes. This can significantly reduce disk usage of files with large 0-byte ranges, such as VM images, effectively turning an eager-zeroed VM disk into a sparse disk.
 - **Self Seed** — as chunks are written to the destination file, the file itself becomes a seed. If a chunk or series of chunks appears again later in the file, it is cloned from the position written previously, saving storage for files with repetitive sections.
 - **File Seeds** — seed files and their indexes can be provided when extracting. For example, `image-v1.vmdk` and `image-v1.vmdk.caibx` can be used as seed for extracting `image-v2.vmdk`. The additional disk space required will be only the delta between the two versions.
+- **In-place Seed** — with `--in-place` (`-k`), the file or block device being written can be a seed for its own update, for example `--seed image-v1.caibx:/dev/sdc` when extracting `image-v2.caibx` onto `/dev/sdc`. Chunks already at their position aren't written at all. Chunks that are elsewhere in the target are moved to their position, cloned where the filesystem supports it, in an order that reads each one before anything overwrites it. When chunks swap places, some of them are held in memory until they're written. `GOMEMLIMIT` bounds that memory, and chunks that don't fit are fetched from the store. Without `--in-place`, a seed pointing at the output is an ordinary file seed for the temporary file that replaces the output at the end.
+
+Chunks already in place are used first, then chunks elsewhere in the target. The rest come from the seeds: the null seed, the file seeds in the order they're given, then the self seed, first where sections can be cloned and then where they have to be copied. Whatever is left is fetched from the store.
+
+Seeds are validated before extraction begins. If a seed file changes while the extraction runs, detected by its size and modification time, the target is verified afterwards and chunks that don't match are fetched from the store. A seed on a block device other than the target has no modification time to go by, so the target is always verified when one is used.
 
 ```mermaid
 graph LR
     subgraph "External Seeds"
         S1["Seed 1<br/>(file + index)"]
         S2["Seed 2<br/>(file + index)"]
+        IP["In-place Seed<br/>(target + index, -k)"]
     end
 
     subgraph "Built-in Seeds"
@@ -66,12 +72,14 @@ graph LR
     S2 -- "clone/copy<br/>matching chunks" --> Result
     NS -- "clone/copy<br/>zero regions" --> Result
     SS -- "clone/copy<br/>repeated sections" --> Result
+    IP -- "move<br/>chunks within target" --> Result
     CS -. "fetch<br/>remaining chunks" .-> Result
 
     style S1 fill:#4a90d9,stroke:#2a6cb0,color:#fff
     style S2 fill:#4a90d9,stroke:#2a6cb0,color:#fff
     style NS fill:#6ab04c,stroke:#4a8a2c,color:#fff
     style SS fill:#6ab04c,stroke:#4a8a2c,color:#fff
+    style IP fill:#4a90d9,stroke:#2a6cb0,color:#fff
     style CS fill:#e17055,stroke:#c0392b,color:#fff
     style Result fill:#f6b93b,stroke:#d4951a,color:#fff
 ```
