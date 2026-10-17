@@ -201,7 +201,7 @@ func TestFileSeedPlanSteps(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			seed, err := NewFileSeed("test", "seed", test.seed)
+			seed, err := NewFileSeed("test", "seed", test.seed, IndexRegenerationSettings{})
 			require.NoError(t, err)
 
 			got := planStrings("test", test.target, planWithSeeds([]Seed{seed}))
@@ -232,7 +232,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// One cycle: A↔B, broken by stashing A. The copy of B fills the
 		// stash before it overwrites A.
 		f := writeChunkFile(t, A, B)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		got := planStrings(f, chunkIndex(B, A),
@@ -249,7 +249,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// it fills the stash first rather than waiting for A. The copy of A
 		// still waits for B to read its source.
 		f := writeChunkFile(t, A, B)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		steps := newPlan(f, chunkIndex(B, A), nil,
@@ -269,7 +269,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// Cycle 1: A↔B in byte range [0,350)
 		// Cycle 2: C↔D in byte range [350,500)
 		f := writeChunkFile(t, A, B, C, D)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B, C, D))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B, C, D), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		got := planStrings(f, chunkIndex(B, A, D, C),
@@ -288,7 +288,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// Target:   [B:150][A:200][E:180]
 		// A↔B cycle, E from store (not in seed).
 		f := writeChunkFile(t, A, B)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		got := planStrings(f, chunkIndex(B, A, E),
@@ -307,7 +307,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// A already at [0:200] in both indexes → skip.
 		// B↔C cycle: B [200:350]→[300:450], C [350:450]→[200:300].
 		f := writeChunkFile(t, A, B, C)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B, C))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B, C), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		got := planStrings(f, chunkIndex(A, C, B),
@@ -327,7 +327,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// so it has to wait for both of them. The two travel different
 		// distances, so they stay separate moves.
 		f := writeChunkFile(t, C, D, A)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(C, D, A))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(C, D, A), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		steps := newPlan(f, chunkIndex(E, D, C), nil,
@@ -348,7 +348,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// C and D stay next to each other and travel the same distance, so
 		// a single move covers both of them.
 		f := writeChunkFile(t, C, D, A)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(C, D, A))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(C, D, A), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		steps := newPlan(f, chunkIndex(E, C, D), nil,
@@ -375,7 +375,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		r := filledChunk(100, 0x07) // only in the store
 
 		f := writeChunkFile(t, x, a, c, z, b)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(x, a, c, z, b))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(x, a, c, z, b), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		steps := newPlan(f, chunkIndex(r, b, q, a, c), nil,
@@ -400,7 +400,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// first. The chunks all travel the same distance, but it's shorter
 		// than any of them, so they can't be moved as one run.
 		f := writeChunkFile(t, A, B, C)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B, C))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(A, B, C), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		steps := newPlan(f, chunkIndex(D, A, B, C), nil,
@@ -425,7 +425,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		t0, t3, t5, t6, t7 := c(0x20), c(0x23), c(0x25), c(0x26), c(0x27) // only in the store
 
 		f := writeChunkFile(t, f0, f1, b, f3, a, cc, d, e)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(f0, f1, b, f3, a, cc, d, e))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(f0, f1, b, f3, a, cc, d, e), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		var moves []string
@@ -451,7 +451,7 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		zeros := testChunk{id: Digest.Sum(make([]byte, 256)), data: make([]byte, 256)}
 		z := filledChunk(256, 0x5A)
 		f := writeChunkFile(t, zeros, z)
-		inPlace, err := NewFileSeed(f, f, chunkIndex(zeros, z))
+		inPlace, err := NewFileSeed(f, f, chunkIndex(zeros, z), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		steps := newPlan(f, chunkIndex(z, zeros), nil,
@@ -471,9 +471,9 @@ func TestInPlaceSeedPlanSteps(t *testing.T) {
 		// B moves [200:350]→[320:470] (B must read before F writes to [200:320]).
 		// F from file seed at [200:320].
 		f := writeChunkFile(t, A, B)
-		inPlaceSeed, err := NewFileSeed(f, f, chunkIndex(A, B))
+		inPlaceSeed, err := NewFileSeed(f, f, chunkIndex(A, B), IndexRegenerationSettings{})
 		require.NoError(t, err)
-		fileSeed, err := NewFileSeed(f, "seedfile", chunkIndex(F))
+		fileSeed, err := NewFileSeed(f, "seedfile", chunkIndex(F), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		got := planStrings(f, chunkIndex(A, F, B),
@@ -647,7 +647,7 @@ func TestFileSeedValidation(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
 
-		seed, err := NewFileSeed("target", seedFile, seedIndex)
+		seed, err := NewFileSeed("target", seedFile, seedIndex, IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		plan := newPlan("target", targetIndex, nil, planWithSeeds([]Seed{seed}))
@@ -665,7 +665,7 @@ func TestFileSeedValidation(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
 
-		seed, err := NewFileSeed("target", seedFile, seedIndex)
+		seed, err := NewFileSeed("target", seedFile, seedIndex, IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		plan := newPlan("target", targetIndex, nil, planWithSeeds([]Seed{seed}))
@@ -691,7 +691,7 @@ func TestFileSeedValidation(t *testing.T) {
 		err := os.WriteFile(f, append(data1, make([]byte, 100)...), 0644)
 		require.NoError(t, err)
 
-		inPlace, err := NewFileSeed(f, f, seedIndex)
+		inPlace, err := NewFileSeed(f, f, seedIndex, IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		plan := newPlan(f, targetIndex, nil,
@@ -712,7 +712,7 @@ func TestFileSeedValidation(t *testing.T) {
 		err := os.WriteFile(f, append(data1, make([]byte, 100)...), 0644)
 		require.NoError(t, err)
 
-		inPlace, err := NewFileSeed(f, f, seedIndex)
+		inPlace, err := NewFileSeed(f, f, seedIndex, IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		swapped := Index{
@@ -739,7 +739,7 @@ func TestFileSeedValidation(t *testing.T) {
 		err := os.WriteFile(f, append(data1, make([]byte, 100)...), 0644)
 		require.NoError(t, err)
 
-		inPlace, err := NewFileSeed(f, f, seedIndex)
+		inPlace, err := NewFileSeed(f, f, seedIndex, IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		shifted := Index{
@@ -898,7 +898,7 @@ func TestCloningPriority(t *testing.T) {
 	planSteps := func(t *testing.T, seedIndex Index) []string {
 		t.Helper()
 		name := filepath.Join(t.TempDir(), "target")
-		seed, err := NewFileSeed(name, "seed", seedIndex)
+		seed, err := NewFileSeed(name, "seed", seedIndex, IndexRegenerationSettings{})
 		require.NoError(t, err)
 		seed.canReflink = true
 
@@ -951,7 +951,7 @@ func (s *countingSeed) LongestMatchFrom(chunks []IndexChunk, startPos int) (int,
 // copied.
 func TestCloningPassSkipsSeedsThatCantClone(t *testing.T) {
 	idx := indexSequence(1, 2, 3)
-	seed, err := NewFileSeed("target", "seed", idx)
+	seed, err := NewFileSeed("target", "seed", idx, IndexRegenerationSettings{})
 	require.NoError(t, err)
 	seed.canReflink = false
 	counting := &countingSeed{FileSeed: seed}

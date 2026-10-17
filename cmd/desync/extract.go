@@ -220,7 +220,7 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions, indexRe
 			return nil, err
 		}
 
-		seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex, indexRegenSettings)
+		seed, err := desync.NewFileSeed(dstFile, srcFile, srcIndex, indexRegenSettings)
 		if err != nil {
 			return nil, err
 		}
@@ -264,7 +264,7 @@ func readSeedDirs(dstFile, dstIdxFile string, dirs []string, opts cmdStoreOption
 			if err != nil {
 				return err
 			}
-			seed, err := desync.NewIndexSeed(dstFile, srcFile, srcIndex, indexRegenSettings)
+			seed, err := desync.NewFileSeed(dstFile, srcFile, srcIndex, indexRegenSettings)
 			if err != nil {
 				return err
 			}

@@ -160,13 +160,13 @@ func TestPlanOrderRandomized(t *testing.T) {
 		old := pickChunks(pool, oldLayout...)
 		name := filepath.Join(dir, fmt.Sprintf("target%d", i))
 		require.NoError(t, os.WriteFile(name, chunkContent(old...), 0644))
-		inPlace, err := NewFileSeed(name, name, chunkIndex(old...))
+		inPlace, err := NewFileSeed(name, name, chunkIndex(old...), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		seedChunks := pickChunks(pool, seedLayout...)
 		seedName := filepath.Join(dir, fmt.Sprintf("seed%d", i))
 		require.NoError(t, os.WriteFile(seedName, chunkContent(seedChunks...), 0644))
-		seed, err := NewFileSeed(name, seedName, chunkIndex(seedChunks...))
+		seed, err := NewFileSeed(name, seedName, chunkIndex(seedChunks...), IndexRegenerationSettings{})
 		require.NoError(t, err)
 		inPlace.canReflink, seed.canReflink = reflink, reflink
 
