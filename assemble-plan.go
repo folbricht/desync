@@ -192,12 +192,13 @@ func (p *assemblePlan) replan(opts ...planOption) *assemblePlan {
 // Validate checks that all file seed placements still match their underlying
 // data. Returns a SeedInvalid error if a seed file was modified after its
 // index was created.
-func (p *assemblePlan) Validate() error {
+func (p *assemblePlan) Validate(pb ProgressBar) error {
 	// Phase 1 — Sequential: collect unique fileSeedSource placements, open
 	// their backing files, and build a list of items to validate.
 	type validateItem struct {
-		fs   assembleSeedSource
-		file *os.File
+		fs     assembleSeedSource
+		file   *os.File
+		chunks int
 	}
 
 	fileMap := make(map[string]*os.File)
@@ -250,10 +251,18 @@ func (p *assemblePlan) Validate() error {
 			p.seedFiles[fs.File()] = newSeedFileState(info)
 		}
 
-		items = append(items, validateItem{fs: fs, file: fileMap[fs.File()]})
+		items = append(items, validateItem{fs: fs, file: fileMap[fs.File()], chunks: pl.step.numChunks})
 	}
 
-	// Phase 2 — Concurrent: validate each segment in parallel.
+	// Phase 2 — Concurrent: validate each segment in parallel, counting the
+	// progress in chunks.
+	var total int
+	for _, item := range items {
+		total += item.chunks
+	}
+	pb.SetTotal(total)
+	pb.Start()
+	defer pb.Finish()
 	var mu sync.Mutex
 	var g errgroup.Group
 	g.SetLimit(p.concurrency)
@@ -264,6 +273,7 @@ func (p *assemblePlan) Validate() error {
 				invalidSeeds[item.fs.Seed()] = err
 				mu.Unlock()
 			}
+			pb.Add(item.chunks)
 			return nil
 		})
 	}
@@ -489,7 +499,7 @@ func (p *assemblePlan) changedSeeds() []string {
 // assembly. Consecutive matching chunks share a single source so they become
 // one step.
 func (p *assemblePlan) generateSkips() []*skipInPlace {
-	found, err := chunksInTarget(p.target, p.idx, p.concurrency)
+	found, err := chunksInTarget(p.target, p.idx, p.concurrency, NewProgressBar("Checking target "))
 	if err != nil {
 		return nil
 	}

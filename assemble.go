@@ -151,7 +151,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		planWithStashLimit(stashMemoryLimit()),
 	)
 	for {
-		err := plan.Validate()
+		err := plan.Validate(NewProgressBar(fmt.Sprintf("Attempt %d: Validating ", attempt)))
 		if err == nil {
 			break
 		}

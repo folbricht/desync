@@ -182,7 +182,7 @@ func TestChunksInTargetNullChunks(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "target")
 			require.NoError(t, os.WriteFile(name, test.content, 0644))
-			found, err := chunksInTarget(name, idx, 2)
+			found, err := chunksInTarget(name, idx, 2, NullProgressBar{})
 			require.NoError(t, err)
 			require.Equal(t, test.expected, found)
 		})

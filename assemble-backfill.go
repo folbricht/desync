@@ -50,13 +50,17 @@ func (s seedFileState) changed(name string) bool {
 // chunksInTarget reports for every chunk of the index whether the file holds
 // its data at the chunk's position, hashing them with n goroutines. Null
 // chunks are compared with zeros instead, which is much cheaper than hashing
-// in images that are mostly empty space.
-func chunksInTarget(name string, idx Index, n int) ([]bool, error) {
+// in images that are mostly empty space. The progress is counted in chunks.
+func chunksInTarget(name string, idx Index, n int, pb ProgressBar) ([]bool, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+
+	pb.SetTotal(len(idx.Chunks))
+	pb.Start()
+	defer pb.Finish()
 
 	null := NewNullChunk(idx.Index.ChunkSizeMax)
 	found := make([]bool, len(idx.Chunks))
@@ -69,11 +73,12 @@ func chunksInTarget(name string, idx Index, n int) ([]bool, error) {
 				c := idx.Chunks[i]
 				if c.ID != null.ID {
 					found[i] = chunkInPlace(f, c, buf)
-					continue
+				} else {
+					b := buf[:c.Size]
+					_, err := f.ReadAt(b, int64(c.Start))
+					found[i] = err == nil && bytes.Equal(b, null.Data)
 				}
-				b := buf[:c.Size]
-				_, err := f.ReadAt(b, int64(c.Start))
-				found[i] = err == nil && bytes.Equal(b, null.Data)
+				pb.Increment()
 			}
 		})
 	}
@@ -90,7 +95,7 @@ func chunksInTarget(name string, idx Index, n int) ([]bool, error) {
 // whatever came from it may be damaged, including what the self-seed copied
 // from there on.
 func backfill(name string, idx Index, s Store, n int, stats *ExtractStats) error {
-	found, err := chunksInTarget(name, idx, n)
+	found, err := chunksInTarget(name, idx, n, NewProgressBar("Verifying "))
 	if err != nil {
 		return err
 	}

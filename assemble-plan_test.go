@@ -652,7 +652,7 @@ func TestFileSeedValidation(t *testing.T) {
 
 		plan := newPlan("target", targetIndex, nil, planWithSeeds([]Seed{seed}))
 
-		require.NoError(t, plan.Validate())
+		require.NoError(t, plan.Validate(NullProgressBar{}))
 	})
 
 	t.Run("invalid seed", func(t *testing.T) {
@@ -674,7 +674,7 @@ func TestFileSeedValidation(t *testing.T) {
 		err = os.WriteFile(seedFile, make([]byte, 200), 0644)
 		require.NoError(t, err)
 
-		err = plan.Validate()
+		err = plan.Validate(NullProgressBar{})
 		require.Error(t, err)
 
 		var seedErr SeedInvalid
@@ -696,7 +696,7 @@ func TestFileSeedValidation(t *testing.T) {
 
 		plan := newPlan(f, targetIndex, nil,
 			planWithInPlaceSeed(inPlace), planWithTargetIsBlank(false))
-		require.NoError(t, plan.Validate())
+		require.NoError(t, plan.Validate(NullProgressBar{}))
 
 		require.Equal(t, []string{
 			"InPlace: Skip [0:100]",
@@ -724,7 +724,7 @@ func TestFileSeedValidation(t *testing.T) {
 		plan := newPlan(f, swapped, nil,
 			planWithInPlaceSeed(inPlace), planWithTargetIsBlank(false))
 
-		err = plan.Validate()
+		err = plan.Validate(NullProgressBar{})
 		var seedErr SeedInvalid
 		require.ErrorAs(t, err, &seedErr)
 		require.Equal(t, []Seed{inPlace}, seedErr.Seeds)
@@ -758,7 +758,7 @@ func TestFileSeedValidation(t *testing.T) {
 			fmt.Sprintf("Store: Copy %s to [0:200]", ChunkID{0xCC}),
 		}, stepStrings(plan.Steps()))
 
-		err = plan.Validate()
+		err = plan.Validate(NullProgressBar{})
 		var seedErr SeedInvalid
 		require.ErrorAs(t, err, &seedErr)
 		require.Equal(t, []Seed{inPlace}, seedErr.Seeds)
@@ -781,7 +781,7 @@ func TestFileSeedValidation(t *testing.T) {
 
 		plan := newPlan("target", nullTargetIndex, nil, planWithSeeds([]Seed{ns}))
 
-		require.NoError(t, plan.Validate())
+		require.NoError(t, plan.Validate(NullProgressBar{}))
 	})
 }
 
