@@ -23,8 +23,9 @@ If a seed is invalid, the extract operation is aborted by default. With
 --skip-invalid-seeds, invalid seeds are discarded and the extraction continues
 without them. Alternatively, --regenerate-invalid-seeds regenerates invalid
 seed indexes in memory from the available data; neither data nor indexes are
-changed on disk. Also, if a seed changes while processing, its invalid chunks
-will be taken from the self seed, or the store, instead of aborting.
+changed on disk. Seeds are validated once before extraction begins. If a seed
+file is modified while the extraction is running, the target is verified
+afterwards and chunks that don't match are taken from the store.
 
 ```
 desync extract <index> <output> [flags]
