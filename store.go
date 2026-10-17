@@ -206,6 +206,14 @@ func (o StoreOptions) tlsClientConfig() (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to load client certificate from %s: %w", o.ClientCert, err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{certificate}
+		// Always present the configured certificate, regardless of the CAs the
+		// server lists in its CertificateRequest. Go's default selection sends
+		// no certificate when the list doesn't include the issuer, which breaks
+		// TLS terminators that advertise a fixed set of public CAs and forward
+		// the client certificate to the backend for verification.
+		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return &certificate, nil
+		}
 	}
 
 	// Load custom CA set if provided

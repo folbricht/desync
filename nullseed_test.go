@@ -29,7 +29,7 @@ func TestNullChunkSectionCloneFallback(t *testing.T) {
 	require.NoError(t, err)
 
 	newSection := func() *nullChunkSection {
-		return &nullChunkSection{from: 0, to: length, blockfile: blockfile, blockLen: blocksize, canReflink: true}
+		return &nullChunkSection{blockfile: blockfile, blockLen: blocksize, canReflink: true}
 	}
 
 	t.Run("copies zeros when cloning fails", func(t *testing.T) {
@@ -92,7 +92,7 @@ func TestNullChunkSectionCloneFallback(t *testing.T) {
 		require.NoError(t, err)
 		defer dst.Close()
 
-		section := &nullChunkSection{from: from, to: from + sectionLen, blockfile: blockfile, blockLen: blocksize, canReflink: true}
+		section := &nullChunkSection{blockfile: blockfile, blockLen: blocksize, canReflink: true}
 		copied, cloned, err := section.WriteInto(dst, from, sectionLen, bigBlock, false)
 		require.NoError(t, err)
 		assert.Equal(t, uint64(0), cloned)
@@ -167,7 +167,7 @@ func TestNullChunkSectionClonesLargePieces(t *testing.T) {
 	require.NoError(t, err)
 	defer dst.Close()
 
-	section := &nullChunkSection{from: from, to: from + length, blockfile: blockfile, blockLen: blockLen, canReflink: true}
+	section := &nullChunkSection{blockfile: blockfile, blockLen: blockLen, canReflink: true}
 	copied, cloned, err := section.WriteInto(dst, from, length, blocksize, false)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(9*blocksize), cloned)
