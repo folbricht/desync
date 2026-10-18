@@ -225,5 +225,5 @@ func (l *adaptiveLimiter) setLimit(n int) {
 		l.cond.Broadcast()
 	}
 	l.limit = n
-	Log.WithField("store", l.name).WithField("limit", n).Debug("adjusted concurrency")
+	Log.Debug("adjusted concurrency", "store", l.name, "limit", n)
 }

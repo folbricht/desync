@@ -12,7 +12,6 @@ import (
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 var _ WriteStore = S3Store{}
@@ -157,11 +156,7 @@ retry:
 	chunk, err := NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
 	if err != nil {
 		if attempt <= s.opt.ErrorRetry {
-			Log.WithFields(logrus.Fields{
-				"chunk":   id,
-				"object":  name,
-				"attempt": attempt,
-			}).WithError(err).Info("chunk failed validation, retrying")
+			Log.Info("chunk failed validation, retrying", "chunk", id, "object", name, "attempt", attempt, "error", err)
 			_ = obj.Close()
 			cancel()
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)

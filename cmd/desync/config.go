@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	orascreds "oras.land/oras-go/v2/registry/remote/credentials"
@@ -309,11 +309,6 @@ var verbose bool
 
 func setVerbose() {
 	if verbose {
-		desync.Log = &logrus.Logger{
-			Out:       os.Stderr,
-			Formatter: new(logrus.TextFormatter),
-			// Hooks:     make(logrus.LevelHooks),
-			Level: logrus.DebugLevel,
-		}
+		desync.Log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	}
 }

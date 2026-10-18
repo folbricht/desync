@@ -132,7 +132,7 @@ func transferStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.
 	ws, writable := s.(desync.WriteStore)
 	switch {
 	case adaptive:
-		desync.Log.WithField("store", location).Debugf("adaptive concurrency, up to %d", desync.MaxAdaptiveConcurrency)
+		desync.Log.Debug("adaptive concurrency", "store", location, "max", desync.MaxAdaptiveConcurrency)
 		if writable {
 			return desync.NewAdaptiveWriteStore(ws, desync.MaxAdaptiveConcurrency), nil
 		}
