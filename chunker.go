@@ -130,19 +130,26 @@ type Chunker struct {
 	hRot        int    // -k, right-rotation by the power-of-2 factor
 }
 
-// NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
-func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
+func validateChunkSizes(min, avg, max uint64) error {
 	if min < ChunkerWindowSize {
-		return Chunker{}, fmt.Errorf("min chunk size too small, must be over %d", ChunkerWindowSize)
+		return fmt.Errorf("min chunk size too small, must be over %d", ChunkerWindowSize)
 	}
 	if min > max {
-		return Chunker{}, errors.New("min chunk size must not be greater than max")
+		return errors.New("min chunk size must not be greater than max")
 	}
 	if min > avg {
-		return Chunker{}, errors.New("min chunk size must not be greater than avg")
+		return errors.New("min chunk size must not be greater than avg")
 	}
 	if avg > max {
-		return Chunker{}, errors.New("avg chunk size must not be greater than max")
+		return errors.New("avg chunk size must not be greater than max")
+	}
+	return nil
+}
+
+// NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
+func NewChunker(r io.Reader, min, avg, max uint64) (Chunker, error) {
+	if err := validateChunkSizes(min, avg, max); err != nil {
+		return Chunker{}, err
 	}
 	disc := discriminatorFromAvg(avg)
 
