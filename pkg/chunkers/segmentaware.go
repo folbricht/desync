@@ -46,6 +46,8 @@ type SegmentAwareChunker struct {
 	mergedSegmentsTmp   []byte
 
 	insideBigSegment bool
+	// Position in the big segment, relative to its start
+	bigSegmentPos uint64
 }
 
 func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChunkerOptions, err error) {
@@ -163,7 +165,14 @@ func (c *SegmentAwareChunker) Next() (uint64, []byte, error) {
 
 		// Return valid chunk from subchunker
 		if len(subBytes) != 0 {
+			c.bigSegmentPos = subStart + uint64(len(subBytes))
 			return c.currentOffset + subStart, subBytes, nil
+		}
+
+		// The subchunker is done, which also happens if the input ended early
+		if c.bigSegmentPos != c.segmentSizes[c.nextSegmentIdx] {
+			return 0, nil, fmt.Errorf("input ended %d bytes into segment %d of size %d",
+				c.bigSegmentPos, c.nextSegmentIdx, c.segmentSizes[c.nextSegmentIdx])
 		}
 
 		// End processing "big" segment if subchunker is done.
@@ -183,8 +192,17 @@ func (c *SegmentAwareChunker) Next() (uint64, []byte, error) {
 		return c.nextFromMergedSegments()
 	}
 
-	// No segments left, signal that we are done.
+	// No segments left, signal that we are done. Any data left in the input
+	// means the segments don't describe all of it.
 	if c.isSegmentsEOF() {
+		var b [1]byte
+		_, err := io.ReadFull(c.r, b[:])
+		if err == nil {
+			return 0, nil, fmt.Errorf("input is longer than the %d bytes covered by its segments", c.currentOffset)
+		}
+		if err != io.EOF {
+			return 0, nil, err
+		}
 		return c.currentOffset, nil, nil
 	}
 
@@ -207,7 +225,7 @@ func (c *SegmentAwareChunker) Next() (uint64, []byte, error) {
 	}
 
 	if len(subBytes) == 0 {
-		return 0, nil, fmt.Errorf("subchunker produced no chunk for (segmentIdx=%v segmentSize=%v)",
+		return 0, nil, fmt.Errorf("input ended at the start of segment %d of size %d",
 			c.nextSegmentIdx, c.segmentSizes[c.nextSegmentIdx])
 	}
 	if subStart != 0 {
@@ -218,6 +236,7 @@ func (c *SegmentAwareChunker) Next() (uint64, []byte, error) {
 	// TODO: maybe align it to the end of file, if it's less than min bytes left and chuk will still not reach max?
 	// This will avoid producing a separate tail chunk that is too small.
 
+	c.bigSegmentPos = uint64(len(subBytes))
 	return c.currentOffset + subStart, subBytes, nil
 }
 
@@ -327,7 +346,10 @@ func (c *SegmentAwareChunker) mergeMoreSmallSegments() error {
 			return fmt.Errorf("invalid segment size %v for segmentIdx %v", c.segmentSizes[c.nextSegmentIdx], c.nextSegmentIdx)
 		}
 
-		_, err := io.ReadFull(c.r, c.mergedSegments[c.mergedSegmentsSize:int(c.mergedSegmentsSize+segmentSize)])
+		n, err := io.ReadFull(c.r, c.mergedSegments[c.mergedSegmentsSize:int(c.mergedSegmentsSize+segmentSize)])
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return fmt.Errorf("input ended %d bytes into segment %d of size %d", n, c.nextSegmentIdx, segmentSize)
+		}
 		if err != nil {
 			return err
 		}
