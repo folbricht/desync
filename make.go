@@ -77,7 +77,7 @@ func IndexFromFile(ctx context.Context,
 		return index, stats, fmt.Errorf("unknown chunker '%s'", chunkingSettings.ChunkerName)
 	}
 
-	// Can we paralellize that chunker?
+	// Can we parallelize that chunker?
 	if !chunkerDesc.Parallelizable {
 		n = 1
 	}

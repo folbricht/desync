@@ -182,8 +182,8 @@ func (c *FastCDC4StadiaChunker) Next() (uint64, []byte, error) {
 func init() {
 	err := RegisterChunker(ChunkerDesc{
 		Name: "fastcdc4stadia",
-		HelpText: `FastCDC4Stadia - modification of FastCDC used in Google Stadia that relies on regression test instead of 2 masks.
-Promises better dedup, flatter chunk size distribution`,
+		HelpText: `FastCDC4Stadia - modification of FastCDC used in Google Stadia that relies on a regression test instead of 2 masks.
+Promises better dedup and a flatter chunk size distribution.`,
 
 		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
 			return NewFastCDC4StadiaChunker(r, params)

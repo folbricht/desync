@@ -174,7 +174,7 @@ func addServerOptions(o *cmdServerOptions, f *pflag.FlagSet) {
 	f.StringVar(&o.auth, "authorization", "", "expected value of the authorization header in requests")
 }
 
-// cmdChunkerOptions hold command line options to configure a cunker
+// cmdChunkerOptions hold command line options to configure a chunker
 type cmdChunkerOptions struct {
 	name    string
 	sizes   string
