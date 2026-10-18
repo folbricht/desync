@@ -24,7 +24,7 @@ type segmentAwareChunkerOptions struct {
 
 	// Should "small" segments be merged for chunking, or emitted as is?
 	mergeSmallSegments     bool
-	smallSegmentBreakpoint uint32
+	smallSegmentBreakpoint uint64
 }
 
 type SegmentAwareChunker struct {
@@ -79,11 +79,11 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 		case "mergeSmallSegments":
 			options.mergeSmallSegments = !(kv[1] == "false" || kv[1] == "0")
 		case "smallSegmentBreakpoint":
-			kbValue, err := strconv.ParseUint(kv[1], 10, 32)
-			if err != nil || kbValue > math.MaxUint32/1024 {
+			kbValue, err := strconv.ParseUint(kv[1], 10, 64)
+			if err != nil || kbValue > math.MaxUint64/1024 {
 				return options, fmt.Errorf("invalid smallSegmentBreakpoint '%s'", kv[1])
 			}
-			options.smallSegmentBreakpoint = uint32(kbValue * 1024)
+			options.smallSegmentBreakpoint = kbValue * 1024
 
 		default:
 			err = fmt.Errorf("unknown key in chunker options: '%s'", kv[0])
@@ -102,9 +102,9 @@ func NewSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChu
 	if segmentAwareChunkerOptions.mergeSmallSegments {
 		// Default to twice the avg chunk size. It is likely to produce multiple chunks by itself.
 		if segmentAwareChunkerOptions.smallSegmentBreakpoint == 0 {
-			segmentAwareChunkerOptions.smallSegmentBreakpoint = uint32(params.Avg * 2)
+			segmentAwareChunkerOptions.smallSegmentBreakpoint = params.Avg * 2
 		}
-		segmentAwareChunkerOptions.smallSegmentBreakpoint = min(segmentAwareChunkerOptions.smallSegmentBreakpoint, uint32(params.Max))
+		segmentAwareChunkerOptions.smallSegmentBreakpoint = min(segmentAwareChunkerOptions.smallSegmentBreakpoint, params.Max)
 	} else {
 		segmentAwareChunkerOptions.smallSegmentBreakpoint = 0
 	}
@@ -313,7 +313,7 @@ func (c *SegmentAwareChunker) isSegmentsEOF() bool {
 }
 
 func (c *SegmentAwareChunker) isNextSegmentSmall() bool {
-	return c.segmentSizes[c.nextSegmentIdx] <= uint64(c.smallSegmentBreakpoint)
+	return c.segmentSizes[c.nextSegmentIdx] <= c.smallSegmentBreakpoint
 }
 
 func (c *SegmentAwareChunker) canMergeNextSegment() bool {
@@ -340,10 +340,10 @@ func (c *SegmentAwareChunker) mergeMoreSmallSegments() error {
 
 func (c *SegmentAwareChunker) nextFromMergedSegments() (uint64, []byte, error) {
 	if c.mergedSegmentsSize == 0 {
-		panic(fmt.Errorf("c.mergedSegmentsSize == 0"))
+		return 0, nil, fmt.Errorf("no merged segments to chunk")
 	}
 	if c.mergedSegmentsCount > c.nextSegmentIdx {
-		panic(fmt.Errorf("c.mergedSegmentsCount > c.nextSegmentIdx"))
+		return 0, nil, fmt.Errorf("%d merged segments, but only %d segments read", c.mergedSegmentsCount, c.nextSegmentIdx)
 	}
 
 	firstMergedSegmentIdx := c.nextSegmentIdx - c.mergedSegmentsCount
@@ -357,7 +357,7 @@ func (c *SegmentAwareChunker) nextFromMergedSegments() (uint64, []byte, error) {
 		return 0, nil, err
 	}
 
-	subchunkLen := uint32(len(subBytes))
+	subchunkLen := uint64(len(subBytes))
 	if subchunkLen == 0 {
 		return 0, nil, fmt.Errorf("subchunker produced no chunk for merged segments %v - %v", firstMergedSegmentIdx, c.nextSegmentIdx)
 	}
@@ -371,7 +371,7 @@ func (c *SegmentAwareChunker) nextFromMergedSegments() (uint64, []byte, error) {
 	for segmentsConsumed < c.mergedSegmentsCount {
 		sizeConsumed += c.segmentSizes[firstMergedSegmentIdx+segmentsConsumed]
 		segmentsConsumed++
-		if sizeConsumed >= uint64(subchunkLen) {
+		if sizeConsumed >= subchunkLen {
 			break
 		}
 	}
