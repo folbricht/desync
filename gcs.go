@@ -10,7 +10,6 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 )
 
@@ -103,19 +102,19 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 	name := s.nameFromID(id)
 
 	var (
-		log = Log.WithFields(logrus.Fields{
-			"bucket": s.bucket,
-			"name":   name,
-		})
+		log = Log.With(
+			"bucket", s.bucket,
+			"name", name,
+		)
 	)
 
 	rc, err := s.client.Object(name).NewReader(ctx)
 
 	if errors.Is(err, storage.ErrObjectNotExist) {
-		log.Warning("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
+		log.Warn("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
 		return nil, ChunkMissing{ID: id}
 	} else if err != nil {
-		log.WithError(err).Error("Unable to retrieve object from GCS bucket")
+		log.Error("Unable to retrieve object from GCS bucket", "error", err)
 		return nil, errors.Wrap(err, s.String())
 	}
 	defer rc.Close()
@@ -123,10 +122,10 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 	b, err := io.ReadAll(rc)
 
 	if errors.Is(err, storage.ErrObjectNotExist) {
-		log.Warning("Unable to read from object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
+		log.Warn("Unable to read from object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
 		return nil, ChunkMissing{ID: id}
 	} else if err != nil {
-		log.WithError(err).Error("Unable to retrieve object from GCS bucket")
+		log.Error("Unable to retrieve object from GCS bucket", "error", err)
 		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from GCS bucket", id))
 	}
 
@@ -143,15 +142,15 @@ func (s GCStore) StoreChunk(chunk *Chunk) error {
 	name := s.nameFromID(chunk.ID())
 
 	var (
-		log = Log.WithFields(logrus.Fields{
-			"bucket": s.bucket,
-			"name":   name,
-		})
+		log = Log.With(
+			"bucket", s.bucket,
+			"name", name,
+		)
 	)
 
 	b, err := chunk.Storage(s.converters)
 	if err != nil {
-		log.WithError(err).Error("Cannot retrieve chunk data")
+		log.Error("Cannot retrieve chunk data", "error", err)
 		return err
 	}
 
@@ -161,13 +160,13 @@ func (s GCStore) StoreChunk(chunk *Chunk) error {
 	_, err = io.Copy(w, r)
 
 	if err != nil {
-		log.WithError(err).Error("Error when copying data from local filesystem to object in GCS bucket")
+		log.Error("Error when copying data from local filesystem to object in GCS bucket", "error", err)
 		return errors.Wrap(err, s.String())
 	}
 
 	err = w.Close()
 	if err != nil {
-		log.WithError(err).Error("Error when finalizing copying of data from local filesystem to object in GCS bucket")
+		log.Error("Error when finalizing copying of data from local filesystem to object in GCS bucket", "error", err)
 		return errors.Wrap(err, s.String())
 	}
 
@@ -182,22 +181,22 @@ func (s GCStore) HasChunk(id ChunkID) (bool, error) {
 	name := s.nameFromID(id)
 
 	var (
-		log = Log.WithFields(logrus.Fields{
-			"bucket": s.bucket,
-			"name":   name,
-		})
+		log = Log.With(
+			"bucket", s.bucket,
+			"name", name,
+		)
 	)
 
 	_, err := s.client.Object(name).Attrs(ctx)
 
 	if errors.Is(err, storage.ErrObjectNotExist) {
-		log.WithField("exists", false).Debug("Chunk does not exist in GCS bucket")
+		log.Debug("Chunk does not exist in GCS bucket", "exists", false)
 		return false, nil
 	} else if err != nil {
-		log.WithError(err).Error("Unable to query attributes for object in GCS bucket")
+		log.Error("Unable to query attributes for object in GCS bucket", "error", err)
 		return false, err
 	} else {
-		log.WithField("exists", true).Debug("Chunk exists in GCS bucket")
+		log.Debug("Chunk exists in GCS bucket", "exists", true)
 		return true, nil
 	}
 }
@@ -209,16 +208,16 @@ func (s GCStore) RemoveChunk(id ChunkID) error {
 	name := s.nameFromID(id)
 
 	var (
-		log = Log.WithFields(logrus.Fields{
-			"bucket": s.bucket,
-			"name":   name,
-		})
+		log = Log.With(
+			"bucket", s.bucket,
+			"name", name,
+		)
 	)
 
 	err := s.client.Object(name).Delete(ctx)
 
 	if err != nil {
-		log.WithError(err).Error("Unable to delete object in GCS bucket")
+		log.Error("Unable to delete object in GCS bucket", "error", err)
 		return err
 	} else {
 		log.Debug("Removed chunk from GCS bucket")

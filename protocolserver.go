@@ -68,7 +68,7 @@ func (s *ProtocolServer) Serve(ctx context.Context) error {
 				// wire format, perhaps corrupt or encrypted with a different
 				// key. Report it missing so the client can deal with the one
 				// chunk instead of tearing down the whole session.
-				Log.WithField("chunk", id).WithError(err).Error("unable to convert chunk to wire format")
+				Log.Error("unable to convert chunk to wire format", "chunk", id, "error", err)
 				if err = s.p.SendMissing(id); err != nil {
 					return errors.Wrap(err, "failed to send to client")
 				}

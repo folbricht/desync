@@ -71,7 +71,7 @@ type sparseIndexFile struct {
 func (n *sparseIndexFile) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, err := n.sf.Open()
 	if err != nil {
-		Log.WithError(err).Error("failed to open sparse file")
+		Log.Error("failed to open sparse file", "error", err)
 		return fh, fuse.FOPEN_KEEP_CACHE, syscall.EIO
 	}
 	return fh, fuse.FOPEN_KEEP_CACHE, fs.OK
@@ -84,7 +84,7 @@ func (n *sparseIndexFile) Read(ctx context.Context, fh fs.FileHandle, dest []byt
 		if err == io.EOF {
 			return fuse.ReadResultData(dest[:length]), fs.OK
 		}
-		Log.WithError(err).Error("failed to read sparse file")
+		Log.Error("failed to read sparse file", "error", err)
 		return fuse.ReadResultData(dest[:length]), syscall.EIO
 	}
 	return fuse.ReadResultData(dest[:length]), fs.OK

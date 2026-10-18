@@ -1,13 +1,6 @@
 package desync
 
-import (
-	"io"
+import "log/slog"
 
-	"github.com/sirupsen/logrus"
-)
-
-var Log = logrus.New()
-
-func init() {
-	Log.SetOutput(io.Discard)
-}
+// Log is the logger used by the library. It discards all output by default.
+var Log = slog.New(slog.DiscardHandler)

@@ -164,7 +164,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 		case InvalidSeedActionBailOut:
 			return stats, err
 		case InvalidSeedActionRegenerate:
-			Log.WithError(err).Info("Unable to use one or more seeds, regenerating them")
+			Log.Info("Unable to use one or more seeds, regenerating them", "error", err)
 			for i, s := range seedError.Seeds {
 				if err := s.RegenerateIndex(ctx, options.N, attempt, i+1); err != nil {
 					return stats, err
@@ -172,7 +172,7 @@ func AssembleFile(ctx context.Context, name string, idx Index, s Store, seeds []
 			}
 			attempt++
 		case InvalidSeedActionSkip:
-			Log.WithError(err).Infof("Unable to use one or more seeds, skipping them")
+			Log.Info("Unable to use one or more seeds, skipping them", "error", err)
 			if inPlaceSeed != nil && slices.Contains(seedError.Seeds, Seed(inPlaceSeed)) {
 				inPlaceSeed = nil
 			}
@@ -284,7 +284,7 @@ dispatch:
 	// that don't match from the store.
 	if err == nil {
 		if changed := plan.changedSeeds(); len(changed) > 0 {
-			Log.WithField("seeds", changed).Warn("Seeds changed during assembly, verifying the output")
+			Log.Warn("Seeds changed during assembly, verifying the output", "seeds", changed)
 			if err := backfill(name, idx, s, options.N, stats); err != nil {
 				return stats, err
 			}
