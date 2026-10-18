@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -245,13 +246,28 @@ func (c *SegmentAwareChunker) fillSegmentSizes() error {
 		chunkSourceR     io.Reader
 		err              error
 		segmentSourceExt string
+		selfSourced      bool
 	)
 
 	// Is our source a file? We can do some checks and automagic then.
+	// Segments always describe the whole file, so remember where in the
+	// file chunking starts.
 	fileBeingChunked, _ := c.r.(*os.File)
-	var fileBeingChunkedInfo os.FileInfo
+	var (
+		fileBeingChunkedInfo os.FileInfo
+		startPos             int64
+	)
 	if fileBeingChunked != nil {
 		fileBeingChunkedInfo, err = fileBeingChunked.Stat()
+		if err != nil {
+			return fmt.Errorf("fillSegmentSizes: %w", err)
+		}
+		if !fileBeingChunkedInfo.Mode().IsRegular() {
+			fileBeingChunked = nil
+		}
+	}
+	if fileBeingChunked != nil {
+		startPos, err = fileBeingChunked.Seek(0, io.SeekCurrent)
 		if err != nil {
 			return fmt.Errorf("fillSegmentSizes: %w", err)
 		}
@@ -278,20 +294,13 @@ func (c *SegmentAwareChunker) fillSegmentSizes() error {
 			return fmt.Errorf("fillSegmentSizes: no segmentsSource provided")
 		}
 
-		// Start reading from the beginning, reseek after finishing.
-		// BUG: can't handle being fed segment sizes "from the start of the file", while actual reader being offset.
-		// So just seek to 0 here!
-
-		// curPos, err := fileBeingChunked.Seek(0, 1)
-		// if err != nil {
-		// 	return fmt.Errorf("fillSegmentSizes: %w", err)
-		// }
-		defer func() { _, _ = fileBeingChunked.Seek(0, 0) }()
-
-		if _, err := fileBeingChunked.Seek(0, 0); err != nil {
+		// Read the segments from the beginning of the file, then go back to
+		// where chunking starts.
+		if _, err := fileBeingChunked.Seek(0, io.SeekStart); err != nil {
 			return fmt.Errorf("fillSegmentSizes: %w", err)
 		}
 		chunkSourceR = fileBeingChunked
+		selfSourced = true
 		segmentSourceExt = fileBeingChunkedExt
 	}
 
@@ -311,6 +320,11 @@ func (c *SegmentAwareChunker) fillSegmentSizes() error {
 	if err != nil {
 		return fmt.Errorf("fillSegmentSizes: %w", err)
 	}
+	if selfSourced {
+		if _, err := fileBeingChunked.Seek(startPos, io.SeekStart); err != nil {
+			return fmt.Errorf("fillSegmentSizes: %w", err)
+		}
+	}
 
 	// A bit of sanity.
 	if fileBeingChunked != nil {
@@ -322,9 +336,27 @@ func (c *SegmentAwareChunker) fillSegmentSizes() error {
 			return fmt.Errorf("fillSegmentSizes sanity check: totalSegmentsSize != file size (%v != %v)",
 				totalSegmentsSize, fileBeingChunkedInfo.Size())
 		}
+		if uint64(startPos) > totalSegmentsSize {
+			return fmt.Errorf("fillSegmentSizes: start position %d is past the end of the file", startPos)
+		}
+		c.segmentSizes = trimSegments(c.segmentSizes, uint64(startPos))
 	}
 
 	return nil
+}
+
+// trimSegments returns the segments after offset, with the one that offset
+// falls into shortened. It doesn't modify sizes.
+func trimSegments(sizes []uint64, offset uint64) []uint64 {
+	for len(sizes) > 0 && offset >= sizes[0] {
+		offset -= sizes[0]
+		sizes = sizes[1:]
+	}
+	if offset > 0 {
+		sizes = slices.Clone(sizes)
+		sizes[0] -= offset
+	}
+	return sizes
 }
 
 func (c *SegmentAwareChunker) isSegmentsEOF() bool {
