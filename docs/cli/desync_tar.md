@@ -36,7 +36,7 @@ desync tar <catar|index> <source> [flags]
       --ca-cert string                       trust authorities in this file, instead of OS trust store
   -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
   -m, --chunk-size string                    min:avg:max chunk size in kb (default "16:64:256")
-      --chunker string                       chunking algorithm to use, pick from [buzhash fastcdc segmentaware] (default "buzhash")
+      --chunker string                       chunking algorithm to use, pick from [buzhash fastcdc fastcdc4stadia segmentaware] (default "buzhash")
       --chunker-options string               additional chunker-specific options
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication

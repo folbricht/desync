@@ -22,7 +22,7 @@ desync chunk <file> [flags]
 
 ```
   -m, --chunk-size string        min:avg:max chunk size in kb (default "16:64:256")
-      --chunker string           chunking algorithm to use, pick from [buzhash fastcdc segmentaware] (default "buzhash")
+      --chunker string           chunking algorithm to use, pick from [buzhash fastcdc fastcdc4stadia segmentaware] (default "buzhash")
       --chunker-options string   additional chunker-specific options
   -h, --help                     help for chunk
   -S, --start uint               starting position in bytes
