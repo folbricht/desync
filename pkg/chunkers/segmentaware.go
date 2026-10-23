@@ -234,7 +234,7 @@ func (c *SegmentAwareChunker) Next() (uint64, []byte, error) {
 			subStart, c.nextSegmentIdx, c.segmentSizes[c.nextSegmentIdx])
 	}
 
-	// TODO: maybe align it to the end of file, if it's less than min bytes left and chuk will still not reach max?
+	// TODO: maybe align it to the end of file, if it's less than min bytes left and chunk will still not reach max?
 	// This will avoid producing a separate tail chunk that is too small.
 
 	c.bigSegmentPos = uint64(len(subBytes))
@@ -455,8 +455,9 @@ func (c *SegmentAwareChunker) nextFromMergedSegments() (uint64, []byte, error) {
 	}
 }
 
+// Advance is not supported. It's only used by parallel chunking to skip over
+// null chunks, and this chunker isn't parallelizable.
 func (c *SegmentAwareChunker) Advance(n int) error {
-	// TODO:
 	return fmt.Errorf("Advance is unsupported")
 }
 
@@ -492,16 +493,16 @@ func (c *SegmentAwareChunker) Max() uint64 { return c.subchunker.Max() }
 func init() {
 	err := RegisterChunker(ChunkerDesc{
 		Name: "segmentaware",
-		HelpText: `Chuker that relies on provided segment sizes to make informed decision during chunking process.
+		HelpText: `Chunker that uses a list of segment sizes describing the input to place chunk boundaries.
 Splits along segment boundaries, except when segments are big enough to produce multiple chunks.
-Note that it could produce multiple chunks lesser then 'min' size as a consequence.
-Possible --chukner-options:
-	segmentsSource - file to use as a source for segment sizes. Defaults to file being chunked.
-	segmentsSourceFormat - how to interprete 'segmentsSource' contents. Deduces format from file extension if not provided.
-	subchunker - chunking algorithm to use for an actual CDC.
-	mergeSmallSegments - should small chunks be merged before chunking. Helps to reduce amount of small chunks produced. True by default.
-	smallSegmentBreakpoint - size of segments to be merged into bigger ones (if enabled above). Provided in kb, defaults to twice the avg chunk size.
-		`,
+As a consequence, it can produce chunks smaller than the min size.
+Options for --chunker-options, as a comma-separated list of key=value:
+	segmentsSource - file to read the segment sizes from. Defaults to the file being chunked.
+	segmentsSourceFormat - format of the segmentsSource, 'csv' or 'catar'. Taken from the file extension if not provided.
+	subchunker - chunking algorithm used to find boundaries within and across segments. Defaults to fastcdc.
+	mergeSmallSegments - merge small segments before chunking, to produce fewer small chunks. True by default.
+	smallSegmentBreakpoint - largest segment size in kb that is merged with others. Defaults to twice the avg chunk size.
+`,
 
 		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
 			return NewSegmentAwareChunker(r, params)

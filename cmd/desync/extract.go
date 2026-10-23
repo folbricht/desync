@@ -71,7 +71,7 @@ afterwards and chunks that don't match are taken from the store.`,
 	flags.StringSliceVar(&opt.seedDirs, "seed-dir", nil, "directory with seed index files")
 	flags.BoolVar(&opt.skipInvalidSeeds, "skip-invalid-seeds", false, "skip seeds with invalid chunks")
 	flags.BoolVar(&opt.regenerateInvalidSeeds, "regenerate-invalid-seeds", false, "regenerate seed indexes with invalid chunks")
-	// TODO: pass chunker options too. Pretty shure all of that should be done per-seed, or stored as some extended info in .caibx.
+	// TODO: pass chunker options too. Pretty sure all of that should be done per-seed, or stored as some extended info in .caibx.
 	flags.StringVar(&opt.indexRegenChunker, "index-regeneration-chunker", chunkers.DefaultChunkerName, "chunker to use for seed regeneration")
 	flags.StringVarP(&opt.cache, "cache", "c", "", "store to be used as cache")
 	flags.BoolVarP(&opt.inPlace, "in-place", "k", false, "extract the file in place and keep it in case of error")

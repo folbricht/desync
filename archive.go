@@ -262,7 +262,7 @@ loop:
 }
 
 func splitSegmentsFromCatar(r io.Reader) ([]uint64, error) {
-	// Very simple split: every casync format element as a sesparate segment.
+	// Very simple split: every casync format element as a separate segment.
 	// TODO: Files are our main concern, so form segments around them, attaching "preamble" to the file body?
 	decoder := NewFormatDecoder(r)
 
