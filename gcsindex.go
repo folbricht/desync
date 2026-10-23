@@ -8,7 +8,6 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 // GCIndexStore is a read-write index store with Google Storage backing
@@ -35,19 +34,19 @@ func (s GCIndexStore) GetIndexReader(name string) (r io.ReadCloser, err error) {
 	ctx := context.TODO()
 
 	var (
-		log = Log.WithFields(logrus.Fields{
-			"bucket": s.bucket,
-			"name":   s.prefix + name,
-		})
+		log = Log.With(
+			"bucket", s.bucket,
+			"name", s.prefix+name,
+		)
 	)
 
 	obj, err := s.client.Object(s.prefix + name).NewReader(ctx)
 
 	if err == storage.ErrObjectNotExist {
-		log.Warning("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
+		log.Warn("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
 		return nil, errors.Wrap(err, s.String())
 	} else if err != nil {
-		log.WithError(err).Error("Error when creating index reader from GCS bucket")
+		log.Error("Error when creating index reader from GCS bucket", "error", err)
 		return nil, errors.Wrap(err, s.String())
 	}
 
@@ -70,10 +69,10 @@ func (s GCIndexStore) StoreIndex(name string, idx Index) error {
 	ctx := context.TODO()
 
 	var (
-		log = Log.WithFields(logrus.Fields{
-			"bucket": s.bucket,
-			"name":   s.prefix + name,
-		})
+		log = Log.With(
+			"bucket", s.bucket,
+			"name", s.prefix+name,
+		)
 	)
 
 	w := s.client.Object(s.prefix + name).NewWriter(ctx)
@@ -82,7 +81,7 @@ func (s GCIndexStore) StoreIndex(name string, idx Index) error {
 	_, err := idx.WriteTo(w)
 
 	if err != nil {
-		log.WithError(err).Error("Error when copying data from local filesystem to object in GCS bucket")
+		log.Error("Error when copying data from local filesystem to object in GCS bucket", "error", err)
 		_ = w.Close()
 		return errors.Wrap(err, path.Base(s.Location))
 	}
@@ -90,7 +89,7 @@ func (s GCIndexStore) StoreIndex(name string, idx Index) error {
 	err = w.Close()
 
 	if err != nil {
-		log.WithError(err).Error("Error when finalizing copying of data from local filesystem to object in GCS bucket")
+		log.Error("Error when finalizing copying of data from local filesystem to object in GCS bucket", "error", err)
 		return errors.Wrap(err, path.Base(s.Location))
 	}
 

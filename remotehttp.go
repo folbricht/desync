@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 var _ WriteStore = &RemoteHTTP{}
@@ -79,11 +78,11 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 
 	var (
 		resp *http.Response
-		log  = Log.WithFields(logrus.Fields{
-			"method":  method,
-			"url":     u.String(),
-			"attempt": attempt,
-		})
+		log  = Log.With(
+			"method", method,
+			"url", u.String(),
+			"attempt", attempt,
+		)
 	)
 
 	req, err := http.NewRequest(method, u.String(), getReader())
@@ -101,7 +100,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 	log.Debug("sending request")
 	resp, err = r.client.Do(req)
 	if err != nil {
-		log.WithError(err).Error("error while sending request")
+		log.Error("error while sending request", "error", err)
 		return 0, nil, errors.Wrap(err, u.String())
 	}
 
@@ -109,11 +108,11 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.WithError(err).Error("error while reading response")
+		log.Error("error while reading response", "error", err)
 		return 0, nil, errors.Wrap(err, u.String())
 	}
 
-	log.WithField("statusCode", resp.StatusCode).Debug("response received")
+	log.Debug("response received", "statusCode", resp.StatusCode)
 	return resp.StatusCode, b, nil
 }
 
@@ -122,10 +121,10 @@ func (r *RemoteHTTPBase) IssueRetryableHttpRequest(method string, u *url.URL, ge
 
 	var (
 		attempt int
-		log     = Log.WithFields(logrus.Fields{
-			"method": method,
-			"url":    u.String(),
-		})
+		log     = Log.With(
+			"method", method,
+			"url", u.String(),
+		)
 	)
 
 retry:
@@ -134,12 +133,12 @@ retry:
 
 	if (err != nil) || (statusCode >= 500 && statusCode < 600) {
 		if attempt >= r.opt.ErrorRetry {
-			log.WithField("attempt", attempt).Debug("failed, giving up")
+			log.Debug("failed, giving up", "attempt", attempt)
 			// Return the last response as-is. In the server-error case err is
 			// nil and the callers report the actual status code and body.
 			return statusCode, responseBody, err
 		} else {
-			log.WithField("attempt", attempt).WithField("delay", attempt).Debug("waiting, then retrying")
+			log.Debug("waiting, then retrying", "attempt", attempt, "delay", attempt)
 			time.Sleep(time.Duration(attempt) * r.opt.ErrorRetryBaseInterval)
 			goto retry
 		}

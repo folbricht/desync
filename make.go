@@ -31,6 +31,11 @@ func IndexFromFile(ctx context.Context,
 	stats := ChunkingStats{}
 	var wg sync.WaitGroup
 
+	// The sizes are used to plan the workers before any chunker is created
+	if err := validateChunkSizes(min, avg, max); err != nil {
+		return Index{}, stats, err
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

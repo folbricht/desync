@@ -115,7 +115,7 @@ func (o cmdStoreOptions) storeWorkers(locations ...string) (int, error) {
 func (o cmdStoreOptions) cpuWorkers() int {
 	if o.n == desync.AdaptiveConcurrency {
 		n := runtime.GOMAXPROCS(0)
-		desync.Log.Debugf("using %d goroutines, one per CPU", n)
+		desync.Log.Debug("using one goroutine per CPU", "goroutines", n)
 		return n
 	}
 	return o.n

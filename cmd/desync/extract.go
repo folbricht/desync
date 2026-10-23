@@ -209,7 +209,7 @@ func readSeeds(dstFile string, seedsInfo []string, opts cmdStoreOptions, indexRe
 				return nil, fmt.Errorf("the provided seed argument %q seems to be malformed", seedInfo)
 			} else if len(seedArray) > 2 {
 				// In the future we might add the ability to specify some additional options for the seeds.
-				desync.Log.WithField("seed", seedsInfo).Warning("Seed options are reserved for future use")
+				desync.Log.Warn("Seed options are reserved for future use", "seed", seedsInfo)
 			}
 			srcIndexFile = seedArray[0]
 			srcFile = seedArray[1]

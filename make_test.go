@@ -177,3 +177,24 @@ func TestIndexFromFileDigestFlag(t *testing.T) {
 		})
 	}
 }
+
+// TestIndexFromFileInvalidChunkSizes verifies that invalid chunk sizes are
+// rejected before they're used to plan the workers.
+func TestIndexFromFileInvalidChunkSizes(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "input")
+	require.NoError(t, os.WriteFile(f, make([]byte, ChunkSizeMaxDefault), 0644))
+
+	tests := map[string][3]uint64{
+		"zero min":     {0, ChunkSizeAvgDefault, ChunkSizeMaxDefault},
+		"all zero":     {0, 0, 0},
+		"min too low":  {ChunkerWindowSize - 1, ChunkSizeAvgDefault, ChunkSizeMaxDefault},
+		"min over avg": {ChunkSizeAvgDefault + 1, ChunkSizeAvgDefault, ChunkSizeMaxDefault},
+		"avg over max": {ChunkSizeMinDefault, ChunkSizeMaxDefault + 1, ChunkSizeMaxDefault},
+	}
+	for name, sizes := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := IndexFromFile(context.Background(), f, 4, sizes[0], sizes[1], sizes[2], NewProgressBar(""))
+			require.Error(t, err)
+		})
+	}
+}
