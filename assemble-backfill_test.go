@@ -101,7 +101,7 @@ func TestAssembleSeedChangedDuringAssembly(t *testing.T) {
 		dir := t.TempDir()
 		seedFile := filepath.Join(dir, "seed")
 		writeOldFile(t, seedFile, fromSeed.data)
-		seed, err := NewFileSeed(filepath.Join(dir, "target"), seedFile, chunkIndex(fromSeed))
+		seed, err := NewFileSeed(filepath.Join(dir, "target"), seedFile, chunkIndex(fromSeed), IndexRegenerationSettings{})
 		require.NoError(t, err)
 
 		// The hook runs on a worker, it can't stop the test
@@ -142,7 +142,7 @@ func TestAssembleSeedUnchanged(t *testing.T) {
 	seedFile := filepath.Join(dir, "seed")
 	writeOldFile(t, seedFile, fromSeed.data)
 	target := filepath.Join(dir, "target")
-	seed, err := NewFileSeed(target, seedFile, chunkIndex(fromSeed))
+	seed, err := NewFileSeed(target, seedFile, chunkIndex(fromSeed), IndexRegenerationSettings{})
 	require.NoError(t, err)
 
 	// Checking the output would fetch nothing, so count the chunks the

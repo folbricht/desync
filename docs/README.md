@@ -5,6 +5,7 @@ Start with the [README](../README.md) for what desync is and a quick start.
 | | |
 | --- | --- |
 | [Concepts](concepts.md) | Chunking, seeds and reflinks, how the pieces fit together |
+| [Chunking algorithms](chunkers.md) | Choosing a chunker, segment-aware chunking |
 | [Store backends](stores.md) | Capabilities, chaining, caching, failover groups |
 | [S3 stores](stores-s3.md) | Bucket URLs, addressing styles, credentials |
 | [OCI registry stores](stores-oci.md) | Chunks and indexes in a container registry |

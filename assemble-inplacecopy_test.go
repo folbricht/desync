@@ -23,7 +23,7 @@ func TestInPlaceMoveClones(t *testing.T) {
 	moveClones := func(t *testing.T, canReflink bool, inPlace []testChunk, target ...testChunk) map[string]bool {
 		t.Helper()
 		f := writeChunkFile(t, inPlace...)
-		seed, err := NewFileSeed(f, f, chunkIndex(inPlace...))
+		seed, err := NewFileSeed(f, f, chunkIndex(inPlace...), IndexRegenerationSettings{})
 		require.NoError(t, err)
 		seed.canReflink = canReflink
 		plan := newPlan(f, chunkIndex(target...), nil,

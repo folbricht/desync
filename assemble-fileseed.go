@@ -4,20 +4,36 @@ import (
 	"context"
 	"fmt"
 	"os"
+
+	"github.com/folbricht/desync/pkg/chunkers"
 )
+
+var _ Seed = &FileSeed{}
+
+// Controls how to regenerate invalid index.
+type IndexRegenerationSettings struct {
+	chunkers.ChunkingSettings
+}
 
 // FileSeed is used to copy or clone blocks from an existing index+blob during
 // file extraction.
 type FileSeed struct {
-	srcFile string
+	srcFile            string
+	indexRegenSettings IndexRegenerationSettings
 	seedIndex
 }
 
 // NewFileSeed initializes a new seed that uses an existing index and its blob
-func NewFileSeed(dstFile string, srcFile string, index Index) (*FileSeed, error) {
+func NewFileSeed(dstFile string, srcFile string, index Index, regenSettings IndexRegenerationSettings) (*FileSeed, error) {
+	// Make sure chunking sizes match with provided index.
+	// TODO: would be nice if IndexRegenerationSettings could be restored from index entirely.
+	regenSettings.ChunkerParams.Min = index.Index.ChunkSizeMin
+	regenSettings.ChunkerParams.Avg = index.Index.ChunkSizeAvg
+	regenSettings.ChunkerParams.Max = index.Index.ChunkSizeMax
 	return &FileSeed{
-		srcFile:   srcFile,
-		seedIndex: newSeedIndex(index, CanClone(dstFile, srcFile)),
+		srcFile:            srcFile,
+		indexRegenSettings: regenSettings,
+		seedIndex:          newSeedIndex(index, CanClone(dstFile, srcFile)),
 	}, nil
 }
 
@@ -37,8 +53,7 @@ func (s *FileSeed) GetSegment(pos, n int) SeedSegment {
 
 func (s *FileSeed) RegenerateIndex(ctx context.Context, n int, attempt int, seedNumber int) error {
 	chunkingPrefix := fmt.Sprintf("Attempt %d: Chunking Seed %d ", attempt, seedNumber)
-	index, _, err := IndexFromFile(ctx, s.srcFile, n, s.index.Index.ChunkSizeMin, s.index.Index.ChunkSizeAvg,
-		s.index.Index.ChunkSizeMax, NewProgressBar(chunkingPrefix))
+	index, _, err := IndexFromFile(ctx, s.srcFile, n, s.indexRegenSettings.ChunkingSettings, NewProgressBar(chunkingPrefix))
 	if err != nil {
 		return err
 	}

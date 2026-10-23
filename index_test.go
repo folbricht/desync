@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/folbricht/desync/pkg/chunkers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,7 +60,7 @@ func TestIndexChunking(t *testing.T) {
 	defer f.Close()
 
 	// Create a chunker
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := chunkers.NewChunker(chunkers.DefaultChunkerName, f, chunkers.DefaultChunkerParams())
 	require.NoError(t, err)
 
 	// Make a temp local store
@@ -125,7 +126,7 @@ func TestChunkStreamIntegrity(t *testing.T) {
 		binary.LittleEndian.PutUint64(data[i*8:], uint64(i)*0x9E3779B97F4A7C15)
 	}
 
-	c, err := NewChunker(bytes.NewReader(data), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := chunkers.NewChunker(chunkers.DefaultChunkerName, bytes.NewReader(data), chunkers.DefaultChunkerParams())
 	require.NoError(t, err)
 
 	dir := t.TempDir()
@@ -160,11 +161,11 @@ func TestChunkStreamDigestFlag(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			withDigest(t, test.digest)
 
-			data := make([]byte, 4*ChunkSizeMaxDefault)
+			data := make([]byte, 4*chunkers.DefaultChunkSizeMax)
 			for i := range len(data) / 8 {
 				binary.LittleEndian.PutUint64(data[i*8:], uint64(i)*0x9E3779B97F4A7C15)
 			}
-			c, err := NewChunker(bytes.NewReader(data), ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+			c, err := chunkers.NewChunker(chunkers.DefaultChunkerName, bytes.NewReader(data), chunkers.DefaultChunkerParams())
 			require.NoError(t, err)
 			s, err := NewLocalStore(t.TempDir(), StoreOptions{})
 			require.NoError(t, err)
@@ -209,7 +210,7 @@ func splitBlob(b *testing.B) {
 	defer f.Close()
 
 	// Create a chunker
-	c, err := NewChunker(f, ChunkSizeMinDefault, ChunkSizeAvgDefault, ChunkSizeMaxDefault)
+	c, err := chunkers.NewChunkerFromSettings(f, chunkers.DefaultChunkingSettings())
 	if err != nil {
 		b.Fatal(err)
 	}
