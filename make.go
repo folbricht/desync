@@ -32,7 +32,7 @@ func IndexFromFile(ctx context.Context,
 	var wg sync.WaitGroup
 
 	// The sizes are used to plan the workers before any chunker is created
-	if err := validateChunkSizes(min, avg, max); err != nil {
+	if err := chunkers.ValidateChunkSizes(chunkingSettings); err != nil {
 		return Index{}, stats, err
 	}
 

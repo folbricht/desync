@@ -182,18 +182,23 @@ func TestIndexFromFileDigestFlag(t *testing.T) {
 // rejected before they're used to plan the workers.
 func TestIndexFromFileInvalidChunkSizes(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "input")
-	require.NoError(t, os.WriteFile(f, make([]byte, ChunkSizeMaxDefault), 0644))
+	require.NoError(t, os.WriteFile(f, make([]byte, chunkers.DefaultChunkSizeMax), 0644))
 
 	tests := map[string][3]uint64{
-		"zero min":     {0, ChunkSizeAvgDefault, ChunkSizeMaxDefault},
+		"zero min":     {0, chunkers.DefaultChunkSizeAvg, chunkers.DefaultChunkSizeMax},
 		"all zero":     {0, 0, 0},
-		"min too low":  {ChunkerWindowSize - 1, ChunkSizeAvgDefault, ChunkSizeMaxDefault},
-		"min over avg": {ChunkSizeAvgDefault + 1, ChunkSizeAvgDefault, ChunkSizeMaxDefault},
-		"avg over max": {ChunkSizeMinDefault, ChunkSizeMaxDefault + 1, ChunkSizeMaxDefault},
+		"min too low":  {chunkers.BuzhashWindowSize - 1, chunkers.DefaultChunkSizeAvg, chunkers.DefaultChunkSizeMax},
+		"min over avg": {chunkers.DefaultChunkSizeAvg + 1, chunkers.DefaultChunkSizeAvg, chunkers.DefaultChunkSizeMax},
+		"avg over max": {chunkers.DefaultChunkSizeMin, chunkers.DefaultChunkSizeMax + 1, chunkers.DefaultChunkSizeMax},
 	}
 	for name, sizes := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := IndexFromFile(context.Background(), f, 4, sizes[0], sizes[1], sizes[2], NewProgressBar(""))
+			settings := chunkers.ChunkingSettings{ChunkerName: name, ChunkerParams: chunkers.ChunkerParams{
+				Min:     sizes[0],
+				Avg:     sizes[1],
+				Max:     sizes[2],
+				Options: ""}}
+			_, _, err := IndexFromFile(context.Background(), f, 4, settings, NewProgressBar(""))
 			require.Error(t, err)
 		})
 	}

@@ -1,6 +1,7 @@
 package chunkers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -114,31 +115,37 @@ func (registry *chunkerRegistry) register(desc ChunkerDesc) error {
 func FindChunkerByName(name string) *ChunkerDesc { return registry.findByName(name) }
 func RegisterChunker(desc ChunkerDesc) error     { return registry.register(desc) }
 
+func ValidateChunkSizes(settings ChunkingSettings) error {
+	if settings.ChunkerParams.Min > settings.ChunkerParams.Max {
+		return errors.New("min chunk size must not be greater than max")
+	}
+	if settings.ChunkerParams.Min > settings.ChunkerParams.Avg {
+		return errors.New("min chunk size must not be greater than avg")
+	}
+	if settings.ChunkerParams.Avg > settings.ChunkerParams.Max {
+		return errors.New("avg chunk size must not be greater than max")
+	}
+
+	chunkerDesc := registry.findByName(settings.ChunkerName)
+	if chunkerDesc == nil {
+		return fmt.Errorf("unknown chunker '%s'", settings.ChunkerName)
+	}
+
+	if settings.ChunkerParams.Min < uint64(chunkerDesc.WindowSize) {
+		return fmt.Errorf("min chunk size too small, must be over %d", chunkerDesc.WindowSize)
+	}
+	return nil
+}
+
 // NewChunker initializes a chunker for a data stream according to min/avg/max chunk size.
 func NewChunker(name string, r io.Reader, params ChunkerParams) (Chunker, error) {
-	if params.Min > params.Max {
-		return nil, fmt.Errorf("min chunk size must not be greater than max")
+	if err := ValidateChunkSizes(ChunkingSettings{ChunkerName: name, ChunkerParams: params}); err != nil {
+		return nil, err
 	}
-	if params.Min > params.Avg {
-		return nil, fmt.Errorf("min chunk size must not be greater than avg")
-	}
-	if params.Avg > params.Max {
-		return nil, fmt.Errorf("avg chunk size must not be greater than max")
-	}
-
-	if name == "" {
-		name = DefaultChunkerName
-	}
-
 	chunkerDesc := registry.findByName(name)
 	if chunkerDesc == nil {
 		return nil, fmt.Errorf("unknown chunker '%s'", name)
 	}
-
-	if params.Min < uint64(chunkerDesc.WindowSize) {
-		return nil, fmt.Errorf("min chunk size too small, must be over %d", chunkerDesc.WindowSize)
-	}
-
 	return chunkerDesc.Constructor(r, params)
 }
 
