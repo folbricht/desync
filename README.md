@@ -53,6 +53,7 @@ rsync is the right tool when both ends are machines you control and the destinat
 - **[Parallel chunking](docs/concepts.md#parallel-chunking)** — byte-identical output to casync, several times faster given enough cores
 - **[Store backends](docs/stores.md)** — local, HTTP(S), [S3/GCS](docs/stores-s3.md), SFTP, SSH, [OCI registries](docs/stores-oci.md)
 - **[Chaining and caching](docs/stores.md#chaining-and-caching)** — combine stores behind a local cache, with [failover groups](docs/stores.md#failover-groups)
+- **[Chunking algorithms](docs/chunkers.md)** — casync's buzhash by default, FastCDC variants, and segment-aware chunking that aligns chunks with the structure of the input
 - **[Seeds and reflinks](docs/concepts.md#seeds-and-reflinks)** — reuse local data, cloning blocks instead of copying them on Btrfs/XFS
 - **[Built-in servers](docs/cookbook.md#server-examples)** — HTTP(S) chunk server and index server, usable as a caching proxy
 - **[FUSE mounting](docs/cli/desync_mount-index.md)** — mount blob indexes as files

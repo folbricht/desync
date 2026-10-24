@@ -4,7 +4,7 @@
 
 | Term | Description |
 | --- | --- |
-| **chunk** | A section of data from a file, typically 16KB-256KB. Identified by the SHA512-256 checksum of its uncompressed data. Stored compressed with zstd (`.cacnk` extension). Boundaries are determined by a [rolling hash algorithm](http://0pointer.net/blog/casync-a-tool-for-distributing-file-system-images.html). |
+| **chunk** | A section of data from a file, typically 16KB-256KB. Identified by the SHA512-256 checksum of its uncompressed data. Stored compressed with zstd (`.cacnk` extension). Boundaries are determined by a [rolling hash algorithm](http://0pointer.net/blog/casync-a-tool-for-distributing-file-system-images.html), selectable with `--chunker` (see [Chunking algorithms](chunkers.md)). |
 | **chunk store** | Location (local or remote) that stores chunks. Can be a local directory, or accessed via HTTP, S3, GCS, SFTP, or SSH. |
 | **index** | Data structure mapping chunk IDs to byte offsets within a file. A small representation of a much larger file. Produced by `make`. Given an index and a chunk store, the original file can be reassembled or FUSE-mounted. |
 | **index store** | Location for index files. Can be local, SFTP, S3, GCS, or HTTP. |
@@ -14,7 +14,7 @@
 
 ## Parallel Chunking
 
-One of the significant differences to casync is that desync attempts to make chunking faster by utilizing more CPU resources, chunking data in parallel. Depending on the chosen degree of concurrency, the file is split into N equal parts and each part is chunked independently. While the chunking of each part is ongoing, part1 is trying to align with part2, and part3 is trying to align with part4 and so on. Alignment is achieved once a common split point is found in the overlapping area. If a common split point is found, the process chunking the previous part stops, e.g. part1 chunker stops, part2 chunker keeps going until it aligns with part3 and so on until all split points have been found. Once all split points have been determined, the file is opened again (N times) to read, compress and store the chunks.
+One of the significant differences to casync is that desync attempts to make chunking faster by utilizing more CPU resources, chunking data in parallel. This applies to the default `buzhash` chunker; the [other chunking algorithms](chunkers.md) chunk with a single worker. Depending on the chosen degree of concurrency, the file is split into N equal parts and each part is chunked independently. While the chunking of each part is ongoing, part1 is trying to align with part2, and part3 is trying to align with part4 and so on. Alignment is achieved once a common split point is found in the overlapping area. If a common split point is found, the process chunking the previous part stops, e.g. part1 chunker stops, part2 chunker keeps going until it aligns with part3 and so on until all split points have been found. Once all split points have been determined, the file is opened again (N times) to read, compress and store the chunks.
 
 While in most cases this process achieves significantly reduced chunking times at the cost of CPU, there are edge cases where chunking is only about as fast as upstream casync (with more CPU usage). This is the case if no split points can be found in the data between min and max chunk size as is the case if most or all of the file consists of 0-bytes. In this situation, the concurrent chunking processes for each part will not align with each other and a lot of effort is wasted.
 
@@ -25,7 +25,7 @@ The speedup scales with the number of cores made available through `-n`, since t
 | `make` | Less benefit from parallelism — the concurrent chunkers can't align, so some work is wasted | Fast — parallel chunking |
 | `extract` | Extremely fast — effectively the speed of a `truncate()` syscall | Fast — done in parallel, usually limited by I/O |
 
-While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes of at least the window size of the rolling hash used (currently 48 bytes). The tool's default chunk sizes match the defaults used in casync: min 16KB, avg 64KB, max 256KB.
+While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes of at least the window size of the rolling hash used (48 bytes for `buzhash`, 64 bytes for the FastCDC chunkers, see [Chunk sizes](chunkers.md#chunk-sizes)). The tool's default chunk sizes match the defaults used in casync: min 16KB, avg 64KB, max 256KB.
 
 ## Concurrency
 

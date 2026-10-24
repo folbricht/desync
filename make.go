@@ -7,10 +7,13 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+
+	"github.com/folbricht/desync/pkg/chunkers"
 )
 
 // IndexFromFile chunks a file in parallel and returns an index. It does not
-// store chunks! Each concurrent chunker starts filesize/n bytes apart and
+// store chunks!
+// If chunker is parallelizable, then each concurrent chunker starts filesize/n bytes apart and
 // splits independently. Each chunk worker tries to sync with its next
 // neighbor and if successful stops processing letting the next one continue.
 // The main routine reads and assembles a list of (confirmed) chunks from the
@@ -21,7 +24,7 @@ import (
 func IndexFromFile(ctx context.Context,
 	name string,
 	n int,
-	min, avg, max uint64,
+	chunkingSettings chunkers.ChunkingSettings,
 	pb ProgressBar,
 ) (Index, ChunkingStats, error) {
 
@@ -29,7 +32,8 @@ func IndexFromFile(ctx context.Context,
 	var wg sync.WaitGroup
 
 	// The sizes are used to plan the workers before any chunker is created
-	if err := validateChunkSizes(min, avg, max); err != nil {
+	chunkerDesc, err := chunkers.ValidateChunkingSettings(chunkingSettings)
+	if err != nil {
 		return Index{}, stats, err
 	}
 
@@ -39,9 +43,9 @@ func IndexFromFile(ctx context.Context,
 	index := Index{
 		Index: FormatIndex{
 			FeatureFlags: CaFormatExcludeFile | CaFormatExcludeNoDump | digestFeatureFlag(),
-			ChunkSizeMin: min,
-			ChunkSizeAvg: avg,
-			ChunkSizeMax: max,
+			ChunkSizeMin: chunkingSettings.ChunkerParams.Min,
+			ChunkSizeAvg: chunkingSettings.ChunkerParams.Avg,
+			ChunkSizeMax: chunkingSettings.ChunkerParams.Max,
 		},
 	}
 
@@ -68,11 +72,16 @@ func IndexFromFile(ctx context.Context,
 	}
 
 	// Adjust n if it's a small file that doesn't have n*max bytes
-	nn := size/max + 1
+	nn := size/chunkingSettings.ChunkerParams.Max + 1
 	if nn < uint64(n) {
 		n = int(nn)
 	}
 	span := size / uint64(n) // initial spacing between chunkers
+
+	// Can we parallelize that chunker?
+	if !chunkerDesc.Parallelizable {
+		n = 1
+	}
 
 	// Setup and start the progressbar if any
 	pb.SetTotal(int(size))
@@ -82,7 +91,7 @@ func IndexFromFile(ctx context.Context,
 	// Null chunks is produced when a large section of null bytes is chunked. There are no
 	// split points in those sections so it's always of max chunk size. Used for optimizations
 	// when chunking files with large empty sections.
-	nullChunk := NewNullChunk(max)
+	nullChunk := NewNullChunk(chunkingSettings.ChunkerParams.Max)
 
 	// Create/initialize the workers
 	worker := make([]*pChunker, n)
@@ -92,8 +101,8 @@ func IndexFromFile(ctx context.Context,
 			return index, stats, err
 		}
 		defer f.Close()
-		start := span * uint64(i)       // starting position for this chunker
-		mChunks := (size-start)/min + 1 // max # of chunks this worker can produce
+		start := span * uint64(i)                                      // starting position for this chunker
+		mChunks := (size-start)/chunkingSettings.ChunkerParams.Min + 1 // max # of chunks this worker can produce
 		s, err := f.Seek(int64(start), io.SeekStart)
 		if err != nil {
 			return index, stats, err
@@ -101,7 +110,7 @@ func IndexFromFile(ctx context.Context,
 		if uint64(s) != start {
 			return index, stats, fmt.Errorf("requested seek to position %d, but got %d", start, s)
 		}
-		c, err := NewChunker(f, min, avg, max)
+		c, err := chunkers.NewChunkerFromSettings(f, chunkingSettings)
 		if err != nil {
 			return index, stats, err
 		}
@@ -171,7 +180,7 @@ type pChunker struct {
 	results chan IndexChunk
 
 	// single-stream chunker used by this worker
-	chunker Chunker
+	chunker chunkers.Chunker
 
 	// starting position in the stream for this worker, needed to calculate
 	// the absolute position of every boundary that is returned
