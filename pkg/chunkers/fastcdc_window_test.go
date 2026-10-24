@@ -16,7 +16,7 @@ func TestFastCDCWindowCoversAllBytes(t *testing.T) {
 	rand.New(rand.NewSource(1)).Read(data)
 
 	firstChunk := func(b []byte) int {
-		c, err := NewFastCDCChunker(bytes.NewReader(b), params)
+		c, err := NewChunker("fastcdc", bytes.NewReader(b), params)
 		require.NoError(t, err)
 		_, chunk, err := c.Next()
 		require.NoError(t, err)
