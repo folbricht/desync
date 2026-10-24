@@ -90,6 +90,3 @@ func (c *ChunkerBase) Reset(r io.Reader) error {
 func (c *ChunkerBase) Min() uint64 { return c.min }
 func (c *ChunkerBase) Avg() uint64 { return c.avg }
 func (c *ChunkerBase) Max() uint64 { return c.max }
-
-func (c *ChunkerBase) Buf() []byte  { return c.buf }
-func (c *ChunkerBase) HitEOF() bool { return c.hitEOF }

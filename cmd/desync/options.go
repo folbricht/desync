@@ -1,13 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 
 	"github.com/folbricht/desync"
 	"github.com/folbricht/desync/pkg/chunkers"
@@ -218,17 +217,17 @@ func parseChunkSizeParam(s string) (min, avg, max uint64, err error) {
 	}
 	num, err := strconv.Atoi(sizes[0])
 	if err != nil {
-		return 0, 0, 0, errors.Wrap(err, "min chunk size")
+		return 0, 0, 0, fmt.Errorf("min chunk size: %w", err)
 	}
 	min = uint64(num) * 1024
 	num, err = strconv.Atoi(sizes[1])
 	if err != nil {
-		return 0, 0, 0, errors.Wrap(err, "avg chunk size")
+		return 0, 0, 0, fmt.Errorf("avg chunk size: %w", err)
 	}
 	avg = uint64(num) * 1024
 	num, err = strconv.Atoi(sizes[2])
 	if err != nil {
-		return 0, 0, 0, errors.Wrap(err, "max chunk size")
+		return 0, 0, 0, fmt.Errorf("max chunk size: %w", err)
 	}
 	max = uint64(num) * 1024
 	return

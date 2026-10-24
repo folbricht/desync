@@ -227,59 +227,6 @@ func (c *BuzhashChunker) Next() (uint64, []byte, error) {
 	return c.Split(m, nil)
 }
 
-// Hash implements the rolling hash algorithm used to find chunk boundaries
-// in a stream of bytes.
-type Hash struct {
-	value         uint32
-	window        []byte
-	size          int
-	idx           int
-	discriminator uint32
-}
-
-// NewHash returns a new instance of a hash. size determines the length of the
-// hash window used and the discriminator is used to find the boundary.
-func NewHash(size int, discriminator uint32) Hash {
-	return Hash{
-		window:        make([]byte, size),
-		size:          size,
-		discriminator: discriminator,
-	}
-}
-
-// Roll adds a new byte to the hash calculation. No useful value is returned until
-// the hash window has been populated.
-func (h *Hash) Roll(b byte) {
-	ob := h.window[h.idx]
-	h.window[h.idx] = b
-	h.idx = (h.idx + 1) % h.size
-
-	h.value = bits.RotateLeft32(h.value, 1) ^
-		bits.RotateLeft32(hashTable[ob], len(h.window)) ^
-		hashTable[b]
-}
-
-// Initialize the window used for the rolling hash calculation. The size of the
-// slice must match the window size
-func (h *Hash) Initialize(b []byte) {
-	for i, c := range b {
-		h.value ^= bits.RotateLeft32(hashTable[c], h.size-i-1)
-	}
-	copy(h.window, b)
-}
-
-// IsBoundary returns true if the discriminator and hash match to signal a
-// chunk boundary has been reached
-func (h *Hash) IsBoundary() bool {
-	return h.value%h.discriminator == h.discriminator-1
-}
-
-// Reset the hash window and value
-func (h *Hash) Reset() {
-	h.idx = 0
-	h.value = 0
-}
-
 func init() {
 	err := RegisterChunker(ChunkerDesc{
 		Name:     "buzhash",
