@@ -96,7 +96,7 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 	return
 }
 
-func NewSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChunker, error) {
+func newSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChunker, error) {
 	segmentAwareChunkerOptions, err := parseSegmentAwareChunkerOptions(params.Options)
 	if err != nil {
 		return nil, err
@@ -112,18 +112,10 @@ func NewSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChu
 		segmentAwareChunkerOptions.smallSegmentBreakpoint = 0
 	}
 
-	subchunkerDesc := FindChunkerByName(segmentAwareChunkerOptions.subchunker)
-	if subchunkerDesc == nil {
-		return nil, fmt.Errorf("unknown subchunker: '%s'", segmentAwareChunkerOptions.subchunker)
-	}
-	if uint64(subchunkerDesc.WindowSize) > params.Min {
-		return nil, fmt.Errorf("subchunker '%s' WindowSize %v is greater than min chunk size requested",
-			segmentAwareChunkerOptions.subchunker, subchunkerDesc.WindowSize)
-	}
 	subchunkerParams := ChunkerParams{params.Min, params.Avg, params.Max, ""}
-	subchunker, err := subchunkerDesc.Constructor(nil, subchunkerParams)
+	subchunker, err := NewChunker(segmentAwareChunkerOptions.subchunker, nil, subchunkerParams)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("subchunker: %w", err)
 	}
 
 	result := &SegmentAwareChunker{
@@ -505,9 +497,9 @@ Options for --chunker-options, as a comma-separated list of key=value:
 `,
 
 		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
-			return NewSegmentAwareChunker(r, params)
+			return newSegmentAwareChunker(r, params)
 		},
-		WindowSize:     64, // TODO
+		WindowSize:     0, // checked against the subchunker's window when it's created
 		Parallelizable: false,
 	})
 

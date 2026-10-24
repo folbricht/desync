@@ -51,7 +51,7 @@ Reading an index doesn't depend on how it was chunked. `extract`, `cat`, `mount-
 - `fastcdc` derives its boundary conditions from the average size and switches between them at the average.
 - `fastcdc4stadia` derives its threshold from the difference between the average and minimum size.
 
-The min size has to be at least the window size of the rolling hash: 48 bytes for `buzhash` and 64 bytes for the others.
+The min size has to be at least the window size of the rolling hash: 48 bytes for `buzhash` and 64 bytes for `fastcdc` and `fastcdc4stadia`. `segmentaware` uses the window size of its subchunker.
 
 ## Segment-aware chunking
 

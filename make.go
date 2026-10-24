@@ -32,7 +32,8 @@ func IndexFromFile(ctx context.Context,
 	var wg sync.WaitGroup
 
 	// The sizes are used to plan the workers before any chunker is created
-	if err := chunkers.ValidateChunkSizes(chunkingSettings); err != nil {
+	chunkerDesc, err := chunkers.ValidateChunkingSettings(chunkingSettings)
+	if err != nil {
 		return Index{}, stats, err
 	}
 
@@ -76,11 +77,6 @@ func IndexFromFile(ctx context.Context,
 		n = int(nn)
 	}
 	span := size / uint64(n) // initial spacing between chunkers
-
-	chunkerDesc := chunkers.FindChunkerByName(chunkingSettings.ChunkerName)
-	if chunkerDesc == nil {
-		return index, stats, fmt.Errorf("unknown chunker '%s'", chunkingSettings.ChunkerName)
-	}
 
 	// Can we parallelize that chunker?
 	if !chunkerDesc.Parallelizable {

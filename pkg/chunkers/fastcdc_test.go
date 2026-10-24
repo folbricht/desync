@@ -22,7 +22,7 @@ func TestFastCDCBoundaryAtMinSize(t *testing.T) {
 
 	r := io.MultiReader(bytes.NewReader(prefix), bytes.NewReader(someMatchingBytes), bytes.NewReader(postfix))
 	minSize := uint64(len(prefix) + len(someMatchingBytes))
-	chunker, err := NewFastCDCChunker(r, ChunkerParams{minSize, minSize * 4, minSize * 16, ""})
+	chunker, err := newFastCDCChunker(r, ChunkerParams{minSize, minSize * 4, minSize * 16, ""})
 	require.NoError(t, err)
 
 	_, chunk, err := chunker.Next()
