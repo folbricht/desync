@@ -80,7 +80,10 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 			options.subchunker = kv[1]
 
 		case "mergeSmallSegments":
-			options.mergeSmallSegments = !(kv[1] == "false" || kv[1] == "0")
+			options.mergeSmallSegments, err = strconv.ParseBool(kv[1])
+			if err != nil {
+				return options, fmt.Errorf("invalid mergeSmallSegments '%s'", kv[1])
+			}
 		case "smallSegmentBreakpoint":
 			kbValue, err := strconv.ParseUint(kv[1], 10, 64)
 			if err != nil || kbValue > math.MaxUint64/1024 {
@@ -484,7 +487,8 @@ func (c *SegmentAwareChunker) Max() uint64 { return c.subchunker.Max() }
 
 func init() {
 	err := RegisterChunker(ChunkerDesc{
-		Name: "segmentaware",
+		Name:         "segmentaware",
+		TakesOptions: true,
 		HelpText: `Chunker that uses a list of segment sizes describing the input to place chunk boundaries.
 Splits along segment boundaries, except when segments are big enough to produce multiple chunks.
 As a consequence, it can produce chunks smaller than the min size.

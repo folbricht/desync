@@ -66,14 +66,14 @@ Chunks smaller than the min size are normal with this chunker.
 
 ### Options
 
-Options are passed with `--chunker-options` as a comma-separated list of `key=value` pairs.
+Options are passed with `--chunker-options` as a comma-separated list of `key=value` pairs. `segmentaware` is the only chunker that takes options; passing them to another chunker is an error.
 
 | Option | Description |
 | --- | --- |
 | `segmentsSource` | File to read the segment sizes from. Defaults to the file being chunked, which only works for formats that describe themselves, like catar. |
 | `segmentsSourceFormat` | `csv` or `catar`. Taken from the extension of the segments source if not set. |
 | `subchunker` | Chunker used to find boundaries, default `fastcdc`. |
-| `mergeSmallSegments` | Merge small segments before chunking, default `true`. With `false`, every segment is chunked on its own and segments smaller than the min size become chunks of their own. |
+| `mergeSmallSegments` | Merge small segments before chunking, `true` (default) or `false`. With `false`, every segment is chunked on its own and segments smaller than the min size become chunks of their own. |
 | `smallSegmentBreakpoint` | Largest segment, in KB, that is merged with others. Defaults to twice the avg chunk size, and is never larger than the max chunk size. |
 
 Paths in `segmentsSource` can't contain commas, since they separate the options.

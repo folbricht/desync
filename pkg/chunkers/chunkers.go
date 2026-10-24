@@ -89,6 +89,10 @@ type ChunkerDesc struct {
 	// produce different output for the same byte stream if it's prepended by a span of ~avg bytes.
 	// This is a strict requirement for running parallel workers in IndexFromFile.
 	Parallelizable bool
+
+	// True if the chunker takes ChunkerParams.Options. Options passed to other
+	// chunkers are rejected rather than ignored.
+	TakesOptions bool
 }
 
 type chunkerRegistry struct {
@@ -142,6 +146,9 @@ func ValidateChunkingSettings(settings ChunkingSettings) (*ChunkerDesc, error) {
 	}
 	if settings.ChunkerParams.Min < uint64(chunkerDesc.WindowSize) {
 		return nil, fmt.Errorf("min chunk size too small, must be over %d", chunkerDesc.WindowSize)
+	}
+	if settings.ChunkerParams.Options != "" && !chunkerDesc.TakesOptions {
+		return nil, fmt.Errorf("chunker '%s' doesn't take options", chunkerDesc.Name)
 	}
 	return chunkerDesc, nil
 }
