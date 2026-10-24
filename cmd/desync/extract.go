@@ -101,6 +101,12 @@ func runExtract(ctx context.Context, opt extractOptions, args []string) error {
 		return errors.New("is not possible to use at the same time --skip-invalid-seeds and --regenerate-invalid-seeds")
 	}
 
+	// Seeds are only regenerated once they turn out to be invalid, check the
+	// chunker before doing any work
+	if chunkers.FindChunkerByName(opt.indexRegenChunker) == nil {
+		return fmt.Errorf("unknown chunker '%s' for --index-regeneration-chunker", opt.indexRegenChunker)
+	}
+
 	workers, err := opt.storeWorkers(append([]string{opt.cache}, opt.stores...)...)
 	if err != nil {
 		return err
