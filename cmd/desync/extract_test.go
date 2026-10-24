@@ -296,3 +296,15 @@ func TestExtractWithInvalidSeeds(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractInvalidRegenerationChunker(t *testing.T) {
+	// Fails up front, also when no seed needs to be regenerated
+	cmd := newExtractCommand(context.Background())
+	cmd.SetArgs([]string{"--store", "testdata/blob1.store", "--seed", "testdata/blob1.caibx", "--regenerate-invalid-seeds",
+		"--index-regeneration-chunker", "fastcd", "testdata/blob1.caibx", filepath.Join(t.TempDir(), "out")})
+	stderr = io.Discard
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	_, err := cmd.ExecuteC()
+	require.ErrorContains(t, err, "unknown chunker 'fastcd'")
+}
