@@ -25,7 +25,7 @@ The speedup scales with the number of cores made available through `-n`, since t
 | `make` | Less benefit from parallelism — the concurrent chunkers can't align, so some work is wasted | Fast — parallel chunking |
 | `extract` | Extremely fast — effectively the speed of a `truncate()` syscall | Fast — done in parallel, usually limited by I/O |
 
-While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes of at least the window size of the rolling hash used (48 bytes for `buzhash`, 64 bytes for the [other chunkers](chunkers.md#chunk-sizes)). The tool's default chunk sizes match the defaults used in casync: min 16KB, avg 64KB, max 256KB.
+While casync supports very small min chunk sizes, optimizations in desync require min chunk sizes of at least the window size of the rolling hash used (48 bytes for `buzhash`, 64 bytes for the FastCDC chunkers, see [Chunk sizes](chunkers.md#chunk-sizes)). The tool's default chunk sizes match the defaults used in casync: min 16KB, avg 64KB, max 256KB.
 
 ## Concurrency
 

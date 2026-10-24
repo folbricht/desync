@@ -87,7 +87,7 @@ type FastCDCChunker struct {
 	eagerMask uint64
 }
 
-func NewFastCDCChunker(r io.Reader, params ChunkerParams) (*FastCDCChunker, error) {
+func newFastCDCChunker(r io.Reader, params ChunkerParams) (*FastCDCChunker, error) {
 	avgBitCount := int(math.Round(math.Log2(float64(params.Avg))))
 
 	// The masks test the high bits of the hash. Each shift moves older bytes
@@ -157,7 +157,7 @@ func init() {
 Uses two separate discriminators below/above avg chunk size.`,
 
 		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
-			return NewFastCDCChunker(r, params)
+			return newFastCDCChunker(r, params)
 		},
 		WindowSize:     FastCDCWindowSize,
 		Parallelizable: false,

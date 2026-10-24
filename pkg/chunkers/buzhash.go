@@ -120,7 +120,7 @@ type BuzhashChunker struct {
 	hRot        int    // -k, right-rotation by the power-of-2 factor
 }
 
-func NewBuzhashChunker(r io.Reader, params ChunkerParams) (*BuzhashChunker, error) {
+func newBuzhashChunker(r io.Reader, params ChunkerParams) (*BuzhashChunker, error) {
 
 	disc := discriminatorFromAvg(params.Avg)
 
@@ -232,7 +232,7 @@ func init() {
 		Name:     "buzhash",
 		HelpText: `Buzhash chunker implementation compatible with casync.`,
 		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
-			return NewBuzhashChunker(r, params)
+			return newBuzhashChunker(r, params)
 		},
 		WindowSize:     BuzhashWindowSize,
 		Parallelizable: true,

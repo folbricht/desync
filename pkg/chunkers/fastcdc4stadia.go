@@ -102,7 +102,7 @@ type FastCDC4StadiaChunker struct {
 	threshold uint64
 }
 
-func NewFastCDC4StadiaChunker(r io.Reader, params ChunkerParams) (*FastCDC4StadiaChunker, error) {
+func newFastCDC4StadiaChunker(r io.Reader, params ChunkerParams) (*FastCDC4StadiaChunker, error) {
 	return &FastCDC4StadiaChunker{
 		ChunkerBase: *NewChunkerBase(r, params),
 		threshold:   uint64(math.MaxUint64) / (params.Avg - params.Min + 1),
@@ -186,7 +186,7 @@ func init() {
 Promises better dedup and a flatter chunk size distribution.`,
 
 		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
-			return NewFastCDC4StadiaChunker(r, params)
+			return newFastCDC4StadiaChunker(r, params)
 		},
 		WindowSize:     FastCDCWindowSize,
 		Parallelizable: false,

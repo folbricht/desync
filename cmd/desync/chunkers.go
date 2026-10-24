@@ -26,7 +26,10 @@ func runChunkers(ctx context.Context) error {
 	for _, name := range chunkers.RegisteredNames() {
 		desc := chunkers.FindChunkerByName(name)
 		fmt.Fprintf(stdout, "%s:\n", desc.Name)
-		fmt.Fprintf(stdout, "WindowSize=%v Parallelizable=%v\n", desc.WindowSize, desc.Parallelizable)
+		if desc.WindowSize > 0 {
+			fmt.Fprintf(stdout, "WindowSize=%v ", desc.WindowSize)
+		}
+		fmt.Fprintf(stdout, "Parallelizable=%v\n", desc.Parallelizable)
 		if len(desc.HelpText) > 0 {
 			fmt.Fprint(stdout, desc.HelpText)
 			if desc.HelpText[len(desc.HelpText)-1] != '\n' {

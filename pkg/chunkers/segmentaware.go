@@ -80,7 +80,10 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 			options.subchunker = kv[1]
 
 		case "mergeSmallSegments":
-			options.mergeSmallSegments = !(kv[1] == "false" || kv[1] == "0")
+			options.mergeSmallSegments, err = strconv.ParseBool(kv[1])
+			if err != nil {
+				return options, fmt.Errorf("invalid mergeSmallSegments '%s'", kv[1])
+			}
 		case "smallSegmentBreakpoint":
 			kbValue, err := strconv.ParseUint(kv[1], 10, 64)
 			if err != nil || kbValue > math.MaxUint64/1024 {
@@ -96,7 +99,7 @@ func parseSegmentAwareChunkerOptions(optionsStr string) (options segmentAwareChu
 	return
 }
 
-func NewSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChunker, error) {
+func newSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChunker, error) {
 	segmentAwareChunkerOptions, err := parseSegmentAwareChunkerOptions(params.Options)
 	if err != nil {
 		return nil, err
@@ -112,18 +115,10 @@ func NewSegmentAwareChunker(r io.Reader, params ChunkerParams) (*SegmentAwareChu
 		segmentAwareChunkerOptions.smallSegmentBreakpoint = 0
 	}
 
-	subchunkerDesc := FindChunkerByName(segmentAwareChunkerOptions.subchunker)
-	if subchunkerDesc == nil {
-		return nil, fmt.Errorf("unknown subchunker: '%s'", segmentAwareChunkerOptions.subchunker)
-	}
-	if uint64(subchunkerDesc.WindowSize) > params.Min {
-		return nil, fmt.Errorf("subchunker '%s' WindowSize %v is greater than min chunk size requested",
-			segmentAwareChunkerOptions.subchunker, subchunkerDesc.WindowSize)
-	}
 	subchunkerParams := ChunkerParams{params.Min, params.Avg, params.Max, ""}
-	subchunker, err := subchunkerDesc.Constructor(nil, subchunkerParams)
+	subchunker, err := NewChunker(segmentAwareChunkerOptions.subchunker, nil, subchunkerParams)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("subchunker: %w", err)
 	}
 
 	result := &SegmentAwareChunker{
@@ -492,7 +487,8 @@ func (c *SegmentAwareChunker) Max() uint64 { return c.subchunker.Max() }
 
 func init() {
 	err := RegisterChunker(ChunkerDesc{
-		Name: "segmentaware",
+		Name:         "segmentaware",
+		TakesOptions: true,
 		HelpText: `Chunker that uses a list of segment sizes describing the input to place chunk boundaries.
 Splits along segment boundaries, except when segments are big enough to produce multiple chunks.
 As a consequence, it can produce chunks smaller than the min size.
@@ -505,9 +501,9 @@ Options for --chunker-options, as a comma-separated list of key=value:
 `,
 
 		Constructor: func(r io.Reader, params ChunkerParams) (Chunker, error) {
-			return NewSegmentAwareChunker(r, params)
+			return newSegmentAwareChunker(r, params)
 		},
-		WindowSize:     64, // TODO
+		WindowSize:     0, // checked against the subchunker's window when it's created
 		Parallelizable: false,
 	})
 
