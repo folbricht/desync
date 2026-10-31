@@ -1,4 +1,4 @@
-package desync
+package sftp
 
 import (
 	"net/url"
@@ -7,29 +7,30 @@ import (
 
 	"io"
 
+	"github.com/folbricht/desync"
 	"github.com/pkg/errors"
 )
 
-// SFTPIndexStore is an index store backed by SFTP over SSH
-type SFTPIndexStore struct {
-	*SFTPStoreBase
+// IndexStore is an index store backed by SFTP over SSH
+type IndexStore struct {
+	*StoreBase
 }
 
-// NewSFTPIndexStore initializes and index store backed by SFTP over SSH.
-func NewSFTPIndexStore(location *url.URL, opt StoreOptions) (*SFTPIndexStore, error) {
+// NewIndexStore initializes and index store backed by SFTP over SSH.
+func NewIndexStore(location *url.URL, opt desync.StoreOptions) (*IndexStore, error) {
 	if err := opt.ValidateIndexOptions(); err != nil {
 		return nil, err
 	}
-	b, err := newSFTPStoreBase(location, opt, "")
+	b, err := newStoreBase(location, opt, "")
 	if err != nil {
 		return nil, err
 	}
-	return &SFTPIndexStore{b}, nil
+	return &IndexStore{b}, nil
 }
 
 // GetIndexReader returns a reader of an index from an SFTP store. Fails if the specified
 // index file does not exist.
-func (s *SFTPIndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
+func (s *IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 	f, err := s.client.Open(s.pathFromName(name))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -41,17 +42,17 @@ func (s *SFTPIndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) 
 }
 
 // GetIndex reads an index from an SFTP store, returns an error if the specified index file does not exist.
-func (s *SFTPIndexStore) GetIndex(name string) (i Index, e error) {
+func (s *IndexStore) GetIndex(name string) (i desync.Index, e error) {
 	f, err := s.GetIndexReader(name)
 	if err != nil {
 		return i, err
 	}
 	defer f.Close()
-	return IndexFromReader(f)
+	return desync.IndexFromReader(f)
 }
 
 // StoreIndex adds a new index to the store
-func (s *SFTPIndexStore) StoreIndex(name string, idx Index) error {
+func (s *IndexStore) StoreIndex(name string, idx desync.Index) error {
 	r, w := io.Pipe()
 
 	go func() {
@@ -61,6 +62,6 @@ func (s *SFTPIndexStore) StoreIndex(name string, idx Index) error {
 	return s.StoreObject(s.pathFromName(name), r)
 }
 
-func (s *SFTPIndexStore) pathFromName(name string) string {
+func (s *IndexStore) pathFromName(name string) string {
 	return path.Join(s.path, name)
 }

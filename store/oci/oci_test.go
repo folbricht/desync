@@ -1,4 +1,4 @@
-package desync
+package oci
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/folbricht/desync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ import (
 func TestOCIStoreScheme(t *testing.T) {
 	u, err := url.Parse("https://registry.example.com/user/repo")
 	require.NoError(t, err)
-	_, err = NewOCIStore(u, nil, StoreOptions{})
+	_, err = NewStore(u, nil, desync.StoreOptions{})
 	require.Error(t, err)
 
 	tests := map[string]struct {
@@ -41,7 +42,7 @@ func TestOCIStoreScheme(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u, err := url.Parse(test.url)
 			require.NoError(t, err)
-			s, err := NewOCIStore(u, nil, StoreOptions{})
+			s, err := NewStore(u, nil, desync.StoreOptions{})
 			require.NoError(t, err)
 			require.Equal(t, test.plainHTTP, s.repo.PlainHTTP)
 		})
@@ -200,7 +201,7 @@ func (reg *testOCIRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // newTestOCIStore starts a fake registry and returns a store pointed at it.
-func newTestOCIStore(t *testing.T, opt StoreOptions) (OCIStore, *testOCIRegistry) {
+func newTestOCIStore(t *testing.T, opt desync.StoreOptions) (Store, *testOCIRegistry) {
 	t.Helper()
 	reg := newTestOCIRegistry()
 	srv := httptest.NewServer(reg)
@@ -208,7 +209,7 @@ func newTestOCIStore(t *testing.T, opt StoreOptions) (OCIStore, *testOCIRegistry
 
 	u, err := url.Parse("oci+" + srv.URL + "/user/repo")
 	require.NoError(t, err)
-	s, err := NewOCIStore(u, nil, opt)
+	s, err := NewStore(u, nil, opt)
 	require.NoError(t, err)
 	return s, reg
 }
@@ -217,10 +218,10 @@ func newTestOCIStore(t *testing.T, opt StoreOptions) (OCIStore, *testOCIRegistry
 // compression. Only the tag references the chunk ID, so the store works with
 // digest algorithms that OCI blob digests can't represent.
 func TestOCIStoreRoundtrip(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{})
 
 	data := []byte("some chunk data")
-	chunk := NewChunk(data)
+	chunk := desync.NewChunk(data)
 	id := chunk.ID()
 
 	// The chunk shouldn't be there yet
@@ -228,7 +229,7 @@ func TestOCIStoreRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, hasChunk)
 	_, err = s.GetChunk(id)
-	require.ErrorIs(t, err, ChunkMissing{id})
+	require.ErrorIs(t, err, desync.ChunkMissing{ID: id})
 
 	// Store it, then read it back
 	require.NoError(t, s.StoreChunk(chunk))
@@ -257,10 +258,10 @@ func TestOCIStoreRoundtrip(t *testing.T) {
 // with the algorithm and key ID in the extension, so chunks with different
 // keys or formats can coexist in one repository.
 func TestOCIStoreEncrypted(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{Encryption: true, EncryptionKey: testEncryptionKey})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{Encryption: true, EncryptionKey: "6368616e676520746869732070617373776f726420746f206120736563726574"})
 
 	data := []byte("some chunk data")
-	chunk := NewChunk(data)
+	chunk := desync.NewChunk(data)
 	id := chunk.ID()
 	require.NoError(t, s.StoreChunk(chunk))
 
@@ -284,10 +285,10 @@ func TestOCIStoreEncrypted(t *testing.T) {
 }
 
 func TestOCIStoreUncompressed(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{Uncompressed: true})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{Uncompressed: true})
 
 	data := []byte("some uncompressed chunk data")
-	chunk := NewChunk(data)
+	chunk := desync.NewChunk(data)
 	require.NoError(t, s.StoreChunk(chunk))
 
 	got, err := s.GetChunk(chunk.ID())
@@ -303,9 +304,9 @@ func TestOCIStoreUncompressed(t *testing.T) {
 }
 
 func TestOCIStoreRemoveChunk(t *testing.T) {
-	s, _ := newTestOCIStore(t, StoreOptions{})
+	s, _ := newTestOCIStore(t, desync.StoreOptions{})
 
-	chunk := NewChunk([]byte("some chunk data"))
+	chunk := desync.NewChunk([]byte("some chunk data"))
 	id := chunk.ID()
 	require.NoError(t, s.StoreChunk(chunk))
 
@@ -315,15 +316,15 @@ func TestOCIStoreRemoveChunk(t *testing.T) {
 	assert.False(t, hasChunk)
 
 	// Removing a chunk that isn't there reports it as missing
-	require.ErrorIs(t, s.RemoveChunk(id), ChunkMissing{id})
+	require.ErrorIs(t, s.RemoveChunk(id), desync.ChunkMissing{ID: id})
 }
 
 func TestOCIStorePrune(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{})
 
-	chunks := make([]*Chunk, 3)
+	chunks := make([]*desync.Chunk, 3)
 	for i := range chunks {
-		chunks[i] = NewChunk(fmt.Appendf(nil, "chunk data %d", i))
+		chunks[i] = desync.NewChunk(fmt.Appendf(nil, "chunk data %d", i))
 		require.NoError(t, s.StoreChunk(chunks[i]))
 	}
 
@@ -337,7 +338,7 @@ func TestOCIStorePrune(t *testing.T) {
 	// Also add a chunk in a different storage format, a bare chunk-ID tag as
 	// used by an uncompressed, unencrypted store. Pruning this compressed
 	// store must not touch chunks in other formats.
-	otherFormat := NewChunk([]byte("other format chunk"))
+	otherFormat := desync.NewChunk([]byte("other format chunk"))
 	otherFormatID := otherFormat.ID()
 	reg.mu.Lock()
 	reg.manifests["latest"] = foreign
@@ -347,7 +348,7 @@ func TestOCIStorePrune(t *testing.T) {
 
 	// Prune everything but the first chunk
 	id := chunks[0].ID()
-	require.NoError(t, s.Prune(context.Background(), map[ChunkID]struct{}{id: {}}))
+	require.NoError(t, s.Prune(context.Background(), map[desync.ChunkID]struct{}{id: {}}))
 
 	hasChunk, err := s.HasChunk(id)
 	require.NoError(t, err)
@@ -369,17 +370,17 @@ func TestOCIStorePrune(t *testing.T) {
 // metadata limit a store of a few tens of thousands of chunks already blows
 // past, making prune fail outright rather than return partial results.
 func TestOCIStorePruneTagPagination(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{})
 
-	chunks := make([]*Chunk, testOCITagPageSize*3)
+	chunks := make([]*desync.Chunk, testOCITagPageSize*3)
 	for i := range chunks {
-		chunks[i] = NewChunk(fmt.Appendf(nil, "paginated chunk data %d", i))
+		chunks[i] = desync.NewChunk(fmt.Appendf(nil, "paginated chunk data %d", i))
 		require.NoError(t, s.StoreChunk(chunks[i]))
 	}
 
 	// Prune everything but the first chunk, which spans several tag pages
 	id := chunks[0].ID()
-	require.NoError(t, s.Prune(context.Background(), map[ChunkID]struct{}{id: {}}))
+	require.NoError(t, s.Prune(context.Background(), map[desync.ChunkID]struct{}{id: {}}))
 
 	reg.mu.Lock()
 	pageSizes := slices.Clone(reg.tagListPageSizes)
@@ -404,10 +405,10 @@ func TestOCIStorePruneTagPagination(t *testing.T) {
 // foreign artifacts by the manifest's artifact type, so prune, remove, and
 // reads must all leave a foreign artifact under a chunk-ID-shaped tag alone.
 func TestOCIStorePruneForeignArtifact(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{Uncompressed: true})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{Uncompressed: true})
 
-	keep := NewChunk([]byte("chunk to keep"))
-	drop := NewChunk([]byte("chunk to prune"))
+	keep := desync.NewChunk([]byte("chunk to keep"))
+	drop := desync.NewChunk([]byte("chunk to prune"))
 	require.NoError(t, s.StoreChunk(keep))
 	require.NoError(t, s.StoreChunk(drop))
 
@@ -420,7 +421,7 @@ func TestOCIStorePruneForeignArtifact(t *testing.T) {
 		content:   foreignContent,
 	}
 	hexTag := strings.Repeat("0123", 16)
-	foreignID, err := ChunkIDFromString(hexTag)
+	foreignID, err := desync.ChunkIDFromString(hexTag)
 	require.NoError(t, err)
 	reg.mu.Lock()
 	reg.manifests[hexTag] = foreign
@@ -429,10 +430,10 @@ func TestOCIStorePruneForeignArtifact(t *testing.T) {
 
 	// The foreign artifact must not be mistaken for a stored chunk
 	_, err = s.GetChunk(foreignID)
-	require.ErrorIs(t, err, ChunkMissing{foreignID})
-	require.ErrorIs(t, s.RemoveChunk(foreignID), ChunkMissing{foreignID})
+	require.ErrorIs(t, err, desync.ChunkMissing{ID: foreignID})
+	require.ErrorIs(t, s.RemoveChunk(foreignID), desync.ChunkMissing{ID: foreignID})
 
-	require.NoError(t, s.Prune(context.Background(), map[ChunkID]struct{}{keep.ID(): {}}))
+	require.NoError(t, s.Prune(context.Background(), map[desync.ChunkID]struct{}{keep.ID(): {}}))
 
 	hasChunk, err := s.HasChunk(keep.ID())
 	require.NoError(t, err)
@@ -447,10 +448,10 @@ func TestOCIStorePruneForeignArtifact(t *testing.T) {
 }
 
 func TestOCIStoreInvalidChunk(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{Uncompressed: true})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{Uncompressed: true})
 
 	data := []byte("some chunk data")
-	chunk := NewChunk(data)
+	chunk := desync.NewChunk(data)
 	require.NoError(t, s.StoreChunk(chunk))
 
 	// Corrupt the blob in the registry without changing its size
@@ -461,22 +462,22 @@ func TestOCIStoreInvalidChunk(t *testing.T) {
 	reg.mu.Unlock()
 
 	_, err := s.GetChunk(chunk.ID())
-	var invalid ChunkInvalid
+	var invalid desync.ChunkInvalid
 	require.ErrorAs(t, err, &invalid)
 }
 
 // A corrupt or malicious manifest declaring a negative or absurd blob size
 // must produce an error, not a panic or a huge allocation.
 func TestOCIStoreInvalidBlobSize(t *testing.T) {
-	s, reg := newTestOCIStore(t, StoreOptions{Uncompressed: true})
+	s, reg := newTestOCIStore(t, desync.StoreOptions{Uncompressed: true})
 
-	chunk := NewChunk([]byte("some chunk data"))
+	chunk := desync.NewChunk([]byte("some chunk data"))
 	id := chunk.ID()
 	require.NoError(t, s.StoreChunk(chunk))
 
 	for name, size := range map[string]int64{"negative": -1, "huge": 1 << 60} {
 		t.Run(name, func(t *testing.T) {
-			manifest := fmt.Sprintf(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":%q,"config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},"layers":[{"mediaType":"application/octet-stream","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":%d}]}`, OCIChunkArtifactType, size)
+			manifest := fmt.Sprintf(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":%q,"config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},"layers":[{"mediaType":"application/octet-stream","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":%d}]}`, ChunkArtifactType, size)
 			m := testOCIManifest{
 				mediaType: "application/vnd.oci.image.manifest.v1+json",
 				digest:    ociDigest([]byte(manifest)),
@@ -513,10 +514,10 @@ func TestOCIStoreRetry(t *testing.T) {
 
 	u, err := url.Parse("oci+" + srv.URL + "/user/repo")
 	require.NoError(t, err)
-	s, err := NewOCIStore(u, nil, StoreOptions{ErrorRetry: 2, ErrorRetryBaseInterval: time.Millisecond})
+	s, err := NewStore(u, nil, desync.StoreOptions{ErrorRetry: 2, ErrorRetryBaseInterval: time.Millisecond})
 	require.NoError(t, err)
 
-	hasChunk, err := s.HasChunk(NewChunk([]byte("some chunk data")).ID())
+	hasChunk, err := s.HasChunk(desync.NewChunk([]byte("some chunk data")).ID())
 	require.NoError(t, err)
 	assert.False(t, hasChunk)
 	assert.True(t, dropped.Load())

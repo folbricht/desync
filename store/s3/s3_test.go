@@ -1,4 +1,4 @@
-package desync
+package s3
 
 import (
 	"bufio"
@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/folbricht/desync"
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/stretchr/testify/require"
@@ -208,7 +209,7 @@ func getTcpS3Server(t *testing.T, group *errgroup.Group, ctx context.Context, bu
 }
 
 func TestS3StoreGetChunk(t *testing.T) {
-	chunkId, err := ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
+	chunkId, err := desync.ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
 	require.NoError(t, err)
 	location := "vertucon-central"
 	bucket := "doomsdaydevices"
@@ -219,12 +220,12 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrNone, 0)
+		ln := getTcpS3Server(t, group, ctx, bucket, "../../cmd/desync/testdata", s3ErrNone, 0)
 
 		group.Go(func() error {
 			defer cancel()
 			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
+			store, err := NewStore(&endpoint, credentials.New(&provider), location, desync.StoreOptions{}, minio.BucketLookupAuto)
 			if err != nil {
 				return err
 			}
@@ -259,12 +260,12 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrRST, 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "../../cmd/desync/testdata", s3ErrRST, 1)
 
 		group.Go(func() error {
 			defer cancel()
 			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
+			store, err := NewStore(&endpoint, credentials.New(&provider), location, desync.StoreOptions{}, minio.BucketLookupAuto)
 			if err != nil {
 				return err
 			}
@@ -296,12 +297,12 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrRST, 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "../../cmd/desync/testdata", s3ErrRST, 1)
 
 		group.Go(func() error {
 			defer cancel()
 			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{ErrorRetry: 1}, minio.BucketLookupAuto)
+			store, err := NewStore(&endpoint, credentials.New(&provider), location, desync.StoreOptions{ErrorRetry: 1}, minio.BucketLookupAuto)
 			if err != nil {
 				return err
 			}
@@ -338,12 +339,12 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrCorruptBody, 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "../../cmd/desync/testdata", s3ErrCorruptBody, 1)
 
 		group.Go(func() error {
 			defer cancel()
 			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{}, minio.BucketLookupAuto)
+			store, err := NewStore(&endpoint, credentials.New(&provider), location, desync.StoreOptions{}, minio.BucketLookupAuto)
 			if err != nil {
 				return err
 			}
@@ -355,7 +356,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 					c <- errors.New("expected GetChunk to fail on truncated chunk body")
 					return
 				}
-				var ci ChunkInvalid
+				var ci desync.ChunkInvalid
 				if !errors.As(err, &ci) {
 					c <- fmt.Errorf("expected ChunkInvalid, got %T: %v", err, err)
 					return
@@ -383,12 +384,12 @@ func TestS3StoreGetChunk(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		group, gCtx := errgroup.WithContext(ctx)
 
-		ln := getTcpS3Server(t, group, ctx, bucket, "cmd/desync/testdata", s3ErrCorruptBody, 1)
+		ln := getTcpS3Server(t, group, ctx, bucket, "../../cmd/desync/testdata", s3ErrCorruptBody, 1)
 
 		group.Go(func() error {
 			defer cancel()
 			endpoint := url.URL{Scheme: "s3+http", Host: ln.Addr().String(), Path: "/" + bucket + "/blob1.store/"}
-			store, err := NewS3Store(&endpoint, credentials.New(&provider), location, StoreOptions{ErrorRetry: 1}, minio.BucketLookupAuto)
+			store, err := NewStore(&endpoint, credentials.New(&provider), location, desync.StoreOptions{ErrorRetry: 1}, minio.BucketLookupAuto)
 			if err != nil {
 				return err
 			}
@@ -422,7 +423,7 @@ func TestS3StoreGetChunk(t *testing.T) {
 // the store sits behind a router or cache. GetChunk must return ChunkMissing
 // right away instead of going through the ErrorRetry sleep/retry loop.
 func TestS3StoreGetMissingChunk(t *testing.T) {
-	chunkId, err := ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
+	chunkId, err := desync.ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
 	require.NoError(t, err)
 	provider := MockCredProvider{}
 
@@ -436,12 +437,12 @@ func TestS3StoreGetMissingChunk(t *testing.T) {
 	require.NoError(t, err)
 
 	endpoint := url.URL{Scheme: "s3+http", Host: u.Host, Path: "/doomsdaydevices/blob1.store/"}
-	store, err := NewS3Store(&endpoint, credentials.New(&provider), "vertucon-central",
-		StoreOptions{ErrorRetry: 3, ErrorRetryBaseInterval: time.Millisecond}, minio.BucketLookupAuto)
+	store, err := NewStore(&endpoint, credentials.New(&provider), "vertucon-central",
+		desync.StoreOptions{ErrorRetry: 3, ErrorRetryBaseInterval: time.Millisecond}, minio.BucketLookupAuto)
 	require.NoError(t, err)
 
 	_, err = store.GetChunk(chunkId)
-	var missing ChunkMissing
+	var missing desync.ChunkMissing
 	require.ErrorAs(t, err, &missing)
 	require.EqualValues(t, 1, atomic.LoadInt32(&requests), "missing chunk should not be retried")
 }
@@ -450,7 +451,7 @@ func TestS3StoreGetMissingChunk(t *testing.T) {
 // responds. S3 stores previously ignored the timeout option entirely and would
 // block for as long as the server held the connection open.
 func TestS3StoreTimeout(t *testing.T) {
-	chunkId, err := ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
+	chunkId, err := desync.ChunkIDFromString("dda036db05bc2b99b6b9303d28496000c34b246457ae4bbf00fe625b5cabd7cd")
 	require.NoError(t, err)
 	provider := MockCredProvider{}
 
@@ -467,8 +468,8 @@ func TestS3StoreTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	endpoint := url.URL{Scheme: "s3+http", Host: u.Host, Path: "/doomsdaydevices/blob1.store/"}
-	store, err := NewS3Store(&endpoint, credentials.New(&provider), "vertucon-central",
-		StoreOptions{Timeout: 100 * time.Millisecond}, minio.BucketLookupAuto)
+	store, err := NewStore(&endpoint, credentials.New(&provider), "vertucon-central",
+		desync.StoreOptions{Timeout: 100 * time.Millisecond}, minio.BucketLookupAuto)
 	require.NoError(t, err)
 
 	done := make(chan error, 1)
@@ -486,7 +487,7 @@ func TestS3StoreTimeout(t *testing.T) {
 
 	// A negative timeout means infinite, which must produce a context with no
 	// deadline rather than one that has already expired.
-	ctx, cancel := StoreOptions{Timeout: -1}.contextWithTimeout(context.Background())
+	ctx, cancel := desync.StoreOptions{Timeout: -1}.ContextWithTimeout(context.Background())
 	defer cancel()
 	_, hasDeadline := ctx.Deadline()
 	require.False(t, hasDeadline, "a negative timeout means no deadline")

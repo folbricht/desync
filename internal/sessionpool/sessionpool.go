@@ -1,32 +1,33 @@
-package desync
+// Package sessionpool provides a pool of sessions to remote stores.
+package sessionpool
 
 import (
 	"errors"
 	"sync"
 )
 
-// sessionPool hands out sessions to a remote store, such as SSH processes. It
+// Pool hands out sessions to a remote store, such as SSH processes. It
 // opens sessions only when all existing ones are in use, up to a maximum, and
 // blocks callers while the maximum is in use.
-type sessionPool[T any] struct {
+type Pool[T any] struct {
 	open  func() (T, error)
 	slots chan struct{} // holds one token per caller using a session
 	idle  chan T        // open sessions not in use
 	mu    sync.Mutex    // serializes opening sessions
 }
 
-func newSessionPool[T any](n int, open func() (T, error)) *sessionPool[T] {
+func New[T any](n int, open func() (T, error)) *Pool[T] {
 	n = max(n, 1)
-	return &sessionPool[T]{
+	return &Pool[T]{
 		open:  open,
 		slots: make(chan struct{}, n),
 		idle:  make(chan T, n),
 	}
 }
 
-// get returns an idle session, or opens a new one if none is idle. Sessions
-// need to be returned with put.
-func (p *sessionPool[T]) get() (T, error) {
+// Get returns an idle session, or opens a new one if none is idle. Sessions
+// need to be returned with Put.
+func (p *Pool[T]) Get() (T, error) {
 	p.slots <- struct{}{}
 	select {
 	case s := <-p.idle:
@@ -53,15 +54,20 @@ func (p *sessionPool[T]) get() (T, error) {
 	return s, nil
 }
 
-// put returns a session to the pool.
-func (p *sessionPool[T]) put(s T) {
+// Put returns a session to the pool.
+func (p *Pool[T]) Put(s T) {
 	p.idle <- s
 	<-p.slots
 }
 
-// close waits for all sessions to be returned and closes them with fn. The
+// Idle returns the number of open sessions not in use.
+func (p *Pool[T]) Idle() int {
+	return len(p.idle)
+}
+
+// Close waits for all sessions to be returned and closes them with fn. The
 // pool can't be used afterwards.
-func (p *sessionPool[T]) close(fn func(T) error) error {
+func (p *Pool[T]) Close(fn func(T) error) error {
 	for range cap(p.slots) {
 		p.slots <- struct{}{}
 	}

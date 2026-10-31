@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/require"
 )
 
@@ -110,27 +109,10 @@ func TestAES256GCMExtension(t *testing.T) {
 // a config entry matches a location used for both chunks and indexes.
 func TestIndexStoresRejectEncryption(t *testing.T) {
 	opt := StoreOptions{Encryption: true, EncryptionKey: testEncryptionKey}
-
-	tests := map[string]struct {
-		location string
-		newStore func(*url.URL) (IndexStore, error)
-	}{
-		"sftp": {"sftp://host/store", func(u *url.URL) (IndexStore, error) { return NewSFTPIndexStore(u, opt) }},
-		"http": {"https://host/store", func(u *url.URL) (IndexStore, error) { return NewRemoteHTTPIndexStore(u, opt) }},
-		"s3": {"s3+https://host/bucket", func(u *url.URL) (IndexStore, error) {
-			return NewS3IndexStore(u, nil, "", opt, minio.BucketLookupAuto)
-		}},
-		"gs": {"gs://bucket/prefix", func(u *url.URL) (IndexStore, error) { return NewGCIndexStore(u, opt) }},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			u, err := url.Parse(test.location)
-			require.NoError(t, err)
-			_, err = test.newStore(u)
-			require.ErrorContains(t, err, "not supported by index stores")
-		})
-	}
+	u, err := url.Parse("https://host/store")
+	require.NoError(t, err)
+	_, err = NewRemoteHTTPIndexStore(u, opt)
+	require.ErrorContains(t, err, "not supported by index stores")
 }
 
 func TestStorageConvertersValidation(t *testing.T) {

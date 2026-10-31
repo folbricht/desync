@@ -1,4 +1,5 @@
-package desync
+// Package gcs implements chunk and index stores in Google Cloud Storage.
+package gcs
 
 import (
 	"bytes"
@@ -9,32 +10,33 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"github.com/folbricht/desync"
 	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 )
 
-var _ WriteStore = GCStore{}
+var _ desync.WriteStore = Store{}
 
-// GCStoreBase is the base object for all chunk and index stores with Google
+// StoreBase is the base object for all chunk and index stores with Google
 // Storage backing
-type GCStoreBase struct {
+type StoreBase struct {
 	Location   string
 	client     *storage.BucketHandle
 	bucket     string
 	prefix     string
-	opt        StoreOptions
-	converters Converters
+	opt        desync.StoreOptions
+	converters desync.Converters
 
 	// Chunk file extension, derived from the converters at construction
 	extension string
 }
 
-// GCStore is a read-write store with Google Storage backing
-type GCStore struct {
-	GCStoreBase
+// Store is a read-write store with Google Storage backing
+type Store struct {
+	StoreBase
 }
 
-// normalizeGCPrefix converts path to a regular format,
+// normalizePrefix converts path to a regular format,
 // where there never is a leading slash,
 // and every folder name always is followed by a slash
 // so example outputs will be:
@@ -42,7 +44,7 @@ type GCStore struct {
 //	<blank string>
 //	folder1/
 //	folder1/folder2/folder3/
-func normalizeGCPrefix(path string) string {
+func normalizePrefix(path string) string {
 	prefix := strings.Trim(path, "/")
 
 	if prefix != "" {
@@ -52,22 +54,22 @@ func normalizeGCPrefix(path string) string {
 	return prefix
 }
 
-// NewGCStoreBase initializes a base object used for chunk or index stores
+// NewStoreBase initializes a base object used for chunk or index stores
 // backed by Google Storage.
-func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
+func NewStoreBase(u *url.URL, opt desync.StoreOptions) (StoreBase, error) {
 	ctx := context.TODO()
 	converters, err := opt.StorageConverters()
 	if err != nil {
-		return GCStoreBase{}, err
+		return StoreBase{}, err
 	}
-	s := GCStoreBase{Location: u.String(), opt: opt, converters: converters, extension: converters.storageExtension()}
+	s := StoreBase{Location: u.String(), opt: opt, converters: converters, extension: converters.StorageExtension()}
 	if u.Scheme != "gs" {
 		return s, fmt.Errorf("invalid scheme '%s', expected 'gs'", u.Scheme)
 	}
 
 	// Pull the bucket as well as the prefix from a path-style URL
 	s.bucket = u.Host
-	s.prefix = normalizeGCPrefix(u.Path)
+	s.prefix = normalizePrefix(u.Path)
 
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -78,31 +80,31 @@ func NewGCStoreBase(u *url.URL, opt StoreOptions) (GCStoreBase, error) {
 	return s, nil
 }
 
-func (s GCStoreBase) String() string {
+func (s StoreBase) String() string {
 	return s.Location
 }
 
 // Close the GCS base store. NOP operation but needed to implement the store interface.
-func (s GCStoreBase) Close() error { return nil }
+func (s StoreBase) Close() error { return nil }
 
-// NewGCStore creates a chunk store with Google Storage backing. The URL
+// NewStore creates a chunk store with Google Storage backing. The URL
 // should be provided like this: gs://bucketname/prefix
 // Credentials are passed in via the environment variables. TODO
-func NewGCStore(location *url.URL, opt StoreOptions) (s GCStore, e error) {
-	b, err := NewGCStoreBase(location, opt)
+func NewStore(location *url.URL, opt desync.StoreOptions) (s Store, e error) {
+	b, err := NewStoreBase(location, opt)
 	if err != nil {
 		return s, err
 	}
-	return GCStore{b}, nil
+	return Store{b}, nil
 }
 
 // GetChunk reads and returns one chunk from the store
-func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
+func (s Store) GetChunk(id desync.ChunkID) (*desync.Chunk, error) {
 	ctx := context.TODO()
 	name := s.nameFromID(id)
 
 	var (
-		log = Log.With(
+		log = desync.Log.With(
 			"bucket", s.bucket,
 			"name", name,
 		)
@@ -112,7 +114,7 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 	if errors.Is(err, storage.ErrObjectNotExist) {
 		log.Warn("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
-		return nil, ChunkMissing{ID: id}
+		return nil, desync.ChunkMissing{ID: id}
 	} else if err != nil {
 		log.Error("Unable to retrieve object from GCS bucket", "error", err)
 		return nil, errors.Wrap(err, s.String())
@@ -123,7 +125,7 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 	if errors.Is(err, storage.ErrObjectNotExist) {
 		log.Warn("Unable to read from object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
-		return nil, ChunkMissing{ID: id}
+		return nil, desync.ChunkMissing{ID: id}
 	} else if err != nil {
 		log.Error("Unable to retrieve object from GCS bucket", "error", err)
 		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from GCS bucket", id))
@@ -131,18 +133,18 @@ func (s GCStore) GetChunk(id ChunkID) (*Chunk, error) {
 
 	log.Debug("Retrieved chunk from GCS bucket")
 
-	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
+	return desync.NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
 }
 
 // StoreChunk adds a new chunk to the store
-func (s GCStore) StoreChunk(chunk *Chunk) error {
+func (s Store) StoreChunk(chunk *desync.Chunk) error {
 
 	ctx := context.TODO()
 	contentType := "application/zstd"
 	name := s.nameFromID(chunk.ID())
 
 	var (
-		log = Log.With(
+		log = desync.Log.With(
 			"bucket", s.bucket,
 			"name", name,
 		)
@@ -175,13 +177,13 @@ func (s GCStore) StoreChunk(chunk *Chunk) error {
 }
 
 // HasChunk returns true if the chunk is in the store
-func (s GCStore) HasChunk(id ChunkID) (bool, error) {
+func (s Store) HasChunk(id desync.ChunkID) (bool, error) {
 
 	ctx := context.TODO()
 	name := s.nameFromID(id)
 
 	var (
-		log = Log.With(
+		log = desync.Log.With(
 			"bucket", s.bucket,
 			"name", name,
 		)
@@ -203,12 +205,12 @@ func (s GCStore) HasChunk(id ChunkID) (bool, error) {
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
 // Used when verifying and repairing caches.
-func (s GCStore) RemoveChunk(id ChunkID) error {
+func (s Store) RemoveChunk(id desync.ChunkID) error {
 	ctx := context.TODO()
 	name := s.nameFromID(id)
 
 	var (
-		log = Log.With(
+		log = desync.Log.With(
 			"bucket", s.bucket,
 			"name", name,
 		)
@@ -226,7 +228,7 @@ func (s GCStore) RemoveChunk(id ChunkID) error {
 }
 
 // Prune removes any chunks from the store that are not contained in a list (map)
-func (s GCStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
+func (s Store) Prune(ctx context.Context, ids map[desync.ChunkID]struct{}) error {
 	query := &storage.Query{Prefix: s.prefix}
 	it := s.client.Objects(ctx, query)
 	for {
@@ -238,7 +240,7 @@ func (s GCStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			return err
 		}
 
-		id, err := chunkIDFromObjectName(attrs.Name, s.prefix, s.extension)
+		id, err := desync.ChunkIDFromObjectName(attrs.Name, s.prefix, s.extension)
 		if err != nil {
 			continue
 		}
@@ -253,7 +255,7 @@ func (s GCStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	return nil
 }
 
-func (s GCStore) nameFromID(id ChunkID) string {
+func (s Store) nameFromID(id desync.ChunkID) string {
 	sID := id.String()
 	name := s.prefix + sID[0:4] + "/" + sID + s.extension
 	return name

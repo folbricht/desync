@@ -97,7 +97,7 @@ func TestAdaptiveLimiterFillsLink(t *testing.T) {
 
 			// Not more than twice what the link carries at the lowest latency
 			// seen, the one at the initial limit
-			bound := math.Ceil(2 * test.link.capacity() * test.link.latency(adaptiveInitialLimit).Seconds())
+			bound := math.Ceil(2 * test.link.capacity() * test.link.latency(AdaptiveInitialConcurrency).Seconds())
 			assert.LessOrEqual(t, float64(final), bound, "limits: %v", limits[:20])
 		})
 	}
@@ -170,7 +170,7 @@ func TestAdaptiveLimiterMeasuresLatencyAgain(t *testing.T) {
 		l.release(gen, 60*time.Millisecond, false)
 	}
 	gens = gens[64:]
-	require.Equal(t, adaptiveInitialLimit, l.currentLimit())
+	require.Equal(t, AdaptiveInitialConcurrency, l.currentLimit())
 
 	// One of the requests made before is slow to complete, the others
 	// complete as the new ones are made
@@ -183,7 +183,7 @@ func TestAdaptiveLimiterMeasuresLatencyAgain(t *testing.T) {
 	// of the requests made before count towards their latency
 	for range 3 {
 		var measured []uint64
-		for range adaptiveInitialLimit - 1 {
+		for range AdaptiveInitialConcurrency - 1 {
 			measured = append(measured, l.acquire())
 		}
 		*clock = clock.Add(55 * time.Millisecond)
@@ -193,7 +193,7 @@ func TestAdaptiveLimiterMeasuresLatencyAgain(t *testing.T) {
 	}
 	l.release(slow, 5*time.Second, false)
 	assert.Equal(t, 55*time.Millisecond, l.lowest)
-	assert.Greater(t, l.currentLimit(), adaptiveInitialLimit)
+	assert.Greater(t, l.currentLimit(), AdaptiveInitialConcurrency)
 }
 
 func TestAdaptiveLimiterBacksOffOnFailure(t *testing.T) {
@@ -209,7 +209,7 @@ func TestAdaptiveLimiterBacksOffOnFailure(t *testing.T) {
 	for _, gen := range gens[5:] {
 		l.release(gen, time.Millisecond, false)
 	}
-	assert.Equal(t, adaptiveInitialLimit/2, l.currentLimit())
+	assert.Equal(t, AdaptiveInitialConcurrency/2, l.currentLimit())
 }
 
 func TestAdaptiveLimiterIgnoresWindowsBelowLimit(t *testing.T) {
@@ -226,13 +226,13 @@ func TestAdaptiveLimiterIgnoresWindowsBelowLimit(t *testing.T) {
 			l.release(gen, 50*time.Millisecond, false)
 		}
 	}
-	assert.Equal(t, adaptiveInitialLimit, l.currentLimit())
+	assert.Equal(t, AdaptiveInitialConcurrency, l.currentLimit())
 }
 
 func TestAdaptiveLimiterBlocksAtLimit(t *testing.T) {
 	l := newAdaptiveLimiter("test", 128)
 	var gen uint64
-	for range adaptiveInitialLimit {
+	for range AdaptiveInitialConcurrency {
 		gen = l.acquire()
 	}
 
