@@ -194,9 +194,9 @@ func (o StoreOptions) ValidateIndexOptions() error {
 	return nil
 }
 
-// tlsClientConfig builds the TLS client configuration for network stores from
+// TLSClientConfig builds the TLS client configuration for network stores from
 // the trust, client certificate, and CA options.
-func (o StoreOptions) tlsClientConfig() (*tls.Config, error) {
+func (o StoreOptions) TLSClientConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{InsecureSkipVerify: o.TrustInsecure}
 
 	// Add client key/cert if provided
@@ -231,31 +231,31 @@ func (o StoreOptions) tlsClientConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-// contextWithTimeout derives a context bound to the store's timeout option,
+// ContextWithTimeout derives a context bound to the store's timeout option,
 // for clients that take a context per operation rather than a timeout on the
 // HTTP client. A store configured for an infinite timeout gets a context that
 // is only cancellable. The returned cancel function must always be called.
-func (o StoreOptions) contextWithTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	timeout := o.effectiveTimeout()
+func (o StoreOptions) ContextWithTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := o.EffectiveTimeout()
 	if timeout <= 0 {
 		return context.WithCancel(ctx)
 	}
 	return context.WithTimeout(ctx, timeout)
 }
 
-// maxConcurrency returns the most concurrent requests the store needs to
+// MaxConcurrency returns the most concurrent requests the store needs to
 // support, which is the configured concurrency unless it's adaptive.
-func (o StoreOptions) maxConcurrency() int {
+func (o StoreOptions) MaxConcurrency() int {
 	if o.N == AdaptiveConcurrency {
 		return MaxAdaptiveConcurrency
 	}
 	return o.N
 }
 
-// effectiveTimeout returns the HTTP client timeout for a network store. If no
+// EffectiveTimeout returns the HTTP client timeout for a network store. If no
 // timeout was given in config (set to 0), then use 1 minute. If timeout is
 // negative, use 0 to set an infinite timeout.
-func (o StoreOptions) effectiveTimeout() time.Duration {
+func (o StoreOptions) EffectiveTimeout() time.Duration {
 	switch {
 	case o.Timeout == 0:
 		return time.Minute

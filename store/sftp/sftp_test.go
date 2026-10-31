@@ -1,4 +1,4 @@
-package desync
+package sftp
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/folbricht/desync"
 	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,12 +54,12 @@ func TestSFTPStorePruneSingleConnection(t *testing.T) {
 	u, err := url.Parse("sftp://localhost" + t.TempDir())
 	require.NoError(t, err)
 
-	s, err := NewSFTPStore(u, StoreOptions{N: 1})
+	s, err := NewStore(u, desync.StoreOptions{N: 1})
 	require.NoError(t, err)
 	defer s.Close()
 
-	keep := NewChunk([]byte("chunk to keep"))
-	prune := NewChunk([]byte("chunk to prune"))
+	keep := desync.NewChunk([]byte("chunk to keep"))
+	prune := desync.NewChunk([]byte("chunk to prune"))
 	keepID := keep.ID()
 	pruneID := prune.ID()
 	require.NoError(t, s.StoreChunk(keep))
@@ -69,7 +70,7 @@ func TestSFTPStorePruneSingleConnection(t *testing.T) {
 	// held the only one.
 	done := make(chan error)
 	go func() {
-		done <- s.Prune(context.Background(), map[ChunkID]struct{}{keepID: {}})
+		done <- s.Prune(context.Background(), map[desync.ChunkID]struct{}{keepID: {}})
 	}()
 	select {
 	case err := <-done:
@@ -96,13 +97,13 @@ func TestSFTPStoreOpensConnectionsOnDemand(t *testing.T) {
 	u, err := url.Parse("sftp://localhost" + t.TempDir())
 	require.NoError(t, err)
 
-	s, err := NewSFTPStore(u, StoreOptions{N: 4})
+	s, err := NewStore(u, desync.StoreOptions{N: 4})
 	require.NoError(t, err)
 	defer s.Close()
 
 	// Used one request at a time, the store only needs the connection it
 	// opened on creation
-	chunk := NewChunk([]byte("chunk"))
+	chunk := desync.NewChunk([]byte("chunk"))
 	require.NoError(t, s.StoreChunk(chunk))
 	_, err = s.GetChunk(chunk.ID())
 	require.NoError(t, err)
@@ -110,5 +111,5 @@ func TestSFTPStoreOpensConnectionsOnDemand(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, hasChunk)
 
-	assert.Len(t, s.pool.idle, 1)
+	assert.Equal(t, 1, s.pool.Idle())
 }

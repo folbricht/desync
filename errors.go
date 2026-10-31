@@ -9,7 +9,7 @@ type ChunkMissing struct {
 
 // NoSuchObject is returned by a store that can't find a requested object
 type NoSuchObject struct {
-	location string
+	Location string
 }
 
 func (e ChunkMissing) Error() string {
@@ -17,7 +17,7 @@ func (e ChunkMissing) Error() string {
 }
 
 func (e NoSuchObject) Error() string {
-	return fmt.Sprintf("object %s missing from store", e.location)
+	return fmt.Sprintf("object %s missing from store", e.Location)
 }
 
 // ChunkInvalid means the chunk failed validation, either because the hash

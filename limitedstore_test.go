@@ -44,14 +44,14 @@ func TestAdaptiveStoreFailuresBackOff(t *testing.T) {
 	s := NewAdaptiveStore(failingStore{errors.New("unavailable")}, 128)
 	_, err := s.GetChunk(ChunkID{})
 	require.Error(t, err)
-	assert.Equal(t, adaptiveInitialLimit/2, s.l.(*adaptiveLimiter).currentLimit())
+	assert.Equal(t, AdaptiveInitialConcurrency/2, s.l.(*adaptiveLimiter).currentLimit())
 }
 
 func TestAdaptiveStoreMissingChunkIsNoFailure(t *testing.T) {
 	s := NewAdaptiveStore(failingStore{ChunkMissing{}}, 128)
 	_, err := s.GetChunk(ChunkID{})
 	require.ErrorAs(t, err, &ChunkMissing{})
-	assert.Equal(t, adaptiveInitialLimit, s.l.(*adaptiveLimiter).currentLimit())
+	assert.Equal(t, AdaptiveInitialConcurrency, s.l.(*adaptiveLimiter).currentLimit())
 }
 
 // blockingStore holds every request until it's released.

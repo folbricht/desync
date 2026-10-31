@@ -52,9 +52,9 @@ func (s Converters) commonPrefix(c Converters) int {
 	return n
 }
 
-// Extension to be used in storage. Concatenation of converter
-// extensions in order (towards storage).
-func (s Converters) storageExtension() string {
+// StorageExtension returns the extension to be used in storage. Concatenation
+// of converter extensions in order (towards storage).
+func (s Converters) StorageExtension() string {
 	var ext strings.Builder
 	for _, layer := range s {
 		ext.WriteString(layer.storageExtension())

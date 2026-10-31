@@ -88,7 +88,7 @@ func TestTLSClientCertSentRegardlessOfAcceptableCAs(t *testing.T) {
 	defer srv.Close()
 
 	opt := StoreOptions{ClientCert: certFile, ClientKey: keyFile, TrustInsecure: true}
-	tlsConfig, err := opt.tlsClientConfig()
+	tlsConfig, err := opt.TLSClientConfig()
 	require.NoError(t, err)
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	resp, err := client.Get(srv.URL)

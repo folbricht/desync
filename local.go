@@ -48,7 +48,7 @@ func NewLocalStore(dir string, opt StoreOptions) (LocalStore, error) {
 	if err != nil {
 		return LocalStore{}, err
 	}
-	return LocalStore{Base: dir, Opt: opt, converters: converters, extension: converters.storageExtension()}, nil
+	return LocalStore{Base: dir, Opt: opt, converters: converters, extension: converters.StorageExtension()}, nil
 }
 
 // GetChunk reads and returns one (compressed!) chunk from the store
@@ -152,7 +152,7 @@ func (s LocalStore) Verify(ctx context.Context, n int, repair bool, w io.Writer)
 		}
 		// Skip files that aren't chunks matching the store's extension, they
 		// may use different compression or encryption settings
-		id, ok := chunkIDFromFilename(filepath.Base(path), s.extension)
+		id, ok := ChunkIDFromFilename(filepath.Base(path), s.extension)
 		if !ok {
 			return nil
 		}
@@ -190,7 +190,7 @@ func (s LocalStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		}
 		// Skip files that aren't chunks matching the store's extension, they
 		// may use different compression or encryption settings
-		id, ok := chunkIDFromFilename(filepath.Base(path), s.extension)
+		id, ok := ChunkIDFromFilename(filepath.Base(path), s.extension)
 		if !ok {
 			return nil
 		}

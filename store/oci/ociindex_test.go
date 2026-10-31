@@ -1,4 +1,4 @@
-package desync
+package oci
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/folbricht/desync"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,7 @@ import (
 
 // newTestOCIIndexStore starts a fake registry and returns an index store and a
 // chunk store pointed at the same repository.
-func newTestOCIIndexStore(t *testing.T) (OCIIndexStore, OCIStore, *testOCIRegistry) {
+func newTestOCIIndexStore(t *testing.T) (IndexStore, Store, *testOCIRegistry) {
 	t.Helper()
 	reg := newTestOCIRegistry()
 	srv := httptest.NewServer(reg)
@@ -23,19 +24,19 @@ func newTestOCIIndexStore(t *testing.T) (OCIIndexStore, OCIStore, *testOCIRegist
 
 	u, err := url.Parse("oci+" + srv.URL + "/user/repo")
 	require.NoError(t, err)
-	is, err := NewOCIIndexStore(u, nil, StoreOptions{})
+	is, err := NewIndexStore(u, nil, desync.StoreOptions{})
 	require.NoError(t, err)
-	cs, err := NewOCIStore(u, nil, StoreOptions{})
+	cs, err := NewStore(u, nil, desync.StoreOptions{})
 	require.NoError(t, err)
 	return is, cs, reg
 }
 
-func testIndex(t *testing.T) Index {
+func testIndex(t *testing.T) desync.Index {
 	t.Helper()
-	f, err := os.Open("testdata/blob1.caibx")
+	f, err := os.Open("../../testdata/blob1.caibx")
 	require.NoError(t, err)
 	defer f.Close()
-	idx, err := IndexFromReader(f)
+	idx, err := desync.IndexFromReader(f)
 	require.NoError(t, err)
 	return idx
 }
@@ -48,7 +49,7 @@ func TestOCIIndexStoreRoundtrip(t *testing.T) {
 	idx := testIndex(t)
 
 	_, err := s.GetIndex("blob1.caibx")
-	require.ErrorAs(t, err, &NoSuchObject{})
+	require.ErrorAs(t, err, &desync.NoSuchObject{})
 
 	require.NoError(t, s.StoreIndex("blob1.caibx", idx))
 	got, err := s.GetIndex("blob1.caibx")
@@ -62,7 +63,7 @@ func TestOCIIndexStoreRoundtrip(t *testing.T) {
 	require.True(t, ok, "index not tagged with its name")
 	var manifest ocispec.Manifest
 	require.NoError(t, json.Unmarshal(m.content, &manifest))
-	assert.Equal(t, OCIIndexArtifactType, manifest.ArtifactType)
+	assert.Equal(t, IndexArtifactType, manifest.ArtifactType)
 	require.Len(t, manifest.Layers, 1)
 	assert.Equal(t, "blob1.caibx", manifest.Annotations[ocispec.AnnotationTitle])
 	assert.Equal(t, "161", manifest.Annotations[ociIndexChunksAnnotation])
@@ -92,16 +93,16 @@ func TestOCIIndexStoreSharesRepoWithChunks(t *testing.T) {
 	idx := testIndex(t)
 	require.NoError(t, is.StoreIndex("blob1.caibx", idx))
 
-	chunk := NewChunk([]byte("some chunk data"))
+	chunk := desync.NewChunk([]byte("some chunk data"))
 	require.NoError(t, cs.StoreChunk(chunk))
 
 	// A chunk is not an index, even asked for under its own tag.
 	_, err := is.GetIndex(chunk.ID().String() + ".cacnk")
-	require.ErrorAs(t, err, &NoSuchObject{})
+	require.ErrorAs(t, err, &desync.NoSuchObject{})
 
 	// Prune the chunk store down to nothing. The index survives: its tag
 	// doesn't parse as a chunk ID, and it carries a different artifact type.
-	require.NoError(t, cs.Prune(t.Context(), map[ChunkID]struct{}{}))
+	require.NoError(t, cs.Prune(t.Context(), map[desync.ChunkID]struct{}{}))
 
 	got, err := is.GetIndex("blob1.caibx")
 	require.NoError(t, err)
@@ -116,22 +117,22 @@ func TestOCIIndexStoreSharesRepoWithChunks(t *testing.T) {
 // to be rejected rather than passed to the registry or silently ignored.
 func TestOCIIndexStoreRejects(t *testing.T) {
 	for _, name := range []string{"a", "file.iso.caibx", "rootfs-v2.caidx", "a_b.c-d"} {
-		assert.NoError(t, ValidateOCIIndexName(name), name)
+		assert.NoError(t, ValidateIndexName(name), name)
 	}
 	for _, name := range []string{"", "sub/dir.caibx", ".hidden", "-lead", "with space", strings.Repeat("a", 129)} {
-		assert.Error(t, ValidateOCIIndexName(name), name)
+		assert.Error(t, ValidateIndexName(name), name)
 	}
 
 	// The store surfaces that check on both paths.
 	s, _, _ := newTestOCIIndexStore(t)
-	require.ErrorContains(t, s.StoreIndex(".hidden.caibx", Index{}), "cannot be used in an OCI registry")
+	require.ErrorContains(t, s.StoreIndex(".hidden.caibx", desync.Index{}), "cannot be used in an OCI registry")
 	_, err := s.GetIndex(".hidden.caibx")
 	require.ErrorContains(t, err, "cannot be used in an OCI registry")
 
 	// Indexes are stored in plain form, so encryption can't be honored.
 	u, err := url.Parse("oci+https://registry.example.com/user/repo")
 	require.NoError(t, err)
-	_, err = NewOCIIndexStore(u, nil, StoreOptions{Encryption: true})
+	_, err = NewIndexStore(u, nil, desync.StoreOptions{Encryption: true})
 	require.Error(t, err)
 }
 
@@ -147,7 +148,7 @@ func TestOCIManifestSizeLimit(t *testing.T) {
 	_, err = readOCIManifest(strings.NewReader(`{"schemaVersion":2} trailing`))
 	require.Error(t, err)
 
-	m, err := readOCIManifest(strings.NewReader(`{"schemaVersion":2,"artifactType":"` + OCIIndexArtifactType + `"}`))
+	m, err := readOCIManifest(strings.NewReader(`{"schemaVersion":2,"artifactType":"` + IndexArtifactType + `"}`))
 	require.NoError(t, err)
-	assert.Equal(t, OCIIndexArtifactType, m.ArtifactType)
+	assert.Equal(t, IndexArtifactType, m.ArtifactType)
 }

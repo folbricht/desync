@@ -1,4 +1,5 @@
-package desync
+// Package oci implements chunk and index stores in an OCI registry.
+package oci
 
 import (
 	"bytes"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/folbricht/desync"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/errgroup"
@@ -24,8 +26,8 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
-// OCIChunkArtifactType identifies desync chunk artifacts in an OCI registry.
-const OCIChunkArtifactType = "application/vnd.desync.chunk.v1"
+// ChunkArtifactType identifies desync chunk artifacts in an OCI registry.
+const ChunkArtifactType = "application/vnd.desync.chunk.v1"
 
 // maxOCIChunkBlobSize caps the blob size accepted from a chunk manifest. Far
 // above any real chunk, it only stops a corrupt or malicious manifest from
@@ -56,7 +58,7 @@ func retryPredicate(resp *http.Response, err error) (bool, error) {
 	return retry.DefaultPredicate(resp, nil)
 }
 
-var _ PruneStore = OCIStore{}
+var _ desync.PruneStore = Store{}
 
 // ociEmptyConfig is the config descriptor shared by all chunk manifests: the
 // spec's empty-JSON descriptor with the inline Data payload stripped so it is
@@ -68,7 +70,7 @@ var ociEmptyConfig = func() ocispec.Descriptor {
 	return d
 }()
 
-// OCIStore operates on chunks in an OCI registry. Every chunk is stored as its
+// Store operates on chunks in an OCI registry. Every chunk is stored as its
 // own artifact: a blob holding the chunk in storage format (compressed and/or
 // encrypted as configured), referenced by a minimal image manifest that is
 // tagged with the chunk ID in hex followed by the storage extension, the same
@@ -78,11 +80,11 @@ var ociEmptyConfig = func() ocispec.Descriptor {
 // different storage formats or with different encryption keys can coexist in
 // one repository. The manifest also keeps the blob referenced, protecting it
 // from registry garbage collection of unreferenced blobs.
-type OCIStore struct {
+type Store struct {
 	repo       *remote.Repository
 	location   string
-	opt        StoreOptions
-	converters Converters
+	opt        desync.StoreOptions
+	converters desync.Converters
 	config     *ociConfigBlobState
 
 	// Chunk tag extension, derived from the converters at construction
@@ -104,7 +106,7 @@ type ociConfigBlobState struct {
 // bounds the whole exchange including the body, which suits chunks but would
 // abort a healthy transfer of an index running to hundreds of megabytes. Index
 // stores bound the time a transfer makes no progress instead.
-func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, largeObjects bool) (*remote.Repository, error) {
+func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt desync.StoreOptions, largeObjects bool) (*remote.Repository, error) {
 	if u.Scheme != "oci+https" && u.Scheme != "oci+http" {
 		return nil, fmt.Errorf("unsupported scheme %s, expected oci+https or oci+http", u.Scheme)
 	}
@@ -121,19 +123,19 @@ func newOCIRepository(u *url.URL, creds auth.CredentialFunc, opt StoreOptions, l
 	}
 	repo.TagListPageSize = ociTagListPageSize
 
-	tlsConfig, err := opt.tlsClientConfig()
+	tlsConfig, err := opt.TLSClientConfig()
 	if err != nil {
 		return nil, err
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
-	transport.MaxIdleConnsPerHost = opt.maxConcurrency()
+	transport.MaxIdleConnsPerHost = opt.MaxConcurrency()
 	// The default transport also caps idle connections in total, which would
 	// close the ones above it after every request.
-	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.maxConcurrency())
+	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.MaxConcurrency())
 
-	clientTimeout := opt.effectiveTimeout()
+	clientTimeout := opt.EffectiveTimeout()
 	var rt http.RoundTripper = transport
 	if largeObjects && clientTimeout > 0 {
 		rt = &idleTimeoutTransport{base: transport, timeout: clientTimeout}
@@ -249,44 +251,44 @@ func (r *idleGuardReader) Close() error {
 	return r.ReadCloser.Close()
 }
 
-// NewOCIStore initializes a store using an OCI registry as backend.
-func NewOCIStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCIStore, error) {
+// NewStore initializes a store using an OCI registry as backend.
+func NewStore(u *url.URL, creds auth.CredentialFunc, opt desync.StoreOptions) (Store, error) {
 	repo, err := newOCIRepository(u, creds, opt, false)
 	if err != nil {
-		return OCIStore{}, err
+		return Store{}, err
 	}
 	converters, err := opt.StorageConverters()
 	if err != nil {
-		return OCIStore{}, err
+		return Store{}, err
 	}
-	s := OCIStore{
+	s := Store{
 		repo:       repo,
 		location:   u.String(),
 		opt:        opt,
 		converters: converters,
 		config:     &ociConfigBlobState{},
-		extension:  converters.storageExtension(),
+		extension:  converters.StorageExtension(),
 	}
 	return s, nil
 }
 
-func (s OCIStore) String() string {
+func (s Store) String() string {
 	return s.location
 }
 
 // tagFromID returns the manifest tag for a chunk, the hex ID followed by
 // the storage extension. Both are well within the OCI tag grammar and
 // length limit.
-func (s OCIStore) tagFromID(id ChunkID) string {
+func (s Store) tagFromID(id desync.ChunkID) string {
 	return id.String() + s.extension
 }
 
 // Close the store. NOP operation but needed to implement the store interface.
-func (s OCIStore) Close() error { return nil }
+func (s Store) Close() error { return nil }
 
 // GetChunk reads and returns one chunk from the store. The chunk's manifest is
 // looked up by tag, then the blob it references is fetched.
-func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
+func (s Store) GetChunk(id desync.ChunkID) (*desync.Chunk, error) {
 	ctx := context.Background()
 	manifest, _, err := s.fetchChunkManifest(ctx, id)
 	if err != nil {
@@ -304,7 +306,7 @@ func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
 		// A manifest that references a blob the registry no longer has is
 		// treated like a missing chunk so other stores can be tried.
 		if errors.Is(err, errdef.ErrNotFound) {
-			return nil, ChunkMissing{id}
+			return nil, desync.ChunkMissing{ID: id}
 		}
 		return nil, err
 	}
@@ -313,18 +315,18 @@ func (s OCIStore) GetChunk(id ChunkID) (*Chunk, error) {
 	if _, err := io.ReadFull(r, b); err != nil {
 		return nil, err
 	}
-	return NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
+	return desync.NewChunkFromStorage(id, b, s.converters, s.opt.SkipVerify)
 }
 
 // HasChunk returns true if the chunk is in the store. Like all other chunk
 // operations it goes through fetchChunkManifest, so a foreign artifact under
 // a chunk-ID-shaped tag doesn't count as the chunk being present.
-func (s OCIStore) HasChunk(id ChunkID) (bool, error) {
+func (s Store) HasChunk(id desync.ChunkID) (bool, error) {
 	_, _, err := s.fetchChunkManifest(context.Background(), id)
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, ChunkMissing{id}):
+	case errors.Is(err, desync.ChunkMissing{ID: id}):
 		return false, nil
 	default:
 		return false, err
@@ -333,7 +335,7 @@ func (s OCIStore) HasChunk(id ChunkID) (bool, error) {
 
 // StoreChunk adds a new chunk to the store. The chunk data is pushed as a blob,
 // then referenced by a manifest tagged with the chunk ID.
-func (s OCIStore) StoreChunk(chunk *Chunk) error {
+func (s Store) StoreChunk(chunk *desync.Chunk) error {
 	ctx := context.Background()
 	id := chunk.ID()
 	b, err := chunk.Storage(s.converters)
@@ -351,7 +353,7 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 	manifest := ocispec.Manifest{
 		Versioned:    specs.Versioned{SchemaVersion: 2},
 		MediaType:    ocispec.MediaTypeImageManifest,
-		ArtifactType: OCIChunkArtifactType,
+		ArtifactType: ChunkArtifactType,
 		Config:       ociEmptyConfig,
 		Layers:       []ocispec.Descriptor{blobDesc},
 		Annotations:  map[string]string{ocispec.AnnotationTitle: tag},
@@ -369,7 +371,7 @@ func (s OCIStore) StoreChunk(chunk *Chunk) error {
 // desync chunk artifact type are deleted; a tag that names any other kind
 // of artifact reports the chunk as missing instead. The blob is left for
 // the registry's garbage collection.
-func (s OCIStore) RemoveChunk(id ChunkID) error {
+func (s Store) RemoveChunk(id desync.ChunkID) error {
 	ctx := context.Background()
 	_, desc, err := s.fetchChunkManifest(ctx, id)
 	if err != nil {
@@ -386,7 +388,7 @@ func (s OCIStore) RemoveChunk(id ChunkID) error {
 // are left alone, even ones under a chunk-ID-shaped tag. Just the chunk
 // manifests are deleted, reclaiming the space of the now unreferenced blobs
 // is left to the registry's garbage collection.
-func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
+func (s Store) Prune(ctx context.Context, ids map[desync.ChunkID]struct{}) error {
 	// Each removal costs two network round-trips and they are independent of
 	// each other, so fan them out while the tag listing stays sequential. The
 	// group context also stops the listing once a removal has failed.
@@ -394,8 +396,8 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 	// Removals don't adapt their concurrency, with an adaptive one they run
 	// as many as an adaptive store starts with.
 	limit := s.opt.N
-	if limit == AdaptiveConcurrency {
-		limit = adaptiveInitialLimit
+	if limit == desync.AdaptiveConcurrency {
+		limit = desync.AdaptiveInitialConcurrency
 	}
 	g.SetLimit(max(limit, 1))
 	tagsErr := s.repo.Tags(ctx, "", func(tags []string) error {
@@ -403,11 +405,11 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			// See if we're meant to stop
 			select {
 			case <-gctx.Done():
-				return Interrupted{}
+				return desync.Interrupted{}
 			default:
 			}
 
-			id, ok := chunkIDFromFilename(tag, s.extension)
+			id, ok := desync.ChunkIDFromFilename(tag, s.extension)
 			if !ok {
 				continue
 			}
@@ -415,7 +417,7 @@ func (s OCIStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 			// Drop the chunk if it's not on the list
 			if _, ok := ids[id]; !ok {
 				g.Go(func() error {
-					if err := s.RemoveChunk(id); err != nil && !errors.Is(err, ChunkMissing{id}) {
+					if err := s.RemoveChunk(id); err != nil && !errors.Is(err, desync.ChunkMissing{ID: id}) {
 						return err
 					}
 					return nil
@@ -455,11 +457,11 @@ func readOCIManifest(r io.Reader) (ocispec.Manifest, error) {
 // the tag alone can't be trusted, an unrelated artifact sharing the repository
 // may sit under a chunk-ID-shaped tag, especially when the storage extension
 // is empty (uncompressed, unencrypted stores).
-func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.Manifest, ocispec.Descriptor, error) {
+func (s Store) fetchChunkManifest(ctx context.Context, id desync.ChunkID) (ocispec.Manifest, ocispec.Descriptor, error) {
 	desc, r, err := s.repo.FetchReference(ctx, s.tagFromID(id))
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
-			return ocispec.Manifest{}, ocispec.Descriptor{}, ChunkMissing{id}
+			return ocispec.Manifest{}, ocispec.Descriptor{}, desync.ChunkMissing{ID: id}
 		}
 		return ocispec.Manifest{}, ocispec.Descriptor{}, err
 	}
@@ -468,8 +470,8 @@ func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.M
 	if err != nil {
 		return ocispec.Manifest{}, ocispec.Descriptor{}, fmt.Errorf("invalid manifest for chunk %s in %s: %w", id.String(), s, err)
 	}
-	if manifest.ArtifactType != OCIChunkArtifactType {
-		return ocispec.Manifest{}, ocispec.Descriptor{}, ChunkMissing{id}
+	if manifest.ArtifactType != ChunkArtifactType {
+		return ocispec.Manifest{}, ocispec.Descriptor{}, desync.ChunkMissing{ID: id}
 	}
 	return manifest, desc, nil
 }
@@ -479,7 +481,7 @@ func (s OCIStore) fetchChunkManifest(ctx context.Context, id ChunkID) (ocispec.M
 // doesn't have it yet. The mutex single-flights the check, so of any number
 // of concurrent writers only the first talks to the registry, and later
 // calls return without network I/O once it has succeeded.
-func (s OCIStore) ensureConfigBlob(ctx context.Context) error {
+func (s Store) ensureConfigBlob(ctx context.Context) error {
 	s.config.mu.Lock()
 	defer s.config.mu.Unlock()
 	if s.config.pushed {

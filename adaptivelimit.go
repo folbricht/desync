@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	// adaptiveInitialLimit is the concurrency an adaptive limiter starts
+	// AdaptiveInitialConcurrency is the concurrency an adaptive limiter starts
 	// with, the same as the default concurrency of the command line tool.
-	adaptiveInitialLimit = 10
+	AdaptiveInitialConcurrency = 10
 
 	// adaptiveMinWindow is the fewest completed requests the limiter bases a
 	// change on. Chunks vary in size, and so does the latency of individual
@@ -89,7 +89,7 @@ func newAdaptiveLimiter(name string, maxLimit int) *adaptiveLimiter {
 	l := &adaptiveLimiter{
 		name:   name,
 		now:    time.Now,
-		limit:  min(adaptiveInitialLimit, maxLimit),
+		limit:  min(AdaptiveInitialConcurrency, maxLimit),
 		max:    maxLimit,
 		rampUp: true,
 	}
@@ -156,7 +156,7 @@ func (l *adaptiveLimiter) adjust() {
 	}
 	// At a low limit, the latency is close to the lowest the network and
 	// the store allow right now, which may well be higher than before.
-	if l.lowest == 0 || avg <= l.lowest || l.limit <= adaptiveInitialLimit {
+	if l.lowest == 0 || avg <= l.lowest || l.limit <= AdaptiveInitialConcurrency {
 		l.lowest = avg
 		l.lowestAt = l.now()
 	}
@@ -191,9 +191,9 @@ func (l *adaptiveLimiter) adjust() {
 		}
 		l.rampUp = false
 	}
-	if l.limit > adaptiveInitialLimit && l.now().Sub(l.lowestAt) >= adaptiveLatencyExpiry {
+	if l.limit > AdaptiveInitialConcurrency && l.now().Sub(l.lowestAt) >= adaptiveLatencyExpiry {
 		l.gen++
-		l.setLimit(adaptiveInitialLimit)
+		l.setLimit(AdaptiveInitialConcurrency)
 		return
 	}
 	l.setLimit(int(math.Ceil(adaptiveHeadroom * highest * l.lowest.Seconds())))
