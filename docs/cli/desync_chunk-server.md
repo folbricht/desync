@@ -46,37 +46,37 @@ desync chunk-server [flags]
       --authorization string                 expected value of the authorization header in requests
       --ca-cert string                       trust authorities in this file, instead of OS trust store
   -c, --cache string                         store to be used as cache
-  -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
+  -r, --cache-repair[=true|false]            replace invalid chunks in the cache from source (default true)
       --cert string                          cert file in PEM format, requires --key
       --client-ca string                     acceptable client certificate or CA
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication
   -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
-      --encryption                           serve chunks encrypted, expects the key in $DESYNC_ENCRYPTION_KEY unless --encryption-key is given
+      --encryption[=true|false]              serve chunks encrypted, expects the key in $DESYNC_ENCRYPTION_KEY unless --encryption-key is given
       --encryption-algorithm string          encryption algorithm, xchacha20-poly1305 (default) or aes-256-gcm, implies --encryption
       --encryption-key string                serve chunks encrypted with this hex-encoded 256-bit key, implies --encryption
   -e, --error-retry int                      number of times to retry in case of network error (default 3)
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
-  -h, --help                                 help for chunk-server
+  -h, --help[=true|false]                    help for chunk-server
       --key string                           key file in PEM format, requires --cert
   -l, --listen strings                       listen address(es), can be repeated (default [:http])
       --log string                           request log file or - for STDOUT
-      --mutual-tls                           require valid client certificate
-      --skip-verify-read                     don't verify chunk data read from upstream stores (faster) (default true)
-      --skip-verify-write                    don't verify chunk data written to this server (faster) (default true)
+      --mutual-tls[=true|false]              require valid client certificate
+      --skip-verify-read[=true|false]        don't verify chunk data read from upstream stores (faster) (default true)
+      --skip-verify-write[=true|false]       don't verify chunk data written to this server (faster) (default true)
   -s, --store strings                        upstream source store(s)
       --store-file string                    read store arguments from a file, supports reload on SIGHUP
-  -t, --trust-insecure                       trust invalid certificates
-  -u, --uncompressed                         serve uncompressed chunks
-  -w, --writable                             support writing
+  -t, --trust-insecure[=true|false]          trust invalid certificates
+  -u, --uncompressed[=true|false]            serve uncompressed chunks
+  -w, --writable[=true|false]                support writing
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

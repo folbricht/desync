@@ -21,18 +21,18 @@ desync verify [flags]
 ### Options
 
 ```
-  -n, --concurrency int   number of concurrent goroutines, -1 for the number of CPUs (default 10)
-  -h, --help              help for verify
-  -r, --repair            remove invalid chunks from the store
-  -s, --store string      local store to verify
+  -n, --concurrency int       number of concurrent goroutines, -1 for the number of CPUs (default 10)
+  -h, --help[=true|false]     help for verify
+  -r, --repair[=true|false]   remove invalid chunks from the store
+  -s, --store string          local store to verify
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

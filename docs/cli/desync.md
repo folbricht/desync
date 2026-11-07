@@ -24,11 +24,11 @@ stores can also be combined into one failover group by separating them with
 ### Options
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-  -h, --help            help for desync
-      --verbose         verbose mode
-      --version         print the version and exit
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+  -h, --help[=true|false]      help for desync
+      --verbose[=true|false]   verbose mode
+      --version[=true|false]   print the version and exit
 ```
 
 ### SEE ALSO

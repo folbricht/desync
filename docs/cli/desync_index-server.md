@@ -25,7 +25,7 @@ desync index-server [flags]
 ```
       --authorization string                 expected value of the authorization header in requests
       --ca-cert string                       trust authorities in this file, instead of OS trust store
-  -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
+  -r, --cache-repair[=true|false]            replace invalid chunks in the cache from source (default true)
       --cert string                          cert file in PEM format, requires --key
       --client-ca string                     acceptable client certificate or CA
       --client-cert string                   path to client certificate for TLS authentication
@@ -33,22 +33,22 @@ desync index-server [flags]
   -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
   -e, --error-retry int                      number of times to retry in case of network error (default 3)
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
-  -h, --help                                 help for index-server
+  -h, --help[=true|false]                    help for index-server
       --key string                           key file in PEM format, requires --cert
   -l, --listen strings                       listen address(es), can be repeated (default [:http])
       --log string                           request log file or - for STDOUT
-      --mutual-tls                           require valid client certificate
+      --mutual-tls[=true|false]              require valid client certificate
   -s, --store string                         upstream source index store
-  -t, --trust-insecure                       trust invalid certificates
-  -w, --writable                             support writing
+  -t, --trust-insecure[=true|false]          trust invalid certificates
+  -w, --writable[=true|false]                support writing
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

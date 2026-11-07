@@ -43,31 +43,31 @@ desync extract <index> <output> [flags]
 ### Options
 
 ```
-      --ca-cert string                       trust authorities in this file, instead of OS trust store
-  -c, --cache string                         store to be used as cache
-  -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
-      --client-cert string                   path to client certificate for TLS authentication
-      --client-key string                    path to client key for TLS authentication
-  -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
-  -e, --error-retry int                      number of times to retry in case of network error (default 3)
-  -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
-  -h, --help                                 help for extract
-  -k, --in-place                             extract the file in place and keep it in case of error
-      --print-stats                          print extraction statistics to stdout when done
-      --regenerate-invalid-seeds             regenerate seed indexes with invalid chunks
-      --seed strings                         seed indexes
-      --seed-dir strings                     directory with seed index files
-      --skip-invalid-seeds                   skip seeds with invalid chunks
-  -s, --store strings                        source store(s)
-  -t, --trust-insecure                       trust invalid certificates
+      --ca-cert string                          trust authorities in this file, instead of OS trust store
+  -c, --cache string                            store to be used as cache
+  -r, --cache-repair[=true|false]               replace invalid chunks in the cache from source (default true)
+      --client-cert string                      path to client certificate for TLS authentication
+      --client-key string                       path to client key for TLS authentication
+  -n, --concurrency int                         number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
+  -e, --error-retry int                         number of times to retry in case of network error (default 3)
+  -b, --error-retry-base-interval duration      initial retry delay, increases linearly with each subsequent attempt (default 500ms)
+  -h, --help[=true|false]                       help for extract
+  -k, --in-place[=true|false]                   extract the file in place and keep it in case of error
+      --print-stats[=true|false]                print extraction statistics to stdout when done
+      --regenerate-invalid-seeds[=true|false]   regenerate seed indexes with invalid chunks
+      --seed strings                            seed indexes
+      --seed-dir strings                        directory with seed index files
+      --skip-invalid-seeds[=true|false]         skip seeds with invalid chunks
+  -s, --store strings                           source store(s)
+  -t, --trust-insecure[=true|false]             trust invalid certificates
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO
