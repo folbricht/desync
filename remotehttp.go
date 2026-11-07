@@ -2,6 +2,7 @@ package desync
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,8 +10,6 @@ import (
 	"path"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 var _ WriteStore = &RemoteHTTP{}
@@ -101,7 +100,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 	resp, err = r.client.Do(req)
 	if err != nil {
 		log.Error("error while sending request", "error", err)
-		return 0, nil, errors.Wrap(err, u.String())
+		return 0, nil, fmt.Errorf("%s: %w", u.String(), err)
 	}
 
 	defer resp.Body.Close()
@@ -109,7 +108,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error("error while reading response", "error", err)
-		return 0, nil, errors.Wrap(err, u.String())
+		return 0, nil, fmt.Errorf("%s: %w", u.String(), err)
 	}
 
 	log.Debug("response received", "statusCode", resp.StatusCode)

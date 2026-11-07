@@ -13,7 +13,6 @@ import (
 	"github.com/folbricht/desync"
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/pkg/errors"
 )
 
 var _ desync.WriteStore = Store{}
@@ -69,7 +68,7 @@ func NewStoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, o
 	// closed and reopened for every request.
 	transport, err := minio.DefaultTransport(useSSL)
 	if err != nil {
-		return s, errors.Wrap(err, u.String())
+		return s, fmt.Errorf("%s: %w", u.String(), err)
 	}
 	transport.MaxIdleConnsPerHost = max(transport.MaxIdleConnsPerHost, opt.MaxConcurrency())
 	transport.MaxIdleConns = max(transport.MaxIdleConns, opt.MaxConcurrency())
@@ -82,7 +81,7 @@ func NewStoreBase(u *url.URL, s3Creds *credentials.Credentials, region string, o
 		Transport:    transport,
 	})
 	if err != nil {
-		return s, errors.Wrap(err, u.String())
+		return s, fmt.Errorf("%s: %w", u.String(), err)
 	}
 	return s, nil
 }
@@ -125,7 +124,7 @@ retry:
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
-		return nil, errors.Wrap(err, s.String())
+		return nil, fmt.Errorf("%s: %w", s.String(), err)
 	}
 	defer obj.Close()
 
@@ -149,7 +148,7 @@ retry:
 			goto retry
 		}
 		// Without ListBucket perms in AWS, we get Permission Denied for a missing chunk, not 404
-		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from s3 store", id))
+		return nil, fmt.Errorf("chunk %s could not be retrieved from s3 store: %w", id, err)
 	}
 
 	// A short read of the chunk body (e.g. flaky transport/endpoint) can leave us
@@ -164,7 +163,7 @@ retry:
 			time.Sleep(time.Duration(attempt) * s.opt.ErrorRetryBaseInterval)
 			goto retry
 		}
-		return nil, errors.Wrap(err, s.String())
+		return nil, fmt.Errorf("%s: %w", s.String(), err)
 	}
 	return chunk, nil
 }
@@ -190,7 +189,10 @@ retry:
 			goto retry
 		}
 	}
-	return errors.Wrap(err, s.String())
+	if err != nil {
+		return fmt.Errorf("%s: %w", s.String(), err)
+	}
+	return nil
 }
 
 // HasChunk returns true if the chunk is in the store

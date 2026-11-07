@@ -4,6 +4,7 @@ package gcs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -11,7 +12,6 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/folbricht/desync"
-	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 )
 
@@ -73,7 +73,7 @@ func NewStoreBase(u *url.URL, opt desync.StoreOptions) (StoreBase, error) {
 
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		return s, errors.Wrap(err, s.String())
+		return s, fmt.Errorf("%s: %w", s.String(), err)
 	}
 
 	s.client = client.Bucket(s.bucket)
@@ -117,7 +117,7 @@ func (s Store) GetChunk(id desync.ChunkID) (*desync.Chunk, error) {
 		return nil, desync.ChunkMissing{ID: id}
 	} else if err != nil {
 		log.Error("Unable to retrieve object from GCS bucket", "error", err)
-		return nil, errors.Wrap(err, s.String())
+		return nil, fmt.Errorf("%s: %w", s.String(), err)
 	}
 	defer rc.Close()
 
@@ -128,7 +128,7 @@ func (s Store) GetChunk(id desync.ChunkID) (*desync.Chunk, error) {
 		return nil, desync.ChunkMissing{ID: id}
 	} else if err != nil {
 		log.Error("Unable to retrieve object from GCS bucket", "error", err)
-		return nil, errors.Wrap(err, fmt.Sprintf("chunk %s could not be retrieved from GCS bucket", id))
+		return nil, fmt.Errorf("chunk %s could not be retrieved from GCS bucket: %w", id, err)
 	}
 
 	log.Debug("Retrieved chunk from GCS bucket")
@@ -163,13 +163,13 @@ func (s Store) StoreChunk(chunk *desync.Chunk) error {
 
 	if err != nil {
 		log.Error("Error when copying data from local filesystem to object in GCS bucket", "error", err)
-		return errors.Wrap(err, s.String())
+		return fmt.Errorf("%s: %w", s.String(), err)
 	}
 
 	err = w.Close()
 	if err != nil {
 		log.Error("Error when finalizing copying of data from local filesystem to object in GCS bucket", "error", err)
-		return errors.Wrap(err, s.String())
+		return fmt.Errorf("%s: %w", s.String(), err)
 	}
 
 	log.Debug("Uploaded chunk to GCS bucket")

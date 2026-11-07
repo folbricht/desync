@@ -1,6 +1,7 @@
 package sftp
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path"
@@ -8,7 +9,6 @@ import (
 	"io"
 
 	"github.com/folbricht/desync"
-	"github.com/pkg/errors"
 )
 
 // IndexStore is an index store backed by SFTP over SSH
@@ -34,7 +34,7 @@ func (s *IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 	f, err := s.client.Open(s.pathFromName(name))
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = errors.Errorf("Index file does not exist: %v", err)
+			err = fmt.Errorf("index file does not exist: %v", err)
 		}
 		return r, err
 	}

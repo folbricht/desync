@@ -1,10 +1,8 @@
 package desync
 
 import (
-	stderrors "errors"
+	"errors"
 	"fmt"
-
-	"github.com/pkg/errors"
 )
 
 // Cache is used to connect a (typically remote) store with a local store which
@@ -40,7 +38,7 @@ func (c Cache) GetChunk(id ChunkID) (*Chunk, error) {
 	}
 	// Got the chunk. Store it in the local cache for next time
 	if err = c.l.StoreChunk(chunk); err != nil {
-		return chunk, errors.Wrap(err, "failed to store in local cache")
+		return chunk, fmt.Errorf("failed to store in local cache: %w", err)
 	}
 	return chunk, nil
 }
@@ -59,7 +57,7 @@ func (c Cache) String() string {
 
 // Close the underlying writable chunk store
 func (c Cache) Close() error {
-	return stderrors.Join(c.l.Close(), c.s.Close())
+	return errors.Join(c.l.Close(), c.s.Close())
 }
 
 // RepairableCache is a cache whose GetChunk() function will return ChunkMissing error instead of ChunkInvalid

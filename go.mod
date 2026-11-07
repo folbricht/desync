@@ -12,7 +12,6 @@ require (
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
-	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.12
 	github.com/pkg/xattr v0.4.12
 	github.com/spf13/cobra v1.10.2

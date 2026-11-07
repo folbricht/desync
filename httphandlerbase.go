@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-
-	"github.com/pkg/errors"
 )
 
 // HTTPHandlerBase is the base object for a HTTP chunk or index store.
@@ -34,7 +32,7 @@ func (h HTTPHandlerBase) validateWritable(storeName string, w http.ResponseWrite
 	if !h.writable {
 		msg := fmt.Sprintf("writing to upstream %s store is not enabled", h.handlerType)
 		http.Error(w, msg, http.StatusBadRequest)
-		return errors.Errorf("writing to upstream %s store '%s' is not enabled", h.handlerType, storeName)
+		return fmt.Errorf("writing to upstream %s store '%s' is not enabled", h.handlerType, storeName)
 	}
 	return nil
 }

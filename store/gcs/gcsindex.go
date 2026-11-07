@@ -2,13 +2,13 @@ package gcs
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/url"
 	"path"
 
 	"cloud.google.com/go/storage"
 	"github.com/folbricht/desync"
-	"github.com/pkg/errors"
 )
 
 // IndexStore is a read-write index store with Google Storage backing
@@ -45,10 +45,10 @@ func (s IndexStore) GetIndexReader(name string) (r io.ReadCloser, err error) {
 
 	if err == storage.ErrObjectNotExist {
 		log.Warn("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
-		return nil, errors.Wrap(err, s.String())
+		return nil, fmt.Errorf("%s: %w", s.String(), err)
 	} else if err != nil {
 		log.Error("Error when creating index reader from GCS bucket", "error", err)
-		return nil, errors.Wrap(err, s.String())
+		return nil, fmt.Errorf("%s: %w", s.String(), err)
 	}
 
 	log.Debug("Created index reader from GCS bucket")
@@ -84,14 +84,14 @@ func (s IndexStore) StoreIndex(name string, idx desync.Index) error {
 	if err != nil {
 		log.Error("Error when copying data from local filesystem to object in GCS bucket", "error", err)
 		_ = w.Close()
-		return errors.Wrap(err, path.Base(s.Location))
+		return fmt.Errorf("%s: %w", path.Base(s.Location), err)
 	}
 
 	err = w.Close()
 
 	if err != nil {
 		log.Error("Error when finalizing copying of data from local filesystem to object in GCS bucket", "error", err)
-		return errors.Wrap(err, path.Base(s.Location))
+		return fmt.Errorf("%s: %w", path.Base(s.Location), err)
 	}
 
 	log.Debug("Index written to GCS bucket")

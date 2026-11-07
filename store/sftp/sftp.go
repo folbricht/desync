@@ -4,6 +4,7 @@ package sftp
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/url"
@@ -17,7 +18,6 @@ import (
 	"github.com/folbricht/desync"
 	"github.com/folbricht/desync/internal/sessionpool"
 	"github.com/folbricht/desync/internal/sshhost"
-	"github.com/pkg/errors"
 	"github.com/pkg/sftp"
 )
 
@@ -89,7 +89,7 @@ func newStoreBase(location *url.URL, opt desync.StoreOptions, extension string) 
 	// may fail if multiple instances access the SSH agent concurrently.
 	if _, err = client.Stat(path); err != nil {
 		cancel()
-		return nil, errors.Wrapf(err, "failed to stat '%s'", path)
+		return nil, fmt.Errorf("failed to stat '%s': %w", path, err)
 	}
 	return &StoreBase{location, path, client, cancel, opt, extension}, nil
 }
@@ -113,17 +113,20 @@ retry:
 			errCount++
 			goto retry
 		}
-		return errors.Wrap(err, "sftp:create "+tmpfile)
+		return fmt.Errorf("sftp:create %s: %w", tmpfile, err)
 	}
 
 	if _, err := io.Copy(f, r); err != nil {
 		_ = s.client.Remove(tmpfile)
-		return errors.Wrap(err, "sftp:copying chunk data to "+tmpfile)
+		return fmt.Errorf("sftp:copying chunk data to %s: %w", tmpfile, err)
 	}
 	if err = f.Close(); err != nil {
-		return errors.Wrap(err, "sftp:closing "+tmpfile)
+		return fmt.Errorf("sftp:closing %s: %w", tmpfile, err)
 	}
-	return errors.Wrap(s.client.PosixRename(tmpfile, name), "sftp:renaming "+tmpfile+" to "+name)
+	if err := s.client.PosixRename(tmpfile, name); err != nil {
+		return fmt.Errorf("sftp:renaming %s to %s: %w", tmpfile, name, err)
+	}
+	return nil
 }
 
 // Close terminates all client connections
@@ -183,7 +186,7 @@ func (s *Store) GetChunk(id desync.ChunkID) (*desync.Chunk, error) {
 	defer f.Close()
 	b, err := io.ReadAll(f)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to read from %s", name)
+		return nil, fmt.Errorf("unable to read from %s: %w", name, err)
 	}
 	return desync.NewChunkFromStorage(id, b, s.converters, c.opt.SkipVerify)
 }
