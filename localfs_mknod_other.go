@@ -29,7 +29,7 @@ func (fs *LocalFS) createDeviceNode(r *os.Root, n NodeDevice) error {
 	if err != nil {
 		return err
 	}
-	df.Close()
+	_ = df.Close()
 	dst := filepath.Join(fs.rootReal, n.Name)
 	return unix.Mknod(dst, FilemodeToStatMode(n.Mode)|0666, int(dev))
 }
