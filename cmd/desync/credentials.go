@@ -6,9 +6,9 @@ import (
 
 	"path/filepath"
 
-	"github.com/go-ini/ini"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
+	"gopkg.in/ini.v1"
 )
 
 // SharedCredentialsFilename returns the SDK's default file path

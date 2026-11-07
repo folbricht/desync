@@ -24,24 +24,24 @@ desync prune <index> [<index>...] [flags]
 
 ```
       --ca-cert string                       trust authorities in this file, instead of OS trust store
-  -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
+  -r, --cache-repair[=true|false]            replace invalid chunks in the cache from source (default true)
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication
   -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
   -e, --error-retry int                      number of times to retry in case of network error (default 3)
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
-  -h, --help                                 help for prune
+  -h, --help[=true|false]                    help for prune
   -s, --store string                         store to prune
-  -t, --trust-insecure                       trust invalid certificates
-  -y, --yes                                  do not ask for confirmation before deleting chunks
+  -t, --trust-insecure[=true|false]          trust invalid certificates
+  -y, --yes[=true|false]                     do not ask for confirmation before deleting chunks
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

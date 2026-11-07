@@ -21,16 +21,16 @@ desync version [flags]
 ### Options
 
 ```
-  -f, --format string   output format, plain or json (default "plain")
-  -h, --help            help for version
+  -f, --format string       output format, plain or json (default "plain")
+  -h, --help[=true|false]   help for version
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

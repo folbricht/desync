@@ -23,16 +23,16 @@ desync config [flags]
 ### Options
 
 ```
-  -h, --help    help for config
-  -w, --write   write current configuration to file
+  -h, --help[=true|false]    help for config
+  -w, --write[=true|false]   write current configuration to file
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

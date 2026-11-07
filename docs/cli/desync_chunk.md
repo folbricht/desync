@@ -22,16 +22,16 @@ desync chunk <file> [flags]
 
 ```
   -m, --chunk-size string   min:avg:max chunk size in kb (default "16:64:256")
-  -h, --help                help for chunk
+  -h, --help[=true|false]   help for chunk
   -S, --start uint          starting position in bytes
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

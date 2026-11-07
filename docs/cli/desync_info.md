@@ -28,7 +28,7 @@ desync info <index> [flags]
 ```
       --ca-cert string                       trust authorities in this file, instead of OS trust store
   -c, --cache string                         store to be used as cache
-  -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
+  -r, --cache-repair[=true|false]            replace invalid chunks in the cache from source (default true)
       --chunks-info string                   json file with additional chunks info
       --client-cert string                   path to client certificate for TLS authentication
       --client-key string                    path to client key for TLS authentication
@@ -36,18 +36,18 @@ desync info <index> [flags]
   -e, --error-retry int                      number of times to retry in case of network error (default 3)
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
   -f, --format string                        output format, plain or json (default "json")
-  -h, --help                                 help for info
+  -h, --help[=true|false]                    help for info
       --seed strings                         seed indexes
   -s, --store strings                        source store(s)
-  -t, --trust-insecure                       trust invalid certificates
+  -t, --trust-insecure[=true|false]          trust invalid certificates
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

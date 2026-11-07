@@ -21,16 +21,16 @@ desync completion powershell [flags]
 ### Options
 
 ```
-  -h, --help              help for powershell
-      --no-descriptions   disable completion descriptions
+  -h, --help[=true|false]              help for powershell
+      --no-descriptions[=true|false]   disable completion descriptions
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO
