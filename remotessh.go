@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/folbricht/desync/internal/sessionpool"
+	"github.com/folbricht/desync/internal/sshhost"
 	"github.com/pkg/errors"
 )
 
@@ -15,7 +17,7 @@ var _ Store = &RemoteSSH{}
 // multiple sessions to improve throughput.
 type RemoteSSH struct {
 	location *url.URL
-	pool     *sessionPool[*Protocol]
+	pool     *sessionpool.Pool[*Protocol]
 }
 
 // NewRemoteSSHStore establishes up to n connections with a casync chunk server
@@ -28,18 +30,18 @@ func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) 
 	}
 	remote := RemoteSSH{
 		location: location,
-		pool: newSessionPool(opt.maxConcurrency(), func() (*Protocol, error) {
+		pool: sessionpool.New(opt.MaxConcurrency(), func() (*Protocol, error) {
 			s, err := StartProtocol(location)
 			return s, errors.Wrap(err, "failed to start chunk server command")
 		}),
 	}
 	// Start the first session right away to confirm the store can be
 	// reached, the others are started when they're needed.
-	s, err := remote.pool.get()
+	s, err := remote.pool.Get()
 	if err != nil {
 		return &remote, err
 	}
-	remote.pool.put(s)
+	remote.pool.Put(s)
 	return &remote, nil
 }
 
@@ -48,17 +50,17 @@ func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) 
 // one if all are busy. Blocks until one session becomes available if the pool
 // is at its limit.
 func (r *RemoteSSH) GetChunk(id ChunkID) (*Chunk, error) {
-	client, err := r.pool.get()
+	client, err := r.pool.Get()
 	if err != nil {
 		return nil, err
 	}
-	defer r.pool.put(client)
+	defer r.pool.Put(client)
 	return client.RequestChunk(id)
 }
 
 // Close terminates all client connections
 func (r *RemoteSSH) Close() error {
-	return r.pool.close((*Protocol).SendGoodbye)
+	return r.pool.Close((*Protocol).SendGoodbye)
 }
 
 // HasChunk returns true if the chunk is in the store. TODO: Implementing it
@@ -97,7 +99,7 @@ func StartProtocol(u *url.URL) (*Protocol, error) {
 		host = u.User.Username() + "@" + u.Host
 	}
 	// Reject destinations that ssh would parse as command-line options.
-	if err := validateSSHHost(host); err != nil {
+	if err := sshhost.Validate(host); err != nil {
 		return nil, err
 	}
 

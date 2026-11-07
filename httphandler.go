@@ -28,7 +28,7 @@ type HTTPHandler struct {
 
 // NewHTTPHandler initializes and returns a new HTTP handler for a chunks server.
 func NewHTTPHandler(s Store, writable, skipVerifyWrite bool, converters Converters, auth string) http.Handler {
-	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, converters, converters.storageExtension()}
+	return HTTPHandler{HTTPHandlerBase{"chunk", writable, auth}, s, skipVerifyWrite, converters, converters.StorageExtension()}
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

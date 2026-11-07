@@ -1,4 +1,4 @@
-package desync
+package s3
 
 import (
 	"context"
@@ -8,38 +8,39 @@ import (
 
 	"net/url"
 
+	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
 )
 
-// S3IndexStore is a read-write index store with S3 backing
-type S3IndexStore struct {
-	S3StoreBase
+// IndexStore is a read-write index store with S3 backing
+type IndexStore struct {
+	StoreBase
 }
 
-// NewS3IndexStore creates an index store with S3 backing. The URL
+// NewIndexStore creates an index store with S3 backing. The URL
 // should be provided like this: s3+http://host:port/bucket
 // Credentials are passed in via the environment variables S3_ACCESS_KEY
 // and S3_SECRET_KEY, or via the desync config file.
-func NewS3IndexStore(location *url.URL, s3Creds *credentials.Credentials, region string, opt StoreOptions, lookupType minio.BucketLookupType) (s S3IndexStore, e error) {
+func NewIndexStore(location *url.URL, s3Creds *credentials.Credentials, region string, opt desync.StoreOptions, lookupType minio.BucketLookupType) (s IndexStore, e error) {
 	if err := opt.ValidateIndexOptions(); err != nil {
 		return s, err
 	}
-	b, err := NewS3StoreBase(location, s3Creds, region, opt, lookupType)
+	b, err := NewStoreBase(location, s3Creds, region, opt, lookupType)
 	if err != nil {
 		return s, err
 	}
-	return S3IndexStore{b}, nil
+	return IndexStore{b}, nil
 }
 
 // GetIndexReader returns a reader for an index from an S3 store. Fails if the specified index
 // file does not exist.
-func (s S3IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
+func (s IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 	// The index is read by the caller, after this returns, so the timeout has
 	// to cover the lifetime of the reader rather than just this call. Tie the
 	// context to Close instead of cancelling it here.
-	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	ctx, cancel := s.opt.ContextWithTimeout(context.Background())
 	obj, err := s.client.GetObject(ctx, s.bucket, s.prefix+name, minio.GetObjectOptions{})
 	if err != nil {
 		cancel()
@@ -61,17 +62,17 @@ func (c cancelOnClose) Close() error {
 }
 
 // GetIndex returns an Index structure from the store
-func (s S3IndexStore) GetIndex(name string) (i Index, e error) {
+func (s IndexStore) GetIndex(name string) (i desync.Index, e error) {
 	obj, err := s.GetIndexReader(name)
 	if err != nil {
 		return i, err
 	}
 	defer obj.Close()
-	return IndexFromReader(obj)
+	return desync.IndexFromReader(obj)
 }
 
 // StoreIndex writes the index file to the S3 store
-func (s S3IndexStore) StoreIndex(name string, idx Index) error {
+func (s IndexStore) StoreIndex(name string, idx desync.Index) error {
 	contentType := "application/octet-stream"
 	r, w := io.Pipe()
 
@@ -80,7 +81,7 @@ func (s S3IndexStore) StoreIndex(name string, idx Index) error {
 		w.CloseWithError(err)
 	}()
 
-	ctx, cancel := s.opt.contextWithTimeout(context.Background())
+	ctx, cancel := s.opt.ContextWithTimeout(context.Background())
 	defer cancel()
 
 	_, err := s.client.PutObject(ctx, s.bucket, s.prefix+name, r, -1, minio.PutObjectOptions{ContentType: contentType})

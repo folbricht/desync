@@ -8,29 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateSSHHost(t *testing.T) {
-	valid := []string{
-		"example.com",
-		"user@example.com",
-		"user@example.com:2222",
-		"192.0.2.1",
-		"a-b.example.com", // dash allowed mid-string
-	}
-	for _, h := range valid {
-		assert.NoError(t, validateSSHHost(h), "%q should be accepted", h)
-	}
-
-	invalid := []string{
-		"-",
-		"-x",
-		"-oProxyCommand=touch${IFS}pwned",
-		"-oProxyCommand=id@example.com",
-	}
-	for _, h := range invalid {
-		assert.Error(t, validateSSHHost(h), "%q should be rejected", h)
-	}
-}
-
 func TestShellQuote(t *testing.T) {
 	// Each input must survive a round-trip through a POSIX shell unchanged,
 	// proving the quoting can't be broken out of.

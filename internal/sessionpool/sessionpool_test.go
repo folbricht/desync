@@ -1,4 +1,4 @@
-package desync
+package sessionpool
 
 import (
 	"errors"
@@ -22,24 +22,24 @@ func countingOpener() (func() (int, error), *atomic.Int64) {
 
 func TestSessionPoolOpensOnDemand(t *testing.T) {
 	open, opened := countingOpener()
-	p := newSessionPool(4, open)
+	p := New(4, open)
 
 	// Sequential use only ever needs one session
 	for range 10 {
-		s, err := p.get()
+		s, err := p.Get()
 		require.NoError(t, err)
-		p.put(s)
+		p.Put(s)
 	}
 	assert.Equal(t, int64(1), opened.Load())
 }
 
 func TestSessionPoolBlocksAtLimit(t *testing.T) {
 	open, opened := countingOpener()
-	p := newSessionPool(3, open)
+	p := New(3, open)
 
 	var sessions []int
 	for range 3 {
-		s, err := p.get()
+		s, err := p.Get()
 		require.NoError(t, err)
 		sessions = append(sessions, s)
 	}
@@ -49,7 +49,7 @@ func TestSessionPoolBlocksAtLimit(t *testing.T) {
 	// rather than opening another
 	got := make(chan int)
 	go func() {
-		s, err := p.get()
+		s, err := p.Get()
 		assert.NoError(t, err)
 		got <- s
 	}()
@@ -59,7 +59,7 @@ func TestSessionPoolBlocksAtLimit(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	p.put(sessions[0])
+	p.Put(sessions[0])
 	select {
 	case s := <-got:
 		assert.Equal(t, sessions[0], s)
@@ -71,7 +71,7 @@ func TestSessionPoolBlocksAtLimit(t *testing.T) {
 
 func TestSessionPoolOpenFailureFreesSlot(t *testing.T) {
 	fail := true
-	p := newSessionPool(1, func() (int, error) {
+	p := New(1, func() (int, error) {
 		if fail {
 			fail = false
 			return 0, errors.New("failed to open")
@@ -79,12 +79,12 @@ func TestSessionPoolOpenFailureFreesSlot(t *testing.T) {
 		return 1, nil
 	})
 
-	_, err := p.get()
+	_, err := p.Get()
 	require.Error(t, err)
 
 	// The failed attempt must not hold on to the only slot, this would block
 	// forever otherwise
-	s, err := p.get()
+	s, err := p.Get()
 	require.NoError(t, err)
 	assert.Equal(t, 1, s)
 }
@@ -92,7 +92,7 @@ func TestSessionPoolOpenFailureFreesSlot(t *testing.T) {
 func TestSessionPoolConcurrentUse(t *testing.T) {
 	const n = 4
 	open, opened := countingOpener()
-	p := newSessionPool(n, open)
+	p := New(n, open)
 
 	var (
 		inUse, peak atomic.Int64
@@ -101,7 +101,7 @@ func TestSessionPoolConcurrentUse(t *testing.T) {
 	for range 50 {
 		wg.Go(func() {
 			for range 20 {
-				s, err := p.get()
+				s, err := p.Get()
 				if !assert.NoError(t, err) {
 					return
 				}
@@ -114,7 +114,7 @@ func TestSessionPoolConcurrentUse(t *testing.T) {
 				}
 				time.Sleep(time.Millisecond)
 				inUse.Add(-1)
-				p.put(s)
+				p.Put(s)
 			}
 		})
 	}
@@ -126,18 +126,18 @@ func TestSessionPoolConcurrentUse(t *testing.T) {
 
 func TestSessionPoolCloseWaitsForSessions(t *testing.T) {
 	open, _ := countingOpener()
-	p := newSessionPool(2, open)
+	p := New(2, open)
 
-	s1, err := p.get()
+	s1, err := p.Get()
 	require.NoError(t, err)
-	s2, err := p.get()
+	s2, err := p.Get()
 	require.NoError(t, err)
-	p.put(s1)
+	p.Put(s1)
 
 	var closed []int
 	done := make(chan error)
 	go func() {
-		done <- p.close(func(s int) error {
+		done <- p.Close(func(s int) error {
 			closed = append(closed, s)
 			return errors.New("close failed")
 		})
@@ -150,7 +150,7 @@ func TestSessionPoolCloseWaitsForSessions(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	p.put(s2)
+	p.Put(s2)
 	select {
 	case err := <-done:
 		assert.Error(t, err)

@@ -1,4 +1,4 @@
-package desync
+package gcs
 
 import (
 	"context"
@@ -7,34 +7,35 @@ import (
 	"path"
 
 	"cloud.google.com/go/storage"
+	"github.com/folbricht/desync"
 	"github.com/pkg/errors"
 )
 
-// GCIndexStore is a read-write index store with Google Storage backing
-type GCIndexStore struct {
-	GCStoreBase
+// IndexStore is a read-write index store with Google Storage backing
+type IndexStore struct {
+	StoreBase
 }
 
-// NewGCIndexStore creates an index store with Google Storage backing. The URL
+// NewIndexStore creates an index store with Google Storage backing. The URL
 // should be provided like this: gc://bucket/prefix
-func NewGCIndexStore(location *url.URL, opt StoreOptions) (s GCIndexStore, e error) {
+func NewIndexStore(location *url.URL, opt desync.StoreOptions) (s IndexStore, e error) {
 	if err := opt.ValidateIndexOptions(); err != nil {
 		return s, err
 	}
-	b, err := NewGCStoreBase(location, opt)
+	b, err := NewStoreBase(location, opt)
 	if err != nil {
 		return s, err
 	}
-	return GCIndexStore{b}, nil
+	return IndexStore{b}, nil
 }
 
 // GetIndexReader returns a reader for an index from an Google Storage store. Fails if the specified index
 // file does not exist.
-func (s GCIndexStore) GetIndexReader(name string) (r io.ReadCloser, err error) {
+func (s IndexStore) GetIndexReader(name string) (r io.ReadCloser, err error) {
 	ctx := context.TODO()
 
 	var (
-		log = Log.With(
+		log = desync.Log.With(
 			"bucket", s.bucket,
 			"name", s.prefix+name,
 		)
@@ -55,21 +56,21 @@ func (s GCIndexStore) GetIndexReader(name string) (r io.ReadCloser, err error) {
 }
 
 // GetIndex returns an Index structure from the store
-func (s GCIndexStore) GetIndex(name string) (i Index, e error) {
+func (s IndexStore) GetIndex(name string) (i desync.Index, e error) {
 	obj, err := s.GetIndexReader(name)
 	if err != nil {
 		return i, err
 	}
 	defer obj.Close()
-	return IndexFromReader(obj)
+	return desync.IndexFromReader(obj)
 }
 
 // StoreIndex writes the index file to the Google Storage store
-func (s GCIndexStore) StoreIndex(name string, idx Index) error {
+func (s IndexStore) StoreIndex(name string, idx desync.Index) error {
 	ctx := context.TODO()
 
 	var (
-		log = Log.With(
+		log = desync.Log.With(
 			"bucket", s.bucket,
 			"name", s.prefix+name,
 		)

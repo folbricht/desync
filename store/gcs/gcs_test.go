@@ -1,4 +1,4 @@
-package desync
+package gcs
 
 import (
 	"testing"
@@ -26,7 +26,7 @@ func TestNormalizeGCPrefix(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			prefix := normalizeGCPrefix(test.path)
+			prefix := normalizePrefix(test.path)
 
 			require.Equal(t, test.expectedPrefix, prefix)
 		})

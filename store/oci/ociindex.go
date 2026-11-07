@@ -1,4 +1,4 @@
-package desync
+package oci
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/folbricht/desync"
 	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -21,8 +22,8 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
-// OCIIndexArtifactType identifies desync index artifacts in an OCI registry.
-const OCIIndexArtifactType = "application/vnd.desync.index.v1"
+// IndexArtifactType identifies desync index artifacts in an OCI registry.
+const IndexArtifactType = "application/vnd.desync.index.v1"
 
 // Annotations carrying index metadata, so tools can read the shape of an index
 // from its manifest without pulling what may be a very large blob.
@@ -37,31 +38,31 @@ const (
 // rather than letting the registry reject the reference later.
 var ociTagRegexp = regexp.MustCompile(`^[\w][\w.-]{0,127}$`)
 
-var _ IndexWriteStore = OCIIndexStore{}
+var _ desync.IndexWriteStore = IndexStore{}
 
-// OCIIndexStore stores indexes in an OCI registry. Each index is its own
+// IndexStore stores indexes in an OCI registry. Each index is its own
 // artifact: a blob holding the index, referenced by a manifest tagged with the
 // index name. Indexes are always stored in plain form, so they can share a
 // repository with chunks without interfering. Chunk operations only act on
 // manifests carrying the chunk artifact type, so prune leaves indexes alone
 // even if one is named like a chunk ID.
-type OCIIndexStore struct {
+type IndexStore struct {
 	repo     *remote.Repository
 	location string
-	opt      StoreOptions
+	opt      desync.StoreOptions
 	config   *ociConfigBlobState
 }
 
-// NewOCIIndexStore initializes an index store using an OCI registry as backend.
-func NewOCIIndexStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (OCIIndexStore, error) {
+// NewIndexStore initializes an index store using an OCI registry as backend.
+func NewIndexStore(u *url.URL, creds auth.CredentialFunc, opt desync.StoreOptions) (IndexStore, error) {
 	if err := opt.ValidateIndexOptions(); err != nil {
-		return OCIIndexStore{}, err
+		return IndexStore{}, err
 	}
 	repo, err := newOCIRepository(u, creds, opt, true)
 	if err != nil {
-		return OCIIndexStore{}, err
+		return IndexStore{}, err
 	}
-	return OCIIndexStore{
+	return IndexStore{
 		repo:     repo,
 		location: u.String(),
 		opt:      opt,
@@ -69,17 +70,17 @@ func NewOCIIndexStore(u *url.URL, creds auth.CredentialFunc, opt StoreOptions) (
 	}, nil
 }
 
-func (s OCIIndexStore) String() string { return s.location }
+func (s IndexStore) String() string { return s.location }
 
 // Close the store. NOP operation but needed to implement the store interface.
-func (s OCIIndexStore) Close() error { return nil }
+func (s IndexStore) Close() error { return nil }
 
-// ValidateOCIIndexName reports whether an index can be stored in an OCI
+// ValidateIndexName reports whether an index can be stored in an OCI
 // registry under this name. The name is used as the manifest tag, so it has to
 // fit the OCI tag grammar, which not every valid filename does. Exported so
 // commands can reject a name before doing the work that precedes writing the
 // index.
-func ValidateOCIIndexName(name string) error {
+func ValidateIndexName(name string) error {
 	if !ociTagRegexp.MatchString(name) {
 		return fmt.Errorf("index name %q cannot be used in an OCI registry: a tag must match %s", name, ociTagRegexp)
 	}
@@ -88,15 +89,15 @@ func ValidateOCIIndexName(name string) error {
 
 // tagFromName returns the manifest tag for an index, which is the index name
 // itself.
-func (s OCIIndexStore) tagFromName(name string) (string, error) {
-	if err := ValidateOCIIndexName(name); err != nil {
+func (s IndexStore) tagFromName(name string) (string, error) {
+	if err := ValidateIndexName(name); err != nil {
 		return "", fmt.Errorf("%s: %w", s, err)
 	}
 	return name, nil
 }
 
 // GetIndexReader returns a reader for an index from an OCI registry.
-func (s OCIIndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
+func (s IndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
 	ctx := context.Background()
 	tag, err := s.tagFromName(name)
 	if err != nil {
@@ -105,7 +106,7 @@ func (s OCIIndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
 	_, r, err := s.repo.FetchReference(ctx, tag)
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
-			return nil, NoSuchObject{name}
+			return nil, desync.NoSuchObject{Location: name}
 		}
 		return nil, err
 	}
@@ -115,8 +116,8 @@ func (s OCIIndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("invalid manifest for index %s in %s: %w", name, s, err)
 	}
 	// The tag alone can't be trusted: an unrelated artifact may sit under it.
-	if manifest.ArtifactType != OCIIndexArtifactType {
-		return nil, NoSuchObject{name}
+	if manifest.ArtifactType != IndexArtifactType {
+		return nil, desync.NoSuchObject{Location: name}
 	}
 	if len(manifest.Layers) != 1 {
 		return nil, fmt.Errorf("manifest for index %s in %s references %d blobs, expected exactly one", name, s, len(manifest.Layers))
@@ -124,7 +125,7 @@ func (s OCIIndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
 	blob, err := s.repo.Blobs().Fetch(ctx, manifest.Layers[0])
 	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
-			return nil, NoSuchObject{name}
+			return nil, desync.NoSuchObject{Location: name}
 		}
 		return nil, err
 	}
@@ -132,13 +133,13 @@ func (s OCIIndexStore) GetIndexReader(name string) (io.ReadCloser, error) {
 }
 
 // GetIndex returns an Index structure from the store.
-func (s OCIIndexStore) GetIndex(name string) (i Index, e error) {
+func (s IndexStore) GetIndex(name string) (i desync.Index, e error) {
 	r, err := s.GetIndexReader(name)
 	if err != nil {
 		return i, err
 	}
 	defer r.Close()
-	return IndexFromReader(r)
+	return desync.IndexFromReader(r)
 }
 
 // maxInMemoryIndex is the largest index serialized into memory for a push.
@@ -151,7 +152,7 @@ var maxInMemoryIndex int64 = 32 << 20
 // pushed with its digest and size known upfront, and an index of a large blob
 // can run to hundreds of megabytes, so the index is serialized twice rather
 // than buffered: once to size and digest it, then again into the push.
-func (s OCIIndexStore) StoreIndex(name string, idx Index) error {
+func (s IndexStore) StoreIndex(name string, idx desync.Index) error {
 	ctx := context.Background()
 	tag, err := s.tagFromName(name)
 	if err != nil {
@@ -200,7 +201,7 @@ func (s OCIIndexStore) StoreIndex(name string, idx Index) error {
 	manifest := ocispec.Manifest{
 		Versioned:    specs.Versioned{SchemaVersion: 2},
 		MediaType:    ocispec.MediaTypeImageManifest,
-		ArtifactType: OCIIndexArtifactType,
+		ArtifactType: IndexArtifactType,
 		Config:       ociEmptyConfig,
 		Layers:       []ocispec.Descriptor{blobDesc},
 		Annotations: map[string]string{
@@ -221,7 +222,7 @@ func (s OCIIndexStore) StoreIndex(name string, idx Index) error {
 // ensureConfigBlob makes sure the shared empty config blob referenced by every
 // index manifest exists in the registry. Same single-flight behavior as the
 // chunk store's.
-func (s OCIIndexStore) ensureConfigBlob(ctx context.Context) error {
+func (s IndexStore) ensureConfigBlob(ctx context.Context) error {
 	s.config.mu.Lock()
 	defer s.config.mu.Unlock()
 	if s.config.pushed {
