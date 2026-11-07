@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -11,8 +12,11 @@ import (
 	"strings"
 
 	"github.com/folbricht/desync"
+	"github.com/folbricht/desync/store/gcs"
+	"github.com/folbricht/desync/store/oci"
+	"github.com/folbricht/desync/store/s3"
+	"github.com/folbricht/desync/store/sftp"
 	minio "github.com/minio/minio-go/v7"
-	"github.com/pkg/errors"
 )
 
 // MultiStoreWithCache is used to parse store and cache locations given in the
@@ -178,7 +182,7 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 			return nil, err
 		}
 	case "sftp":
-		s, err = desync.NewSFTPStore(loc, opt)
+		s, err = sftp.NewStore(loc, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -200,12 +204,12 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		default:
 			return nil, fmt.Errorf("unknown S3 bucket lookup type: %q", ls)
 		}
-		s, err = desync.NewS3Store(loc, s3Creds, region, opt, lookup)
+		s, err = s3.NewStore(loc, s3Creds, region, opt, lookup)
 		if err != nil {
 			return nil, err
 		}
 	case "gs":
-		s, err = desync.NewGCStore(loc, opt)
+		s, err = gcs.NewStore(loc, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -214,7 +218,7 @@ func storeFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Store, e
 		if err != nil {
 			return nil, err
 		}
-		s, err = desync.NewOCIStore(loc, creds, opt)
+		s, err = oci.NewStore(loc, creds, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -243,7 +247,10 @@ func readCaibxFile(location string, cmdOpt cmdStoreOptions) (c desync.Index, err
 	}
 	defer is.Close()
 	idx, err := is.GetIndex(indexName)
-	return idx, errors.Wrap(err, location)
+	if err != nil {
+		return idx, fmt.Errorf("%s: %w", location, err)
+	}
+	return idx, nil
 }
 
 // validateIndexLocation reports whether an index can be written to this
@@ -259,7 +266,7 @@ func validateIndexLocation(location string) error {
 	}
 	switch loc.Scheme {
 	case "oci+https", "oci+http":
-		return desync.ValidateOCIIndexName(path.Base(loc.Path))
+		return oci.ValidateIndexName(path.Base(loc.Path))
 	}
 	return nil
 }
@@ -330,18 +337,18 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	var s desync.IndexStore
 	switch loc.Scheme {
 	case "ssh":
-		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
+		return nil, "", errors.New("index storage is not supported by ssh remote stores")
 	case "oci+https", "oci+http":
 		creds, cerr := cfg.GetOCICredentialsFor(&p)
 		if cerr != nil {
 			return nil, "", cerr
 		}
-		s, err = desync.NewOCIIndexStore(&p, creds, opt)
+		s, err = oci.NewIndexStore(&p, creds, opt)
 		if err != nil {
 			return nil, "", err
 		}
 	case "sftp":
-		s, err = desync.NewSFTPIndexStore(&p, opt)
+		s, err = sftp.NewIndexStore(&p, opt)
 		if err != nil {
 			return nil, "", err
 		}
@@ -363,12 +370,12 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 		default:
 			return nil, "", fmt.Errorf("unknown S3 bucket lookup type: %q", ls)
 		}
-		s, err = desync.NewS3IndexStore(&p, s3Creds, region, opt, lookup)
+		s, err = s3.NewIndexStore(&p, s3Creds, region, opt, lookup)
 		if err != nil {
 			return nil, "", err
 		}
 	case "gs":
-		s, err = desync.NewGCIndexStore(&p, opt)
+		s, err = gcs.NewIndexStore(&p, opt)
 		if err != nil {
 			return nil, "", err
 		}

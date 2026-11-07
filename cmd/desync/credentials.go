@@ -1,14 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"path/filepath"
 
-	"github.com/go-ini/ini"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/pkg/errors"
+	"gopkg.in/ini.v1"
 )
 
 // SharedCredentialsFilename returns the SDK's default file path
@@ -134,21 +134,21 @@ func (p *RefreshableSharedCredentialsProvider) RetrieveWithCredContext(_ *creden
 func loadProfile(filename, profile string) (credentials.Value, error) {
 	config, err := ini.Load(filename)
 	if err != nil {
-		return credentials.Value{}, errors.Wrap(err, "failed to load shared credentials file")
+		return credentials.Value{}, fmt.Errorf("failed to load shared credentials file: %w", err)
 	}
 	iniProfile, err := config.GetSection(profile)
 	if err != nil {
-		return credentials.Value{}, errors.Wrap(err, "failed to get profile")
+		return credentials.Value{}, fmt.Errorf("failed to get profile: %w", err)
 	}
 
 	id, err := iniProfile.GetKey("aws_access_key_id")
 	if err != nil {
-		return credentials.Value{}, errors.Wrapf(err, "shared credentials %s in %s did not contain aws_access_key_id", profile, filename)
+		return credentials.Value{}, fmt.Errorf("shared credentials %s in %s did not contain aws_access_key_id: %w", profile, filename, err)
 	}
 
 	secret, err := iniProfile.GetKey("aws_secret_access_key")
 	if err != nil {
-		return credentials.Value{}, errors.Wrapf(err, "shared credentials %s in %s did not contain aws_secret_access_key", profile, filename)
+		return credentials.Value{}, fmt.Errorf("shared credentials %s in %s did not contain aws_secret_access_key: %w", profile, filename, err)
 	}
 
 	// Default to empty string if not found
@@ -178,7 +178,7 @@ func (p *RefreshableSharedCredentialsProvider) filename() (string, error) {
 	// - Windows %USERPROFILE%\.aws\credentials
 	filename, err := SharedCredentialsFilename()
 	if err != nil {
-		return "", errors.Wrap(err, "user home directory not found")
+		return "", fmt.Errorf("user home directory not found: %w", err)
 	}
 	p.Filename = filename
 	return p.Filename, nil

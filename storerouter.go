@@ -1,9 +1,8 @@
 package desync
 
 import (
+	"fmt"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // StoreRouter is used to route requests to multiple stores. When a chunk is
@@ -31,7 +30,7 @@ func (r StoreRouter) GetChunk(id ChunkID) (*Chunk, error) {
 		case ChunkMissing:
 			continue
 		default:
-			return nil, errors.Wrap(err, s.String())
+			return nil, fmt.Errorf("%s: %w", s.String(), err)
 		}
 	}
 	return nil, ChunkMissing{id}

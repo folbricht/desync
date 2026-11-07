@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/folbricht/desync"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -205,7 +204,7 @@ func chunkServerStore(opt chunkServerOptions) (desync.Store, error) {
 		}
 		stores, cache, err = readStoreFile(opt.storeFile)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read store-file '%s'", opt.storeFile)
+			return nil, fmt.Errorf("failed to read store-file '%s': %w", opt.storeFile, err)
 		}
 	}
 
@@ -216,7 +215,7 @@ func chunkServerStore(opt chunkServerOptions) (desync.Store, error) {
 
 	// When supporting writing, only one upstream store is possible and no cache
 	if opt.writable && (len(stores) > 1 || cache != "") {
-		return nil, errors.New("Only one upstream store supported for writing and no cache")
+		return nil, errors.New("only one upstream store supported for writing and no cache")
 	}
 
 	var s desync.Store

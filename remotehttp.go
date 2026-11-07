@@ -2,6 +2,7 @@ package desync
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,8 +10,6 @@ import (
 	"path"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 var _ WriteStore = &RemoteHTTP{}
@@ -43,7 +42,7 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 		location.Path = location.Path + "/"
 	}
 
-	tlsConfig, err := opt.tlsClientConfig()
+	tlsConfig, err := opt.TLSClientConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -51,19 +50,19 @@ func NewRemoteHTTPStoreBase(location *url.URL, opt StoreOptions) (*RemoteHTTPBas
 	tr := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
 		DisableCompression:  true,
-		MaxIdleConnsPerHost: opt.maxConcurrency(),
+		MaxIdleConnsPerHost: opt.MaxConcurrency(),
 		IdleConnTimeout:     60 * time.Second,
 		TLSClientConfig:     tlsConfig,
 		ForceAttemptHTTP2:   true,
 	}
 
-	client := &http.Client{Transport: tr, Timeout: opt.effectiveTimeout()}
+	client := &http.Client{Transport: tr, Timeout: opt.EffectiveTimeout()}
 
 	converters, err := opt.StorageConverters()
 	if err != nil {
 		return nil, err
 	}
-	return &RemoteHTTPBase{location: location, client: client, opt: opt, converters: converters, extension: converters.storageExtension()}, nil
+	return &RemoteHTTPBase{location: location, client: client, opt: opt, converters: converters, extension: converters.StorageExtension()}, nil
 }
 
 func (r *RemoteHTTPBase) String() string {
@@ -101,7 +100,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 	resp, err = r.client.Do(req)
 	if err != nil {
 		log.Error("error while sending request", "error", err)
-		return 0, nil, errors.Wrap(err, u.String())
+		return 0, nil, fmt.Errorf("%s: %w", u.String(), err)
 	}
 
 	defer resp.Body.Close()
@@ -109,7 +108,7 @@ func (r *RemoteHTTPBase) IssueHttpRequest(method string, u *url.URL, getReader G
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error("error while reading response", "error", err)
-		return 0, nil, errors.Wrap(err, u.String())
+		return 0, nil, fmt.Errorf("%s: %w", u.String(), err)
 	}
 
 	log.Debug("response received", "statusCode", resp.StatusCode)
@@ -158,7 +157,7 @@ func (r *RemoteHTTPBase) GetObject(name string) ([]byte, error) {
 	case 200: // expected
 		return responseBody, nil
 	case 404:
-		return nil, NoSuchObject{name}
+		return nil, NoSuchObject{Location: name}
 	default:
 		return nil, fmt.Errorf("unexpected status code %d from %s", statusCode, name)
 	}

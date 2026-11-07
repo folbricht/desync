@@ -34,7 +34,7 @@ desync tar <catar|index> <source> [flags]
 
 ```
       --ca-cert string                       trust authorities in this file, instead of OS trust store
-  -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
+  -r, --cache-repair[=true|false]            replace invalid chunks in the cache from source (default true)
   -m, --chunk-size string                    min:avg:max chunk size in kb (default "16:64:256")
       --chunker string                       chunking algorithm to use, pick from [buzhash fastcdc fastcdc4stadia segmentaware] (default "buzhash")
       --chunker-options string               additional chunker-specific options
@@ -43,22 +43,22 @@ desync tar <catar|index> <source> [flags]
   -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
   -e, --error-retry int                      number of times to retry in case of network error (default 3)
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
-  -h, --help                                 help for tar
-  -i, --index                                create index file (caidx), not catar
+  -h, --help[=true|false]                    help for tar
+  -i, --index[=true|false]                   create index file (caidx), not catar
       --input-format string                  input format, 'disk' or 'tar' (default "disk")
-      --no-time                              set file timestamps to zero in the archive
-  -x, --one-file-system                      don't cross filesystem boundaries
+      --no-time[=true|false]                 set file timestamps to zero in the archive
+  -x, --one-file-system[=true|false]         don't cross filesystem boundaries
   -s, --store string                         target store (used with -i)
-      --tar-add-root                         pretend that all tar elements have a common root directory
-  -t, --trust-insecure                       trust invalid certificates
+      --tar-add-root[=true|false]            pretend that all tar elements have a common root directory
+  -t, --trust-insecure[=true|false]          trust invalid certificates
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

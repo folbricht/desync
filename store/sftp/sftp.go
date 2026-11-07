@@ -1,46 +1,49 @@
-package desync
+// Package sftp implements chunk and index stores accessed with SFTP over SSH.
+package sftp
 
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"path"
-
-	"github.com/pkg/errors"
+	"github.com/folbricht/desync"
+	"github.com/folbricht/desync/internal/sessionpool"
+	"github.com/folbricht/desync/internal/sshhost"
 	"github.com/pkg/sftp"
 )
 
-var _ WriteStore = &SFTPStore{}
+var _ desync.WriteStore = &Store{}
 
-// SFTPStoreBase is the base object for SFTP chunk and index stores.
-type SFTPStoreBase struct {
+// StoreBase is the base object for SFTP chunk and index stores.
+type StoreBase struct {
 	location  *url.URL
 	path      string
 	client    *sftp.Client
 	cancel    context.CancelFunc
-	opt       StoreOptions
+	opt       desync.StoreOptions
 	extension string
 }
 
-// SFTPStore is a chunk store that uses SFTP over SSH.
-type SFTPStore struct {
-	pool       *sessionPool[*SFTPStoreBase]
+// Store is a chunk store that uses SFTP over SSH.
+type Store struct {
+	pool       *sessionpool.Pool[*StoreBase]
 	location   *url.URL
-	converters Converters
+	converters desync.Converters
 }
 
 // Creates a base sftp client. The extension is the chunk file extension
 // derived from the caller's converters, or empty for index stores which
 // don't use converters.
-func newSFTPStoreBase(location *url.URL, opt StoreOptions, extension string) (*SFTPStoreBase, error) {
+func newStoreBase(location *url.URL, opt desync.StoreOptions, extension string) (*StoreBase, error) {
 	sshCmd := os.Getenv("CASYNC_SSH_PATH")
 	if sshCmd == "" {
 		sshCmd = "ssh"
@@ -55,7 +58,7 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions, extension string) (*S
 		host = location.User.Username() + "@" + location.Host
 	}
 	// Reject destinations that ssh would parse as command-line options.
-	if err := validateSSHHost(host); err != nil {
+	if err := sshhost.Validate(host); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -86,13 +89,13 @@ func newSFTPStoreBase(location *url.URL, opt StoreOptions, extension string) (*S
 	// may fail if multiple instances access the SSH agent concurrently.
 	if _, err = client.Stat(path); err != nil {
 		cancel()
-		return nil, errors.Wrapf(err, "failed to stat '%s'", path)
+		return nil, fmt.Errorf("failed to stat '%s': %w", path, err)
 	}
-	return &SFTPStoreBase{location, path, client, cancel, opt, extension}, nil
+	return &StoreBase{location, path, client, cancel, opt, extension}, nil
 }
 
 // StoreObject adds a new object to a writable index or chunk store.
-func (s *SFTPStoreBase) StoreObject(name string, r io.Reader) error {
+func (s *StoreBase) StoreObject(name string, r io.Reader) error {
 	// Write to a tempfile on the remote server. This is not 100% guaranteed to not
 	// conflict between goroutines, there's no tempfile() function for remote servers.
 	// Use a large enough random number instead to build a tempfile
@@ -110,99 +113,102 @@ retry:
 			errCount++
 			goto retry
 		}
-		return errors.Wrap(err, "sftp:create "+tmpfile)
+		return fmt.Errorf("sftp:create %s: %w", tmpfile, err)
 	}
 
 	if _, err := io.Copy(f, r); err != nil {
 		_ = s.client.Remove(tmpfile)
-		return errors.Wrap(err, "sftp:copying chunk data to "+tmpfile)
+		return fmt.Errorf("sftp:copying chunk data to %s: %w", tmpfile, err)
 	}
 	if err = f.Close(); err != nil {
-		return errors.Wrap(err, "sftp:closing "+tmpfile)
+		return fmt.Errorf("sftp:closing %s: %w", tmpfile, err)
 	}
-	return errors.Wrap(s.client.PosixRename(tmpfile, name), "sftp:renaming "+tmpfile+" to "+name)
+	if err := s.client.PosixRename(tmpfile, name); err != nil {
+		return fmt.Errorf("sftp:renaming %s to %s: %w", tmpfile, name, err)
+	}
+	return nil
 }
 
 // Close terminates all client connections
-func (s *SFTPStoreBase) Close() error {
+func (s *StoreBase) Close() error {
 	if s.cancel != nil {
 		defer s.cancel()
 	}
 	return s.client.Close()
 }
 
-func (s *SFTPStoreBase) String() string {
+func (s *StoreBase) String() string {
 	return s.location.String()
 }
 
 // Returns the path for a chunk
-func (s *SFTPStoreBase) nameFromID(id ChunkID) string {
+func (s *StoreBase) nameFromID(id desync.ChunkID) string {
 	sID := id.String()
 	name := s.path + sID[0:4] + "/" + sID + s.extension
 	return name
 }
 
-// NewSFTPStore initializes a chunk store using SFTP over SSH.
-func NewSFTPStore(location *url.URL, opt StoreOptions) (*SFTPStore, error) {
+// NewStore initializes a chunk store using SFTP over SSH.
+func NewStore(location *url.URL, opt desync.StoreOptions) (*Store, error) {
 	converters, err := opt.StorageConverters()
 	if err != nil {
 		return nil, err
 	}
-	extension := converters.storageExtension()
-	pool := newSessionPool(opt.maxConcurrency(), func() (*SFTPStoreBase, error) {
-		return newSFTPStoreBase(location, opt, extension)
+	extension := converters.StorageExtension()
+	pool := sessionpool.New(opt.MaxConcurrency(), func() (*StoreBase, error) {
+		return newStoreBase(location, opt, extension)
 	})
 	// Open the first connection right away to confirm the store can be
 	// reached, the others are opened when they're needed.
-	c, err := pool.get()
+	c, err := pool.Get()
 	if err != nil {
 		return nil, err
 	}
-	pool.put(c)
-	return &SFTPStore{pool, location, converters}, nil
+	pool.Put(c)
+	return &Store{pool, location, converters}, nil
 }
 
 // GetChunk returns a chunk from an SFTP store, returns ChunkMissing if the file does not exist
-func (s *SFTPStore) GetChunk(id ChunkID) (*Chunk, error) {
-	c, err := s.pool.get()
+func (s *Store) GetChunk(id desync.ChunkID) (*desync.Chunk, error) {
+	c, err := s.pool.Get()
 	if err != nil {
 		return nil, err
 	}
-	defer s.pool.put(c)
+	defer s.pool.Put(c)
 	name := c.nameFromID(id)
 	f, err := c.client.Open(name)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = ChunkMissing{id}
+			err = desync.ChunkMissing{ID: id}
 		}
 		return nil, err
 	}
 	defer f.Close()
 	b, err := io.ReadAll(f)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to read from %s", name)
+		return nil, fmt.Errorf("unable to read from %s: %w", name, err)
 	}
-	return NewChunkFromStorage(id, b, s.converters, c.opt.SkipVerify)
+	return desync.NewChunkFromStorage(id, b, s.converters, c.opt.SkipVerify)
 }
 
 // RemoveChunk deletes a chunk, typically an invalid one, from the filesystem.
 // Used when verifying and repairing caches.
-func (s *SFTPStore) RemoveChunk(id ChunkID) error {
-	c, err := s.pool.get()
+func (s *Store) RemoveChunk(id desync.ChunkID) error {
+	c, err := s.pool.Get()
 	if err != nil {
 		return err
 	}
-	defer s.pool.put(c)
+	defer s.pool.Put(c)
 	return c.removeChunk(id)
 }
 
 // removeChunk deletes a chunk over this connection. Returns ChunkMissing if
 // the chunk is not in the store.
-func (s *SFTPStoreBase) removeChunk(id ChunkID) error {
+func (s *StoreBase) removeChunk(id desync.ChunkID) error {
 	name := s.nameFromID(id)
 	if _, err := s.client.Stat(name); err != nil {
 		if os.IsNotExist(err) {
-			return ChunkMissing{id}
+			return desync.ChunkMissing{ID: id}
 		}
 		return err
 	}
@@ -210,12 +216,12 @@ func (s *SFTPStoreBase) removeChunk(id ChunkID) error {
 }
 
 // StoreChunk adds a new chunk to the store
-func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
-	c, err := s.pool.get()
+func (s *Store) StoreChunk(chunk *desync.Chunk) error {
+	c, err := s.pool.Get()
 	if err != nil {
 		return err
 	}
-	defer s.pool.put(c)
+	defer s.pool.Put(c)
 	name := c.nameFromID(chunk.ID())
 	b, err := chunk.Storage(s.converters)
 	if err != nil {
@@ -226,12 +232,12 @@ func (s *SFTPStore) StoreChunk(chunk *Chunk) error {
 }
 
 // HasChunk returns true if the chunk is in the store
-func (s *SFTPStore) HasChunk(id ChunkID) (bool, error) {
-	c, err := s.pool.get()
+func (s *Store) HasChunk(id desync.ChunkID) (bool, error) {
+	c, err := s.pool.Get()
 	if err != nil {
 		return false, err
 	}
-	defer s.pool.put(c)
+	defer s.pool.Put(c)
 	name := c.nameFromID(id)
 	_, err = c.client.Stat(name)
 	return err == nil, nil
@@ -239,19 +245,19 @@ func (s *SFTPStore) HasChunk(id ChunkID) (bool, error) {
 
 // Prune removes any chunks from the store that are not contained in a list
 // of chunks
-func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
-	c, err := s.pool.get()
+func (s *Store) Prune(ctx context.Context, ids map[desync.ChunkID]struct{}) error {
+	c, err := s.pool.Get()
 	if err != nil {
 		return err
 	}
-	defer s.pool.put(c)
+	defer s.pool.Put(c)
 	walker := c.client.Walk(c.path)
 
 	for walker.Step() {
 		// See if we're meant to stop
 		select {
 		case <-ctx.Done():
-			return Interrupted{}
+			return desync.Interrupted{}
 		default:
 		}
 		if err := walker.Err(); err != nil {
@@ -263,7 +269,7 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 		}
 		// Skip files that aren't chunks matching the store's extension, they
 		// may use different compression or encryption settings
-		id, ok := chunkIDFromFilename(filepath.Base(walker.Path()), c.extension)
+		id, ok := desync.ChunkIDFromFilename(filepath.Base(walker.Path()), c.extension)
 		if !ok {
 			continue
 		}
@@ -281,10 +287,10 @@ func (s *SFTPStore) Prune(ctx context.Context, ids map[ChunkID]struct{}) error {
 }
 
 // Close terminates all client connections
-func (s *SFTPStore) Close() error {
-	return s.pool.close((*SFTPStoreBase).Close)
+func (s *Store) Close() error {
+	return s.pool.Close((*StoreBase).Close)
 }
 
-func (s *SFTPStore) String() string {
+func (s *Store) String() string {
 	return s.location.String()
 }

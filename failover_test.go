@@ -3,11 +3,11 @@ package desync
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )

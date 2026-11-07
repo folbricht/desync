@@ -24,7 +24,7 @@ desync make <index> <file> [flags]
 
 ```
       --ca-cert string                       trust authorities in this file, instead of OS trust store
-  -r, --cache-repair                         replace invalid chunks in the cache from source (default true)
+  -r, --cache-repair[=true|false]            replace invalid chunks in the cache from source (default true)
   -m, --chunk-size string                    min:avg:max chunk size in kb (default "16:64:256")
       --chunker string                       chunking algorithm to use, pick from [buzhash fastcdc fastcdc4stadia segmentaware] (default "buzhash")
       --chunker-options string               additional chunker-specific options
@@ -33,18 +33,18 @@ desync make <index> <file> [flags]
   -n, --concurrency int                      number of concurrent goroutines, -1 to let desync choose: the number of CPUs for chunking and hashing, adapting to each store up to 128 for transfers (default 10)
   -e, --error-retry int                      number of times to retry in case of network error (default 3)
   -b, --error-retry-base-interval duration   initial retry delay, increases linearly with each subsequent attempt (default 500ms)
-  -h, --help                                 help for make
-      --print-stats                          print chunking statistics to stderr when done
+  -h, --help[=true|false]                    help for make
+      --print-stats[=true|false]             print chunking statistics to stderr when done
   -s, --store string                         target store
-  -t, --trust-insecure                       trust invalid certificates
+  -t, --trust-insecure[=true|false]          trust invalid certificates
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default $HOME/.config/desync/config.json)
-      --digest string   digest algorithm, sha512-256 or sha256 (default "sha512-256")
-      --verbose         verbose mode
+      --config string          config file (default $HOME/.config/desync/config.json)
+      --digest string          digest algorithm, sha512-256 or sha256 (default "sha512-256")
+      --verbose[=true|false]   verbose mode
 ```
 
 ### SEE ALSO

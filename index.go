@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -12,7 +13,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/folbricht/desync/pkg/chunkers"
-	"github.com/pkg/errors"
 
 	"io"
 )
@@ -50,7 +50,7 @@ func IndexFromReader(r io.Reader) (c Index, err error) {
 	// Read the index
 	e, err := d.Next()
 	if err != nil {
-		return c, errors.Wrap(err, "reading index")
+		return c, fmt.Errorf("reading index: %w", err)
 	}
 
 	c.Index, ok = e.(FormatIndex)
@@ -73,7 +73,7 @@ func IndexFromReader(r io.Reader) (c Index, err error) {
 	// Read the table
 	e, err = d.Next()
 	if err != nil {
-		return c, errors.Wrap(err, "reading chunk table")
+		return c, fmt.Errorf("reading chunk table: %w", err)
 	}
 	table, ok := e.(FormatTable)
 	if !ok {
