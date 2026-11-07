@@ -1,6 +1,7 @@
 package desync
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/folbricht/desync/internal/sessionpool"
 	"github.com/folbricht/desync/internal/sshhost"
-	"github.com/pkg/errors"
 )
 
 var _ Store = &RemoteSSH{}
@@ -32,7 +32,10 @@ func NewRemoteSSHStore(location *url.URL, opt StoreOptions) (*RemoteSSH, error) 
 		location: location,
 		pool: sessionpool.New(opt.MaxConcurrency(), func() (*Protocol, error) {
 			s, err := StartProtocol(location)
-			return s, errors.Wrap(err, "failed to start chunk server command")
+			if err != nil {
+				return nil, fmt.Errorf("failed to start chunk server command: %w", err)
+			}
+			return s, nil
 		}),
 	}
 	// Start the first session right away to confirm the store can be

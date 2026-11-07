@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"github.com/folbricht/desync/store/s3"
 	"github.com/folbricht/desync/store/sftp"
 	minio "github.com/minio/minio-go/v7"
-	"github.com/pkg/errors"
 )
 
 // MultiStoreWithCache is used to parse store and cache locations given in the
@@ -247,7 +247,10 @@ func readCaibxFile(location string, cmdOpt cmdStoreOptions) (c desync.Index, err
 	}
 	defer is.Close()
 	idx, err := is.GetIndex(indexName)
-	return idx, errors.Wrap(err, location)
+	if err != nil {
+		return idx, fmt.Errorf("%s: %w", location, err)
+	}
+	return idx, nil
 }
 
 // validateIndexLocation reports whether an index can be written to this
@@ -334,7 +337,7 @@ func indexStoreFromLocation(location string, cmdOpt cmdStoreOptions) (desync.Ind
 	var s desync.IndexStore
 	switch loc.Scheme {
 	case "ssh":
-		return nil, "", errors.New("Index storage is not supported by ssh remote stores")
+		return nil, "", errors.New("index storage is not supported by ssh remote stores")
 	case "oci+https", "oci+http":
 		creds, cerr := cfg.GetOCICredentialsFor(&p)
 		if cerr != nil {

@@ -5,12 +5,11 @@ package desync
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
 	"unsafe"
-
-	"github.com/pkg/errors"
 )
 
 // BLKGETSIZE64 ioctl
@@ -55,7 +54,10 @@ func CloneRange(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) error
 	_ = binary.Write(arg, binary.LittleEndian, srcLength)
 	_ = binary.Write(arg, binary.LittleEndian, dstOffset)
 	err := ioctl(dst.Fd(), fiCloneRange, uintptr(unsafe.Pointer(&arg.Bytes()[0])))
-	return errors.Wrapf(err, "failure cloning blocks from %s to %s", src.Name(), dst.Name())
+	if err != nil {
+		return fmt.Errorf("failure cloning blocks from %s to %s: %w", src.Name(), dst.Name(), err)
+	}
+	return nil
 }
 
 // GetFileSize determines the size, in Bytes, of the file located at the given

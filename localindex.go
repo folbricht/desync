@@ -1,13 +1,12 @@
 package desync
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // errInvalidIndexName is returned when an index name is not safe to use as a
@@ -70,7 +69,7 @@ func (s LocalIndexStore) GetIndex(name string) (i Index, e error) {
 	defer f.Close()
 	idx, err := IndexFromReader(f)
 	if os.IsNotExist(err) {
-		err = errors.Errorf("Index file does not exist: %v", err)
+		err = fmt.Errorf("index file does not exist: %v", err)
 	}
 	return idx, err
 }

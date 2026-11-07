@@ -3,14 +3,13 @@ package desync
 import (
 	"bytes"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // HTTPHandler is the server-side handler for a HTTP chunk store.

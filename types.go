@@ -3,10 +3,9 @@ package desync
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // ChunkID is the SHA512/256 in binary encoding
@@ -27,7 +26,7 @@ func ChunkIDFromSlice(b []byte) (ChunkID, error) {
 func ChunkIDFromString(id string) (ChunkID, error) {
 	b, err := hex.DecodeString(id)
 	if err != nil {
-		return ChunkID{}, errors.Wrap(err, "failed to decode chunk id string")
+		return ChunkID{}, fmt.Errorf("failed to decode chunk id string: %w", err)
 	}
 	return ChunkIDFromSlice(b)
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	orascreds "oras.land/oras-go/v2/registry/remote/credentials"
@@ -276,7 +276,7 @@ func initConfig() {
 	}
 	defer f.Close()
 	if err = json.NewDecoder(f).Decode(&cfg); err != nil {
-		die(errors.Wrap(err, "reading "+cfgFile))
+		die(fmt.Errorf("reading %s: %w", cfgFile, err))
 	}
 }
 

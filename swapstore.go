@@ -1,9 +1,8 @@
 package desync
 
 import (
+	"errors"
 	"sync"
-
-	"github.com/pkg/errors"
 )
 
 var _ Store = &SwapStore{}

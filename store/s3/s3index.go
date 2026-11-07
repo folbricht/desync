@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"path"
@@ -11,7 +12,6 @@ import (
 	"github.com/folbricht/desync"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/pkg/errors"
 )
 
 // IndexStore is a read-write index store with S3 backing
@@ -44,7 +44,7 @@ func (s IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 	obj, err := s.client.GetObject(ctx, s.bucket, s.prefix+name, minio.GetObjectOptions{})
 	if err != nil {
 		cancel()
-		return r, errors.Wrap(err, s.String())
+		return r, fmt.Errorf("%s: %w", s.String(), err)
 	}
 	return cancelOnClose{ReadCloser: obj, cancel: cancel}, nil
 }
@@ -85,5 +85,8 @@ func (s IndexStore) StoreIndex(name string, idx desync.Index) error {
 	defer cancel()
 
 	_, err := s.client.PutObject(ctx, s.bucket, s.prefix+name, r, -1, minio.PutObjectOptions{ContentType: contentType})
-	return errors.Wrap(err, path.Base(s.Location))
+	if err != nil {
+		return fmt.Errorf("%s: %w", path.Base(s.Location), err)
+	}
+	return nil
 }

@@ -1,12 +1,11 @@
 package desync
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // NewLocalFS initializes a new instance of a local filesystem that
@@ -41,7 +40,7 @@ func (fs *LocalFS) SetSymlinkPermissions(n NodeSymlink) error {
 }
 
 func (fs *LocalFS) CreateDevice(n NodeDevice) error {
-	return errors.New("Device nodes not supported on this platform")
+	return errors.New("device nodes not supported on this platform")
 }
 
 // Next returns the next filesystem entry or io.EOF when done. The caller is responsible

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -12,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/folbricht/desync"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -157,7 +157,7 @@ func mountIndexStore(opt mountIndexOptions) (desync.Store, error) {
 		}
 		stores, cache, err = readStoreFile(opt.storeFile)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read store-file '%s'", opt.storeFile)
+			return nil, fmt.Errorf("failed to read store-file '%s': %w", opt.storeFile, err)
 		}
 	}
 
