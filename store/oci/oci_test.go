@@ -606,8 +606,8 @@ func TestOCIIdleTimeout(t *testing.T) {
 				// Release the reader first, or the bubble ends with a
 				// goroutine still in it and the panic buries the failure.
 				_ = resp.Body.Close()
-				<-read
-				require.Fail(t, "a stalled transfer was never cancelled")
+				err := <-read
+				require.Failf(t, "a stalled transfer was never cancelled", "read returned %v once the body was closed", err)
 			}
 			_ = resp.Body.Close()
 		})

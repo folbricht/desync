@@ -145,8 +145,8 @@ func TestSessionPoolCloseWaitsForSessions(t *testing.T) {
 
 	// One session is still in use, close has to wait for it
 	select {
-	case <-done:
-		require.FailNow(t, "close returned while a session was in use")
+	case err := <-done:
+		require.FailNowf(t, "close returned while a session was in use", "Close returned %v", err)
 	case <-time.After(50 * time.Millisecond):
 	}
 
