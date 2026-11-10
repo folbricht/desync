@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -46,17 +47,31 @@ func (s IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 		cancel()
 		return r, fmt.Errorf("%s: %w", s.String(), err)
 	}
-	return cancelOnClose{ReadCloser: obj, cancel: cancel}, nil
+	// The object isn't requested from the server before it's read. Read
+	// ahead, so an index that doesn't exist is reported here rather than to
+	// whoever reads from what looks like an index that was found. An empty
+	// object is left for the caller to deal with.
+	br := bufio.NewReader(obj)
+	if _, err := br.Peek(1); err != nil && err != io.EOF {
+		_ = obj.Close()
+		cancel()
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return nil, desync.NoSuchObject{Location: name}
+		}
+		return nil, fmt.Errorf("%s: %w", s.String(), err)
+	}
+	return cancelOnClose{Reader: br, Closer: obj, cancel: cancel}, nil
 }
 
 // cancelOnClose releases a context when the reader it guards is closed.
 type cancelOnClose struct {
-	io.ReadCloser
+	io.Reader
+	io.Closer
 	cancel context.CancelFunc
 }
 
 func (c cancelOnClose) Close() error {
-	err := c.ReadCloser.Close()
+	err := c.Closer.Close()
 	c.cancel()
 	return err
 }

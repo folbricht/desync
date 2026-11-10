@@ -3,7 +3,9 @@ package desync
 import (
 	"bytes"
 	"crypto/subtle"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
@@ -47,7 +49,7 @@ func (h HTTPIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h HTTPIndexHandler) get(indexName string, w http.ResponseWriter) {
 	idx, err := h.s.GetIndex(indexName)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			http.Error(w, "index not found", http.StatusNotFound)
 			return
 		}
@@ -68,7 +70,7 @@ func (h HTTPIndexHandler) get(indexName string, w http.ResponseWriter) {
 func (h HTTPIndexHandler) head(indexName string, w http.ResponseWriter) {
 	rdr, err := h.s.GetIndexReader(indexName)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
