@@ -21,9 +21,10 @@ import (
 // can be used for tar/untar operations.
 func NewLocalFS(root string, opts LocalFSOptions) *LocalFS {
 	return &LocalFS{
-		Root:    root,
-		opts:    opts,
-		entries: make(chan walkEntry),
+		Root:     root,
+		opts:     opts,
+		entries:  make(chan walkEntry),
+		deviceOf: deviceOf,
 	}
 }
 
@@ -369,9 +370,8 @@ func (fs *LocalFS) Next() (*File, error) {
 	return f, nil
 }
 
-// deviceOf returns the ID of the device a file is on. It's a variable to allow
-// tests to simulate a tree that spans more than one filesystem.
-var deviceOf = func(info os.FileInfo) (uint64, bool) {
+// deviceOf returns the ID of the device a file is on.
+func deviceOf(info os.FileInfo) (uint64, bool) {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return 0, false
@@ -384,7 +384,7 @@ var deviceOf = func(info os.FileInfo) (uint64, bool) {
 func (fs *LocalFS) initForReading() {
 	if fs.opts.OneFileSystem {
 		if info, err := os.Lstat(fs.Root); err == nil {
-			fs.dev, _ = deviceOf(info)
+			fs.dev, _ = fs.deviceOf(info)
 		}
 	}
 	fs.startSerializer()
@@ -400,7 +400,7 @@ func (fs *LocalFS) startSerializer() {
 				// is left out along with everything in it. Leaving out just
 				// the directory would have the walk carry on inside it, with
 				// entries that have no place in the tree being read.
-				if dev, ok := deviceOf(info); ok && dev != fs.dev {
+				if dev, ok := fs.deviceOf(info); ok && dev != fs.dev {
 					return filepath.SkipDir
 				}
 			}

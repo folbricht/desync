@@ -3,8 +3,7 @@
 package desync
 
 import (
-	"bytes"
-	"context"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -42,10 +41,10 @@ func TestLocalFSOneFileSystemStatError(t *testing.T) {
 	require.ErrorIs(t, err, fs.ErrPermission)
 }
 
-// TestLocalFSOneFileSystemSkipsMount archives a tree that has another
-// filesystem mounted in the middle of it with OneFileSystem set. The mount
-// point and everything below it is left out, while everything around it,
-// including what comes after it in the walk, has to be in the archive.
+// TestLocalFSOneFileSystemSkipsMount reads a tree that has another filesystem
+// mounted in the middle of it with OneFileSystem set. The mount point and
+// everything below it is left out, while everything around it, including what
+// comes after it in the walk, has to be returned.
 func TestLocalFSOneFileSystemSkipsMount(t *testing.T) {
 	src := t.TempDir()
 	for _, d := range []string{"keep", "mnt/sub", "zzz"} {
@@ -55,29 +54,34 @@ func TestLocalFSOneFileSystemSkipsMount(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(src, f), []byte(f), 0644))
 	}
 
-	// Mounting needs privileges, report the directories below the mount
-	// point as being on another device instead.
-	original := deviceOf
-	t.Cleanup(func() { deviceOf = original })
-	deviceOf = func(info os.FileInfo) (uint64, bool) {
-		if info.Name() == "mnt" || info.Name() == "sub" {
-			return 2, true
+	// Mounting needs privileges, report the mount point and everything below
+	// it as being on another device instead.
+	var mounted []os.FileInfo
+	require.NoError(t, filepath.Walk(filepath.Join(src, "mnt"), func(_ string, info os.FileInfo, err error) error {
+		mounted = append(mounted, info)
+		return err
+	}))
+	lfs := NewLocalFS(src, LocalFSOptions{OneFileSystem: true})
+	lfs.deviceOf = func(info os.FileInfo) (uint64, bool) {
+		for _, m := range mounted {
+			if os.SameFile(info, m) {
+				return 2, true
+			}
 		}
 		return 1, true
 	}
 
-	b := new(bytes.Buffer)
-	require.NoError(t, Tar(context.Background(), b, NewLocalFS(src, LocalFSOptions{OneFileSystem: true})))
-
-	dst := filepath.Join(t.TempDir(), "out")
-	lfs := NewLocalFS(dst, LocalFSOptions{NoSameOwner: true})
-	defer lfs.Close()
-	require.NoError(t, UnTar(context.Background(), b, lfs))
-
-	for _, f := range []string{"keep/a", "zfile", "zzz/b"} {
-		content, err := os.ReadFile(filepath.Join(dst, f))
+	var paths []string
+	for {
+		f, err := lfs.Next()
+		if err == io.EOF {
+			break
+		}
 		require.NoError(t, err)
-		assert.Equal(t, f, string(content))
+		require.NoError(t, f.Close())
+		rel, err := filepath.Rel(src, f.Path)
+		require.NoError(t, err)
+		paths = append(paths, rel)
 	}
-	assert.NoDirExists(t, filepath.Join(dst, "mnt"))
+	assert.Equal(t, []string{".", "keep", "keep/a", "zfile", "zzz", "zzz/b"}, paths)
 }

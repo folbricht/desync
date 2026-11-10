@@ -18,7 +18,12 @@ type LocalFS struct {
 
 	opts LocalFSOptions
 
-	dev     uint64
+	// Device the root is on, and how to find the device of anything else in
+	// the tree. Used to stay on one filesystem with OneFileSystem. A function
+	// to allow tests to simulate a tree that spans more than one.
+	dev      uint64
+	deviceOf func(os.FileInfo) (uint64, bool)
+
 	once    sync.Once
 	entries chan walkEntry
 	sErr    error
