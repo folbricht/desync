@@ -387,7 +387,9 @@ func (fs *LocalFS) initForReading() {
 func (fs *LocalFS) startSerializer() {
 	go func() {
 		err := filepath.Walk(fs.Root, func(path string, info os.FileInfo, err error) error {
-			if fs.dev != 0 && info.IsDir() {
+			// There is no info for an entry that couldn't be stat'ed, only the
+			// error, which is passed on for Next() to return.
+			if fs.dev != 0 && info != nil && info.IsDir() {
 				// one-file-system is set, skip other filesystems
 				st, ok := info.Sys().(*syscall.Stat_t)
 				if ok && uint64(st.Dev) != fs.dev {
