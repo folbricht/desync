@@ -369,16 +369,22 @@ func (fs *LocalFS) Next() (*File, error) {
 	return f, nil
 }
 
+// deviceOf returns the ID of the device a file is on. It's a variable to allow
+// tests to simulate a tree that spans more than one filesystem.
+var deviceOf = func(info os.FileInfo) (uint64, bool) {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	// Dev (and Rdev) elements of syscall.Stat_t are uint64 on Linux, but
+	// int32 on MacOS. Cast it to uint64 everywhere.
+	return uint64(st.Dev), true
+}
+
 func (fs *LocalFS) initForReading() {
 	if fs.opts.OneFileSystem {
-		info, err := os.Lstat(fs.Root)
-		if err == nil {
-			st, ok := info.Sys().(*syscall.Stat_t)
-			if ok {
-				// Dev (and Rdev) elements of syscall.Stat_t are uint64 on Linux,
-				// but int32 on MacOS. Cast it to uint64 everywhere.
-				fs.dev = uint64(st.Dev)
-			}
+		if info, err := os.Lstat(fs.Root); err == nil {
+			fs.dev, _ = deviceOf(info)
 		}
 	}
 	fs.startSerializer()
@@ -390,10 +396,12 @@ func (fs *LocalFS) startSerializer() {
 			// There is no info for an entry that couldn't be stat'ed, only the
 			// error, which is passed on for Next() to return.
 			if fs.dev != 0 && info != nil && info.IsDir() {
-				// one-file-system is set, skip other filesystems
-				st, ok := info.Sys().(*syscall.Stat_t)
-				if ok && uint64(st.Dev) != fs.dev {
-					return nil
+				// one-file-system is set. A directory on another filesystem
+				// is left out along with everything in it. Leaving out just
+				// the directory would have the walk carry on inside it, with
+				// entries that have no place in the tree being read.
+				if dev, ok := deviceOf(info); ok && dev != fs.dev {
+					return filepath.SkipDir
 				}
 			}
 			fs.entries <- walkEntry{path, info, err}
