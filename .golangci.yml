@@ -58,9 +58,10 @@ linters:
         text: "S1025"
         linters: [staticcheck]
 
-      # LocalFS.dev holds the device of Root so a one-file-system walk can skip
-      # other filesystems. Windows has no device number to compare, so its
-      # walker never reads the field, but the struct is shared.
+      # LocalFS.dev holds the device of Root, and LocalFS.deviceOf finds the
+      # device of anything else, so a one-file-system walk can skip other
+      # filesystems. Windows has no device number to compare, so its walker
+      # never reads the fields, but the struct is shared.
       - path: localfs\.go
-        text: "field dev is unused"
+        text: "field (dev|deviceOf) is unused"
         linters: [unused]
