@@ -3,20 +3,12 @@
 package desync
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
-	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
-
-// BLKGETSIZE64 ioctl
-const blkGetSize64 = 0x80081272
-
-// FICLONERANGE ioctl
-const fiCloneRange = 0x4020940d
 
 // CanClone tries to determine if the filesystem allows cloning of blocks between
 // two files. It'll create two tempfiles in the same dirs and attempt to perform
@@ -41,20 +33,13 @@ func CanClone(dstFile, srcFile string) bool {
 // CloneRange uses the FICLONERANGE ioctl to de-dupe blocks between two files
 // when using XFS or btrfs. Only works at block-boundaries.
 func CloneRange(dst, src *os.File, srcOffset, srcLength, dstOffset uint64) error {
-	// Build a structure to hold the argument for this IOCTL
-	// struct file_clone_range {
-	//     __s64 src_fd;
-	//     __u64 src_offset;
-	//     __u64 src_length;
-	//     __u64 dest_offset;
-	// };
-	arg := new(bytes.Buffer)
-	_ = binary.Write(arg, binary.LittleEndian, uint64(src.Fd()))
-	_ = binary.Write(arg, binary.LittleEndian, srcOffset)
-	_ = binary.Write(arg, binary.LittleEndian, srcLength)
-	_ = binary.Write(arg, binary.LittleEndian, dstOffset)
-	err := ioctl(dst.Fd(), fiCloneRange, uintptr(unsafe.Pointer(&arg.Bytes()[0])))
-	if err != nil {
+	value := &unix.FileCloneRange{
+		Src_fd:      int64(src.Fd()),
+		Src_offset:  srcOffset,
+		Src_length:  srcLength,
+		Dest_offset: dstOffset,
+	}
+	if err := unix.IoctlFileCloneRange(int(dst.Fd()), value); err != nil {
 		return fmt.Errorf("failure cloning blocks from %s to %s: %w", src.Name(), dst.Name(), err)
 	}
 	return nil
@@ -75,20 +60,8 @@ func GetFileSize(fileName string) (size uint64, err error) {
 		if err != nil {
 			return 0, err
 		}
-		err = ioctl(f.Fd(), blkGetSize64, uintptr(unsafe.Pointer(&size)))
-		if err != nil {
-			return 0, err
-		}
-		return size, nil
-	} else {
-		return uint64(info.Size()), nil
+		defer f.Close()
+		return unix.IoctlGetUint64(int(f.Fd()), unix.BLKGETSIZE64)
 	}
-}
-
-func ioctl(fd, operation, argp uintptr) error {
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, operation, argp)
-	if e != 0 {
-		return syscall.Errno(e)
-	}
-	return nil
+	return uint64(info.Size()), nil
 }
