@@ -1,7 +1,6 @@
 package sftp
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 	"path"
@@ -34,9 +33,9 @@ func (s *IndexStore) GetIndexReader(name string) (r io.ReadCloser, e error) {
 	f, err := s.client.Open(s.pathFromName(name))
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = fmt.Errorf("index file does not exist: %v", err)
+			return nil, desync.NoSuchObject{Location: name}
 		}
-		return r, err
+		return nil, err
 	}
 	return f, nil
 }

@@ -2,6 +2,7 @@ package gcs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -43,9 +44,9 @@ func (s IndexStore) GetIndexReader(name string) (r io.ReadCloser, err error) {
 
 	obj, err := s.client.Object(s.prefix + name).NewReader(ctx)
 
-	if err == storage.ErrObjectNotExist {
+	if errors.Is(err, storage.ErrObjectNotExist) {
 		log.Warn("Unable to create reader for object in GCS bucket; the object may not exist, or the bucket may not exist, or you may not have permission to access it")
-		return nil, fmt.Errorf("%s: %w", s.String(), err)
+		return nil, desync.NoSuchObject{Location: name}
 	} else if err != nil {
 		log.Error("Error when creating index reader from GCS bucket", "error", err)
 		return nil, fmt.Errorf("%s: %w", s.String(), err)

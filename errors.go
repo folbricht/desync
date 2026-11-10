@@ -1,6 +1,9 @@
 package desync
 
-import "fmt"
+import (
+	"fmt"
+	"io/fs"
+)
 
 // ChunkMissing is returned by a store that can't find a requested chunk
 type ChunkMissing struct {
@@ -18,6 +21,13 @@ func (e ChunkMissing) Error() string {
 
 func (e NoSuchObject) Error() string {
 	return fmt.Sprintf("object %s missing from store", e.Location)
+}
+
+// Is makes a missing object match fs.ErrNotExist, the error of a local store
+// that can't find a file. That allows testing for something missing with
+// errors.Is(err, fs.ErrNotExist) without knowing the kind of store it's from.
+func (e NoSuchObject) Is(target error) bool {
+	return target == fs.ErrNotExist
 }
 
 // ChunkInvalid means the chunk failed validation, either because the hash
